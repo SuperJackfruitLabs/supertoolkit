@@ -100,6 +100,24 @@ func (a Auth) Reassurance() string {
 	}
 }
 
+// Device describes a provider's device authorization grant, where it offers
+// one. Without this a service can still be connected, just not from a machine
+// with no browser.
+type Device struct {
+	AuthorizationURL string
+	TokenURL         string
+	// ClientID is the public identifier of our own OAuth app. It is not a
+	// secret — the device grant exists precisely so a public client can
+	// authenticate without one.
+	ClientID string
+	Scopes   []string
+}
+
+// Supported reports whether this service can be connected headlessly.
+func (d Device) Supported() bool {
+	return d.AuthorizationURL != "" && d.TokenURL != "" && d.ClientID != ""
+}
+
 // Param is one input to a capability.
 type Param struct {
 	Name     string
@@ -133,6 +151,8 @@ type Entry struct {
 	Field     string
 	// Auth is the credential operation this service needs.
 	Auth Auth
+	// Device is the headless connect path, where the provider offers one.
+	Device Device
 	// Region and AWSService are the SigV4 scope, used only when Auth is AuthSigV4.
 	Region       string
 	AWSService   string
@@ -179,6 +199,15 @@ var builtin = map[string]*Entry{
 	},
 	"github": {
 		Name: "github", Host: "api.github.com", Placement: BearerHeader, EnvVar: "GH_TOKEN",
+		Device: Device{
+			AuthorizationURL: "https://github.com/login/device/code",
+			TokenURL:         "https://github.com/login/oauth/access_token",
+			// Replaced by the operator's own OAuth app id at configure time;
+			// this placeholder makes the shape visible without pretending we
+			// ship a working client id.
+			ClientID: "",
+			Scopes:   []string{"repo", "read:org"},
+		},
 		Capabilities: []Capability{
 			{
 				Name: "get_user", Kind: Read, Method: "GET", Path: "/user",

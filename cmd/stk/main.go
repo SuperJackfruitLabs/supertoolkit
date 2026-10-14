@@ -17,6 +17,9 @@ func usage() {
   stk init                    create the local CA and a starter supertoolkit.yaml
   stk add <service>...        add services, with safe default policy
   stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk handover key|seal|open  move a credential to a broker that has no browser
   stk run -- <command>        run a command with the broker in front of it
   stk serve                   run the broker daemon on a Unix socket
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
@@ -45,6 +48,8 @@ func main() {
 		err = cmdAdd(os.Args[2:])
 	case "connect":
 		err = cmdConnect(os.Args[2:])
+	case "handover":
+		err = cmdHandover(os.Args[2:])
 	case "run":
 		err = cmdRun(os.Args[2:])
 	case "serve":

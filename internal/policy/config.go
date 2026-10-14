@@ -64,11 +64,38 @@ type Service struct {
 	// from the catalogue, so the file stays short and safe.
 	explicit map[string]Action
 	entry    *catalog.Entry
+	// device holds what the catalogue cannot know: the operator's own OAuth
+	// app, and — for a self-hosted instance such as GitHub Enterprise Server —
+	// endpoints that are not the public ones. A client id is public by OAuth's
+	// design, naming an app without authorising anything, so both belong in the
+	// committed file beside the rest of the policy.
+	device deviceOverride
 }
 
 // Entry exposes the catalogue record, which carries the host and the credential
 // placement.
 func (s *Service) Entry() *catalog.Entry { return s.entry }
+
+// Device describes the headless connect path for this service: the
+// catalogue's endpoints, with the operator's own client id filled in.
+//
+// Without a client id the flow cannot start, and Supported() reports false, so
+// `stk connect --device` can say which piece is missing instead of failing at
+// the provider.
+func (s *Service) Device() catalog.Device {
+	d := s.entry.Device
+	if s.device.ClientID != "" {
+		d.ClientID = s.device.ClientID
+	}
+	// A self-hosted instance speaks the same protocol at different addresses.
+	// Overriding one endpoint without the other would send the poll somewhere
+	// that never issued the code, so they move together or not at all.
+	if s.device.AuthorizationURL != "" && s.device.TokenURL != "" {
+		d.AuthorizationURL = s.device.AuthorizationURL
+		d.TokenURL = s.device.TokenURL
+	}
+	return d
+}
 
 // Policy resolves one capability.
 //
@@ -97,7 +124,11 @@ type Config struct {
 	profiles map[string]map[string]map[string]bool
 	// servers are MCP servers we did not write, fronted as categories.
 	servers map[string]*Server
+	notify  Notify
 }
+
+// Notify returns the configured notification routes.
+func (c *Config) Notify() Notify { return c.notify }
 
 // Service finds a configured service.
 func (c *Config) Service(name string) (*Service, bool) {
@@ -137,9 +168,34 @@ type file struct {
 	Services  map[string]struct {
 		Scopes       []string          `yaml:"scopes"`
 		Capabilities map[string]string `yaml:"capabilities"`
+		Device       deviceOverride    `yaml:"device"`
 	} `yaml:"services"`
 	Profiles map[string]map[string][]string `yaml:"profiles"`
 	Servers  map[string]serverFile          `yaml:"servers"`
+	Notify   notifyFile                     `yaml:"notify"`
+}
+
+// deviceOverride mirrors a service's `device:` block.
+type deviceOverride struct {
+	ClientID         string `yaml:"client_id"`
+	AuthorizationURL string `yaml:"authorization_url"`
+	TokenURL         string `yaml:"token_url"`
+}
+
+// notifyFile mirrors the `notify:` block: the routes by which a machine reaches
+// the person it is waiting on. A URL is not a secret, so it may sit here; a
+// token in one would be, which is why only unauthenticated endpoints are
+// supported for now.
+type notifyFile struct {
+	Webhook string `yaml:"webhook"`
+	File    string `yaml:"file"`
+}
+
+// Notify is where to reach the operator. The terminal is always a route and is
+// never configured, so it does not appear here.
+type Notify struct {
+	Webhook string
+	File    string
 }
 
 // serverFile mirrors one `servers:` entry on disk.
@@ -168,13 +224,20 @@ func Load(path string) (*Config, error) {
 		services:  map[string]*Service{},
 		profiles:  map[string]map[string]map[string]bool{},
 		servers:   map[string]*Server{},
+		notify:    Notify{Webhook: f.Notify.Webhook, File: f.Notify.File},
 	}
 	for name, sf := range f.Services {
 		entry, ok := catalog.Lookup(name)
 		if !ok {
 			return nil, fmt.Errorf("%s: unknown service %q: known services are %v", path, name, catalog.Names())
 		}
-		svc := &Service{Name: name, Scopes: sf.Scopes, explicit: map[string]Action{}, entry: entry}
+		svc := &Service{
+			Name: name, Scopes: sf.Scopes, explicit: map[string]Action{}, entry: entry,
+			device: sf.Device,
+		}
+		if (sf.Device.AuthorizationURL == "") != (sf.Device.TokenURL == "") {
+			return nil, fmt.Errorf("%s: service %q: device needs both authorization_url and token_url, or neither — polling an endpoint that did not issue the code never succeeds", path, name)
+		}
 		for cap, want := range sf.Capabilities {
 			a, err := parseAction(want)
 			if err != nil {

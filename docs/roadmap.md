@@ -42,13 +42,17 @@ belongs in one; approvals have no home without one. Loopback on a laptop, the
 private network on a VPS, and never the credential plane's listener. Mockups
 before implementation, per house practice.
 
-## Phase 5 — headless connect
+## Phase 5 — headless connect — **shipped**
 
-`stk connect` where there is no browser. Device authorization grant is the clean
-path: the broker gets a code, the operator approves in their own browser, and
-the token returns from the provider straight to the broker. Fallbacks are the
-broker's own web UI over a private network, or an encrypted hand-over from a
-machine that does have a browser.
+`stk connect --device` runs the device authorization grant: the broker gets a
+code, the operator approves it in their own browser wherever they are, and the
+token returns from the provider straight to the broker. `stk handover
+key|seal|open` is the fallback from a machine that does have a browser, sealed
+so only the target broker can open it — and it states, rather than hides, that
+the credential briefly exists on the sealing machine. The notification adapter
+(terminal, webhook, file) is shared with approvals, since a device code and an
+approval are the same shape. See [design.md](design.md#connecting-a-service-where-there-is-no-browser)
+and [plan-phase-5.md](plan-phase-5.md).
 
 ## Phase 6 — release
 

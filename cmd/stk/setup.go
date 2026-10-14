@@ -54,6 +54,7 @@ func cmdInit() error {
 	fmt.Printf("  CA certificate %s\n", caPath)
 	fmt.Println()
 	fmt.Println("  next: stk add github && stk connect github")
+	fmt.Println("  no browser on this machine? stk connect github --device")
 	fmt.Println()
 	fmt.Println("  about trusting the CA:")
 	switch runtime.GOOS {
@@ -109,11 +110,29 @@ func cmdAdd(args []string) error {
 
 // cmdConnect reads the credential from stdin, never from a flag, so it cannot
 // land in shell history or in the process table.
+//
+// With --device there is nothing to read: the provider hands the token straight
+// to the broker, and no credential passes through a keyboard at all.
 func cmdConnect(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: stk connect <service>   (the credential is read from stdin)")
+	var name string
+	device := false
+	for _, a := range args {
+		switch a {
+		case "--device":
+			device = true
+		default:
+			if name != "" {
+				return fmt.Errorf("usage: stk connect <service> [--device]")
+			}
+			name = a
+		}
 	}
-	name := args[0]
+	if name == "" {
+		return fmt.Errorf("usage: stk connect <service> [--device]   (the credential is read from stdin)")
+	}
+	if device {
+		return connectDevice(name, os.Stdout)
+	}
 	if _, ok := catalog.Lookup(name); !ok {
 		return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())
 	}
