@@ -112,3 +112,53 @@ func TestCapabilityKindsAreDeclared(t *testing.T) {
 		}
 	}
 }
+
+func TestEveryServiceDeclaresItsOperationAndFields(t *testing.T) {
+	for _, name := range Names() {
+		e, _ := Lookup(name)
+		if len(e.Auth.Fields()) == 0 {
+			t.Errorf("service %q declares no credential fields", name)
+		}
+		if e.Auth.String() == "" {
+			t.Errorf("service %q has no operation description", name)
+		}
+		if e.Auth == AuthSigV4 && (e.Region == "" || e.AWSService == "") {
+			t.Errorf("service %q signs with SigV4 but declares no region or service scope", name)
+		}
+	}
+}
+
+// A shape may carry a literal query, which the AWS action needs.
+func TestRequestKeepsALiteralQueryInTheShape(t *testing.T) {
+	e, ok := Lookup("aws-sts")
+	if !ok {
+		t.Fatal("aws-sts missing from the catalogue")
+	}
+	req, err := e.Request("whoami", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := req.URL.Query().Get("Action"); got != "GetCallerIdentity" {
+		t.Fatalf("Action = %q, want GetCallerIdentity (url = %s)", got, req.URL)
+	}
+}
+
+// The reassurance shown to an operator must be true for each scheme. Signing
+// emits a signature, not a short-lived credential, and saying otherwise would
+// misdescribe what protects them.
+func TestReassuranceIsAccuratePerScheme(t *testing.T) {
+	if got := AuthSigV4.Reassurance(); strings.Contains(got, "token") {
+		t.Errorf("SigV4 reassurance mentions a token: %q", got)
+	}
+	if got := AuthGitHubApp.Reassurance(); !strings.Contains(got, "expires") {
+		t.Errorf("the acquiring reassurance should say the result expires: %q", got)
+	}
+	if got := AuthToken.Reassurance(); !strings.Contains(got, "long-lived") {
+		t.Errorf("the token reassurance should warn it is long-lived: %q", got)
+	}
+	for _, a := range []Auth{AuthToken, AuthSigV4, AuthGitHubApp} {
+		if a.Reassurance() == "" {
+			t.Errorf("%v has no reassurance", a)
+		}
+	}
+}

@@ -84,8 +84,24 @@ type sealed struct {
 	Data  []byte `json:"data"`
 }
 
-// Put stores a credential, replacing any previous one.
+// Put stores a single-token credential, replacing any previous one.
 func (s *Store) Put(service, secret string) error {
+	return s.PutMaterial(service, Material{FieldToken: secret})
+}
+
+// PutMaterial stores a credential of any shape.
+func (s *Store) PutMaterial(service string, m Material) error {
+	if len(m) == 0 {
+		return fmt.Errorf("refusing to store an empty credential for %q", service)
+	}
+	blob, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return s.putSealed(service, string(blob))
+}
+
+func (s *Store) putSealed(service, secret string) error {
 	block, err := aes.NewCipher(s.key)
 	if err != nil {
 		return err
@@ -119,12 +135,46 @@ func (s *Store) Put(service, secret string) error {
 	return os.WriteFile(s.path(service), out, 0o600)
 }
 
-// Get returns a stored credential.
+// Get returns a single-token credential.
 //
-// This is the one function in the package that produces a secret, and it is
-// reachable only from the broker's own secret source — never from a request
-// handler, and never over any socket.
+// Along with Material, this is the only path that produces a secret, and it is
+// reachable only from the broker's own executor — never from a request handler,
+// and never over any socket.
 func (s *Store) Get(service string) (string, error) {
+	m, err := s.Material(service)
+	if err != nil {
+		return "", err
+	}
+	if t := m.Token(); t != "" {
+		return t, nil
+	}
+	return "", fmt.Errorf("the credential for %q is not a token: it holds %v", service, m.Fields())
+}
+
+// Material returns a stored credential of any shape.
+//
+// A credential written by an older single-token store still reads, as
+// {"token": ...}, so an existing install keeps working.
+func (s *Store) Material(service string) (Material, error) {
+	raw, err := s.getSealed(service)
+	if err != nil {
+		return nil, err
+	}
+	var m Material
+	if err := json.Unmarshal([]byte(raw), &m); err != nil || m == nil {
+		// Not JSON: a credential from before material was typed. Treat the
+		// whole value as the token rather than failing on it.
+		return Material{FieldToken: raw}, nil
+	}
+	if len(m) == 0 {
+		// An empty map would read as "no credential needed", which is worse
+		// than an error.
+		return nil, fmt.Errorf("the credential for %q is empty", service)
+	}
+	return m, nil
+}
+
+func (s *Store) getSealed(service string) (string, error) {
 	raw, err := os.ReadFile(s.path(service))
 	if err != nil {
 		if os.IsNotExist(err) {
