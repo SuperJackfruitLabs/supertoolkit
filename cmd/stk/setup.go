@@ -33,7 +33,8 @@ func cmdInit() error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := passphrase(dir); err != nil {
+	_, keySrc, err := credential.StoreKey(dir)
+	if err != nil {
 		return err
 	}
 
@@ -48,6 +49,7 @@ func cmdInit() error {
 		fmt.Printf("  kept %s\n", cfg)
 	}
 	fmt.Printf("  local state in %s (0700)\n", dir)
+	fmt.Printf("  store key from %s\n", keySrc)
 	fmt.Printf("  CA certificate %s\n", caPath)
 	fmt.Println()
 	fmt.Println("  next: stk add github && stk connect github")
@@ -118,7 +120,7 @@ func cmdConnect(args []string) error {
 	if err != nil {
 		return err
 	}
-	pass, _, err := passphrase(dir)
+	pass, _, err := credential.StoreKey(dir)
 	if err != nil {
 		return err
 	}
@@ -154,7 +156,7 @@ func loadForRun() (*policy.Config, *credential.Store, string, error) {
 	if err != nil {
 		return nil, nil, "", err
 	}
-	pass, _, err := passphrase(dir)
+	pass, _, err := credential.StoreKey(dir)
 	if err != nil {
 		return nil, nil, "", err
 	}

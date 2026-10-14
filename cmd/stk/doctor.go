@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/broker"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcp"
 )
 
 // check is one line of doctor output.
@@ -70,12 +72,17 @@ func doctorChecks() []check {
 	out = append(out, check{ok: np == "", warn: np != "", label: "NO_PROXY is unset",
 		note: map[bool]string{true: "", false: "set to " + np + " — a confirmed bypass; stk run clears it for children"}[np == ""]})
 
-	// The machine key beside the ciphertext is a real Phase 0 weakness.
-	if os.Getenv("STK_PASSPHRASE") == "" {
-		out = append(out, check{warn: true, label: "credential store key",
-			note: "a machine key sits beside the ciphertext (Phase 0); the OS keychain is the Phase 1 fix"})
-	} else {
-		out = append(out, check{ok: true, label: "credential store key", note: "from STK_PASSPHRASE"})
+	// Report where the store key really comes from, since that is how well
+	// protected the credentials actually are.
+	if dir2, err := home(); err == nil {
+		if _, src, err := credential.StoreKey(dir2); err == nil {
+			weak := src == credential.KeyFromFile
+			note := string(src)
+			if weak {
+				note += " — anything that can read one file can read the other; an OS keychain is not wired on this platform"
+			}
+			out = append(out, check{ok: !weak, warn: weak, label: "credential store key", note: note})
+		}
 	}
 
 	// Platform-specific CA trust, measured by spiking rather than assumed.
@@ -84,6 +91,28 @@ func doctorChecks() []check {
 			note: "macOS Go programs ignore SSL_CERT_FILE and read the keychain; add the CA there for tools like gh"})
 	} else {
 		out = append(out, check{ok: true, label: "CA trust", note: "SSL_CERT_FILE covers Go, curl, Python and Node here"})
+	}
+
+	// The four meta-tools, asserted rather than assumed, since the whole point
+	// is that the catalogue never reaches an agent's context.
+	out = append(out, check{ok: len(mcp.ToolNames) == 4, label: "meta-tools",
+		note: fmt.Sprintf("%d exposed to agents: %s", len(mcp.ToolNames), strings.Join(mcp.ToolNames, ", "))})
+
+	if n := len(cfg.Profiles()); n > 0 {
+		out = append(out, check{ok: true, label: "profiles", note: fmt.Sprintf("%d declared: %s", n, strings.Join(cfg.Profiles(), ", "))})
+	} else {
+		out = append(out, check{ok: true, label: "profiles", note: "none declared, so every caller sees what policy allows"})
+	}
+
+	// Is a daemon up?
+	if d, err := home(); err == nil {
+		sock := socketPath(d)
+		if fi, serr := os.Stat(sock); serr == nil {
+			out = append(out, check{ok: fi.Mode().Perm() == 0o600, label: "daemon socket",
+				note: fmt.Sprintf("%s mode %o", sock, fi.Mode().Perm())})
+		} else {
+			out = append(out, check{ok: true, label: "daemon socket", note: "not running; `stk run` works without it"})
+		}
 	}
 
 	// The leak check: the invariant, asserted rather than claimed.

@@ -219,6 +219,13 @@ func (s *Server) tools() []toolDef {
 	}
 }
 
+// CallTool invokes one meta-tool directly, for callers that are not speaking
+// JSON-RPC — the daemon reuses this so there is one implementation of the four
+// tools and one enforcement point, rather than a second path that could drift.
+func (s *Server) CallTool(ctx context.Context, name string, args map[string]string) any {
+	return s.call(ctx, name, args)
+}
+
 func (s *Server) call(ctx context.Context, name string, args map[string]string) toolResult {
 	switch name {
 	case "discover_server_categories":
