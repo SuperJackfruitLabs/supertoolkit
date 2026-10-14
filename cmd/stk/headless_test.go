@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,5 +173,158 @@ services:
 		t.Fatal("a half-overridden endpoint pair was accepted")
 	} else if !strings.Contains(err.Error(), "authorization_url") {
 		t.Errorf("err = %v, want it to name the missing endpoint", err)
+	}
+}
+
+// fakeOAuth2Provider is an authorization server: it issues a code at the
+// authorize endpoint and exchanges it at the token endpoint, checking the PKCE
+// verifier the way a real one does.
+func fakeOAuth2Provider(t *testing.T, refresh string) (*httptest.Server, *url.Values) {
+	t.Helper()
+	var exchanged url.Values
+	var challenge string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		challenge = q.Get("code_challenge")
+		// Redirect back the way a provider does, carrying the state verbatim.
+		http.Redirect(w, r, q.Get("redirect_uri")+"?code=the-auth-code&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		exchanged = r.PostForm
+		w.Header().Set("Content-Type", "application/json")
+		// Verify the PKCE binding, as a real provider must: S256 of the
+		// verifier has to equal the challenge from the authorization request.
+		sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
+		if base64.RawURLEncoding.EncodeToString(sum[:]) != challenge {
+			w.WriteHeader(400)
+			fmt.Fprint(w, `{"error":"invalid_grant","error_description":"code_verifier does not match code_challenge"}`)
+			return
+		}
+		fmt.Fprintf(w, `{"access_token":"the-access-token","refresh_token":%q,
+			"token_type":"bearer","scope":"tweet.write offline.access","expires_in":7200}`, refresh)
+	})
+	s := httptest.NewServer(mux)
+	t.Cleanup(s.Close)
+	return s, &exchanged
+}
+
+func TestConnectBrowserStoresTheRefreshTokenAndNotTheAccessToken(t *testing.T) {
+	prov, exchanged := fakeOAuth2Provider(t, "the-refresh-token")
+	oauthPort = 0 // an ephemeral port, so this test can run beside others
+	t.Cleanup(func() { oauthPort = 7837 })
+
+	rig(t, fmt.Sprintf(`workspace: test
+services:
+  x:
+    scopes: []
+    oauth2:
+      client_id: test-client-id
+`))
+	// Point the catalogue's endpoints at the fake provider through the policy
+	// file's own override path, the same way a self-hosted instance would.
+	cfgPath := os.Getenv("STK_CONFIG")
+	body, _ := os.ReadFile(cfgPath)
+	os.WriteFile(cfgPath, []byte(string(body)), 0o644)
+
+	var out strings.Builder
+	// The "browser" is a plain GET: the provider redirects, the receiver
+	// captures the code, and the exchange follows.
+	openBrowser := func(u string) error {
+		// Rewrite the authorize URL onto the fake provider.
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return err
+		}
+		go http.Get(prov.URL + "/authorize?" + parsed.RawQuery)
+		return nil
+	}
+	if err := connectBrowserWith(t, prov.URL, "x", &out, openBrowser); err != nil {
+		t.Fatalf("connectBrowser: %v", err)
+	}
+	text := out.String()
+
+	dir, _ := home()
+	pass, _, _ := credential.StoreKey(dir)
+	store, err := credential.OpenStore(dir, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := store.Material("x")
+	if err != nil {
+		t.Fatalf("nothing was stored: %v", err)
+	}
+	if m[credential.FieldRefreshToken] != "the-refresh-token" {
+		t.Errorf("refresh token = %q", m[credential.FieldRefreshToken])
+	}
+	if m[credential.FieldClientID] != "test-client-id" {
+		t.Errorf("client id = %q — without it the refresh cannot be made", m[credential.FieldClientID])
+	}
+	// The access token is deliberately not stored: a stolen store should yield
+	// something that must be exchanged with the provider first.
+	for field, v := range m {
+		if v == "the-access-token" {
+			t.Errorf("the access token was stored in %q", field)
+		}
+	}
+
+	// The PKCE verifier reached the token endpoint, which is what binds the
+	// code to this process.
+	if exchanged.Get("code_verifier") == "" {
+		t.Error("no code_verifier was sent; the code is not bound to this request")
+	}
+	if exchanged.Get("grant_type") != "authorization_code" {
+		t.Errorf("grant_type = %q", exchanged.Get("grant_type"))
+	}
+	// Nothing secret is printed.
+	for _, secret := range []string{"the-access-token", "the-refresh-token", "the-auth-code"} {
+		if strings.Contains(text, secret) {
+			t.Errorf("the output contains %q", secret)
+		}
+	}
+	if !strings.Contains(text, "connected") {
+		t.Errorf("the output never says it connected:\n%s", text)
+	}
+}
+
+// connectBrowserWith points the service's endpoints at a test provider by
+// rewriting the config, which is the same override a self-hosted instance uses.
+func connectBrowserWith(t *testing.T, provURL, name string, out *strings.Builder, open func(string) error) error {
+	t.Helper()
+	cfgPath := os.Getenv("STK_CONFIG")
+	os.WriteFile(cfgPath, []byte(fmt.Sprintf(`workspace: test
+services:
+  %s:
+    scopes: []
+    oauth2:
+      client_id: test-client-id
+      authorize_url: %s/authorize
+      token_url: %s/token
+`, name, provURL, provURL)), 0o644)
+	// X is a confidential client, so the secret arrives on stdin.
+	return connectBrowser(name, out, strings.NewReader("the-client-secret\n"), open)
+}
+
+// A provider that issues no refresh token leaves a connection that dies in two
+// hours and cannot recover, which is worse than not connecting at all.
+func TestConnectBrowserRefusesAGrantWithNoRefreshToken(t *testing.T) {
+	prov, _ := fakeOAuth2Provider(t, "")
+	oauthPort = 0
+	t.Cleanup(func() { oauthPort = 7837 })
+	rig(t, "workspace: test\nservices: {}\n")
+
+	var out strings.Builder
+	open := func(u string) error {
+		parsed, _ := url.Parse(u)
+		go http.Get(prov.URL + "/authorize?" + parsed.RawQuery)
+		return nil
+	}
+	err := connectBrowserWith(t, prov.URL, "x", &out, open)
+	if err == nil {
+		t.Fatal("a grant with no refresh token was accepted")
+	}
+	if !strings.Contains(err.Error(), "offline access") {
+		t.Errorf("err = %v, want it to name what is missing", err)
 	}
 }

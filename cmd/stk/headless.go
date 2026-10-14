@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/deviceflow"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/handover"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/notify"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/oauth2flow"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
 
@@ -291,4 +294,196 @@ func handoverSeal(args []string, dir string) error {
   however, still exists on this machine — in this store.
 `, name)
 	return nil
+}
+
+// connectBrowser runs the OAuth 2.0 authorization code flow with PKCE.
+//
+// This is the path for a provider that offers no device grant — X and Google
+// among them — and it needs a browser on this machine, because the redirect
+// comes back to a loopback listener. On a machine with no browser the order of
+// preference is the device grant, then the broker's own UI over a private
+// network, then `stk handover`.
+//
+// What is stored is the refresh token, the client id and, for a confidential
+// client, the client secret. The access token is never stored: it is acquired
+// on demand and lives in memory, so a stolen store yields something that has to
+// be exchanged with the provider before it is worth anything.
+func connectBrowser(name string, out io.Writer, in io.Reader, openBrowser func(string) error) error {
+	cfg, err := policy.Load(configPath())
+	if err != nil {
+		return fmt.Errorf("%w — run `stk init` first", err)
+	}
+	svc, ok := cfg.Service(name)
+	if !ok {
+		return fmt.Errorf("%q is not configured: run `stk add %s` first, which is also where the client id goes", name, name)
+	}
+	o := svc.OAuth2()
+	if !o.Supported() {
+		return unsupportedOAuth2(name, svc.Entry(), o)
+	}
+
+	dir, err := home()
+	if err != nil {
+		return err
+	}
+	pass, _, err := credential.StoreKey(dir)
+	if err != nil {
+		return err
+	}
+	store, err := credential.OpenStore(dir, pass)
+	if err != nil {
+		return err
+	}
+
+	// A confidential client's secret is a secret, so it is read from stdin and
+	// never from a flag or the committed file.
+	clientSecret := ""
+	if o.Confidential {
+		fmt.Fprintf(out, "\n  %s needs its client secret. Paste it and press ctrl-D:\n", name)
+		raw, err := io.ReadAll(in)
+		if err != nil {
+			return err
+		}
+		clientSecret = strings.TrimSpace(string(raw))
+		if clientSecret == "" {
+			return fmt.Errorf("no client secret was supplied, and %s is a confidential client — its token endpoint will refuse the exchange", name)
+		}
+	}
+
+	state, err := oauth2flow.NewState()
+	if err != nil {
+		return err
+	}
+	pkce, err := oauth2flow.NewPKCE()
+	if err != nil {
+		return err
+	}
+	// Port 0 would give a different redirect URI every run, and a provider
+	// matches it exactly against what was registered. A fixed port is the only
+	// thing that works with a registered redirect.
+	rec, redirectURI, err := oauth2flow.Listen(oauthPort, state)
+	if err != nil {
+		return err
+	}
+	defer rec.Close()
+
+	flow := oauth2flow.Config{
+		AuthorizeURL: o.AuthorizeURL, TokenURL: o.TokenURL,
+		ClientID: o.ClientID, ClientSecret: clientSecret, Scopes: o.Scopes,
+	}
+	authURL := oauth2flow.AuthorizeURL(flow, redirectURI, state, pkce)
+
+	fmt.Fprintf(out, "\n  connecting %s in your browser\n", name)
+	fmt.Fprintf(out, "    1. you approve the request at %s\n", o.AuthorizeURL)
+	fmt.Fprintf(out, "    2. the provider redirects to %s — this machine only\n", redirectURI)
+	fmt.Fprintf(out, "    3. the broker exchanges the code for a token, and keeps it\n")
+	if len(o.Scopes) > 0 {
+		fmt.Fprintf(out, "    asking for: %s\n", strings.Join(o.Scopes, ", "))
+	}
+	fmt.Fprintf(out, "\n  %s must be registered as a redirect URI for your app, exactly.\n\n", redirectURI)
+
+	if openBrowser != nil {
+		if err := openBrowser(authURL); err != nil {
+			fmt.Fprintf(out, "  could not open a browser (%v). Open this yourself:\n\n    %s\n\n", err, authURL)
+		}
+	} else {
+		fmt.Fprintf(out, "  open this:\n\n    %s\n\n", authURL)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// A person has to find the tab, read the scopes and decide. Five minutes is
+	// generous without waiting forever on an abandoned flow.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	got, err := rec.Wait(ctx)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			fmt.Fprintf(out, "\n  cancelled. %s is not connected, and nothing was stored.\n", name)
+			return nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("nothing came back within five minutes, so %s is not connected — nothing was stored", name)
+		}
+		return err
+	}
+
+	tok, err := oauth2flow.Exchange(ctx, flow, got.Code, redirectURI, pkce.Verifier)
+	if err != nil {
+		return err
+	}
+	if tok.RefreshToken == "" {
+		return fmt.Errorf(`%s returned no refresh token, so the connection would die when the access token expires and could not recover.
+
+  this means the grant did not include offline access. Check that your app
+  requests it: %s`, name, strings.Join(o.Scopes, ", "))
+	}
+
+	m := credential.Material{
+		credential.FieldClientID:     o.ClientID,
+		credential.FieldRefreshToken: tok.RefreshToken,
+	}
+	if clientSecret != "" {
+		m[credential.FieldClientSecret] = clientSecret
+	}
+	if err := store.PutMaterial(name, m); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "  %s connected · %s\n", name, svc.Entry().Auth)
+	fmt.Fprintf(out, "  sealed in %s, never in %s\n", dir, configPath())
+	if tok.Scope != "" {
+		fmt.Fprintf(out, "  granted: %s\n", tok.Scope)
+	}
+	fmt.Fprintf(out, "  the refresh token is stored; the access token is not — it is acquired on demand\n")
+	fmt.Fprintf(out, "  %s\n", svc.Entry().Auth.Reassurance())
+	return nil
+}
+
+// oauthPort is fixed because a provider matches the redirect URI exactly
+// against the one registered for the app. A random port would mean
+// re-registering before every connect.
+//
+// A variable rather than a constant only so a test can ask for an ephemeral
+// port and run alongside others.
+var oauthPort = 7837
+
+func unsupportedOAuth2(name string, entry *catalog.Entry, o catalog.OAuth2) error {
+	if o.AuthorizeURL == "" || o.TokenURL == "" {
+		return fmt.Errorf(`%s does not use the OAuth 2.0 authorization code flow.
+
+  it uses %s — connect it with:
+    stk connect %s`, name, entry.Auth, name)
+	}
+	return fmt.Errorf(`%s uses OAuth 2.0, but no client id is configured.
+
+  supertoolkit ships no client id: a shared one would make every installation
+  look like the same app. Register your own, add http://127.0.0.1:%d/callback as
+  a redirect URI, then name the client id in %s:
+
+    services:
+      %s:
+        oauth2:
+          client_id: <your app's client id>
+
+  a client id is public by OAuth's design: it identifies an app and authorises
+  nothing, so it is safe in a committed file. The client secret is not, so
+  stk connect %s --browser reads it from stdin.`, name, oauthPort, configPath(), name, name)
+}
+
+// openInBrowser is best-effort: a failure prints the URL instead, which is the
+// same thing a headless machine needs anyway.
+func openInBrowser(url string) error {
+	var cmd string
+	var args []string
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = "open"
+	case "windows":
+		cmd, args = "rundll32", []string{"url.dll,FileProtocolHandler"}
+	default:
+		cmd = "xdg-open"
+	}
+	return exec.Command(cmd, append(args, url)...).Start()
 }

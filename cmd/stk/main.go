@@ -9,7 +9,11 @@ import (
 	"os"
 )
 
-const version = "0.0.1-dev"
+// version is a var, not a const, because the release build stamps it with
+// -ldflags "-X main.version=...". As a const the linker flag is silently
+// ignored and every released binary reports the development version — which is
+// exactly what happened the first time scripts/release.sh ran.
+var version = "0.0.1-dev"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `stk — supertoolkit
@@ -19,16 +23,21 @@ func usage() {
   stk connect <service>       store a credential, read from stdin
   stk connect <service> --device
                               connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
   stk handover key|seal|open  move a credential to a broker that has no browser
   stk run -- <command>        run a command with the broker in front of it
   stk serve                   run the broker daemon on a Unix socket
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
   stk mcp install <host>       print the client configuration (no secret in it)
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
   stk version
 
 The agent never holds a credential. Known services: `)
@@ -56,12 +65,18 @@ func main() {
 		err = cmdServe()
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
+	case "audit":
+		err = cmdAudit(os.Args[2:])
 	case "approvals", "approval":
 		err = cmdApprovals(os.Args[2:])
 	case "ui":
 		err = cmdUI(os.Args[2:])
 	case "doctor":
-		err = cmdDoctor()
+		if len(os.Args) > 2 && os.Args[2] == "--probe" {
+			err = cmdProbe()
+		} else {
+			err = cmdDoctor()
+		}
 	case "version", "--version", "-v":
 		fmt.Println("stk", version)
 	case "help", "--help", "-h":

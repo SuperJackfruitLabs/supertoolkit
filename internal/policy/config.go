@@ -70,6 +70,9 @@ type Service struct {
 	// design, naming an app without authorising anything, so both belong in the
 	// committed file beside the rest of the policy.
 	device deviceOverride
+	// oauth2 is the operator's own OAuth app for the authorization-code path.
+	// The client id is public, for the same reason the device one is.
+	oauth2 oauth2Override
 }
 
 // Entry exposes the catalogue record, which carries the host and the credential
@@ -95,6 +98,21 @@ func (s *Service) Device() catalog.Device {
 		d.TokenURL = s.device.TokenURL
 	}
 	return d
+}
+
+// OAuth2 describes the authorization-code path for this service: the
+// catalogue's endpoints with the operator's own client id filled in, exactly as
+// Device does for the headless path.
+func (s *Service) OAuth2() catalog.OAuth2 {
+	o := s.entry.OAuth2
+	if s.oauth2.ClientID != "" {
+		o.ClientID = s.oauth2.ClientID
+	}
+	if s.oauth2.AuthorizeURL != "" && s.oauth2.TokenURL != "" {
+		o.AuthorizeURL = s.oauth2.AuthorizeURL
+		o.TokenURL = s.oauth2.TokenURL
+	}
+	return o
 }
 
 // Policy resolves one capability.
@@ -151,7 +169,12 @@ func (c *Config) Services() []string {
 func (c *Config) InterceptHosts() map[string]bool {
 	out := map[string]bool{}
 	for _, s := range c.services {
-		out[s.entry.Host] = true
+		// Every host the service's credential must work on, not only the
+		// primary: a provider split across hostnames would otherwise have its
+		// other hosts tunnelled, and the placeholder would reach them unswapped.
+		for _, h := range s.entry.Hosts() {
+			out[h] = true
+		}
 	}
 	// A fronted server's host is intercepted too: that is how its placeholder
 	// becomes a real credential on the way out.
@@ -169,6 +192,7 @@ type file struct {
 		Scopes       []string          `yaml:"scopes"`
 		Capabilities map[string]string `yaml:"capabilities"`
 		Device       deviceOverride    `yaml:"device"`
+		OAuth2       oauth2Override    `yaml:"oauth2"`
 	} `yaml:"services"`
 	Profiles map[string]map[string][]string `yaml:"profiles"`
 	Servers  map[string]serverFile          `yaml:"servers"`
@@ -180,6 +204,18 @@ type deviceOverride struct {
 	ClientID         string `yaml:"client_id"`
 	AuthorizationURL string `yaml:"authorization_url"`
 	TokenURL         string `yaml:"token_url"`
+}
+
+// oauth2Override mirrors a service's `oauth2:` block. Only the client id lives
+// here: a client secret is a secret and belongs in the sealed store, which is
+// why `stk connect --browser` reads it from stdin instead.
+type oauth2Override struct {
+	ClientID string `yaml:"client_id"`
+	// A self-hosted instance speaks the same protocol at other addresses, and
+	// the two endpoints move together for the same reason the device ones do:
+	// exchanging a code at a server that did not issue it never succeeds.
+	AuthorizeURL string `yaml:"authorize_url"`
+	TokenURL     string `yaml:"token_url"`
 }
 
 // notifyFile mirrors the `notify:` block: the routes by which a machine reaches
@@ -233,10 +269,13 @@ func Load(path string) (*Config, error) {
 		}
 		svc := &Service{
 			Name: name, Scopes: sf.Scopes, explicit: map[string]Action{}, entry: entry,
-			device: sf.Device,
+			device: sf.Device, oauth2: sf.OAuth2,
 		}
 		if (sf.Device.AuthorizationURL == "") != (sf.Device.TokenURL == "") {
 			return nil, fmt.Errorf("%s: service %q: device needs both authorization_url and token_url, or neither — polling an endpoint that did not issue the code never succeeds", path, name)
+		}
+		if (sf.OAuth2.AuthorizeURL == "") != (sf.OAuth2.TokenURL == "") {
+			return nil, fmt.Errorf("%s: service %q: oauth2 needs both authorize_url and token_url, or neither — exchanging a code at a server that did not issue it never succeeds", path, name)
 		}
 		for cap, want := range sf.Capabilities {
 			a, err := parseAction(want)

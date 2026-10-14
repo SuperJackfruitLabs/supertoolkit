@@ -1,0 +1,52 @@
+supertoolkit
+Copyright 2026 Super Jackfruit Labs
+
+This product includes software developed at Super Jackfruit Labs.
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+---
+
+## Third-party dependencies
+
+supertoolkit links the following libraries. Each is used under its own licence,
+reproduced in full in the module cache alongside the source
+(`go mod download` then `$(go env GOMODCACHE)/<module>@<version>/LICENSE`).
+
+### BSD 3-Clause — The Go Authors
+
+The Go standard library and the `golang.org/x` repositories are copyright
+The Go Authors, licensed under the BSD 3-Clause "New" or "Revised" License.
+
+    golang.org/x/crypto   — Argon2id key derivation, NaCl sealed boxes
+    golang.org/x/net      — HTTP/2 server, for brokering h2 connections
+    golang.org/x/sys      — platform syscalls, for Unix-socket peer credentials
+    golang.org/x/term     — terminal detection
+    golang.org/x/text     — text encoding, pulled in transitively
+    golang.org/x/sync     — pulled in transitively
+    golang.org/x/mod      — pulled in transitively
+    golang.org/x/tools    — pulled in transitively
+
+### Apache-2.0 and MIT — go-yaml
+
+    gopkg.in/yaml.v3 — YAML parsing for the policy file.
+      Copyright 2011-2016 Canonical Ltd. (Apache-2.0)
+      Copyright 2006-2010 Kirill Simonov (MIT)
+
+### Test-only
+
+    gopkg.in/check.v1 — BSD 2-Clause, a transitive test dependency of yaml.v3.
+      Not linked into the released binary.
+
+---
+
+## What is deliberately absent
+
+supertoolkit ships **no OAuth client id** for any provider. A shared client id
+would make every installation look like the same application to the provider,
+which is both a privacy problem for operators and a single point of revocation
+for everyone. You register your own; see the README.
+
+It also ships no telemetry, no update check and no network calls of its own. The
+only hosts it contacts are the providers you connect and the token endpoints
+those providers publish.

@@ -26,6 +26,9 @@ const (
 	FieldClientSecret    = "client_secret"
 	FieldTokenURL        = "token_url"
 	FieldUsername        = "username"
+	// FieldRefreshToken is the long-lived half of an OAuth 2.0 user grant. It
+	// never reaches an API — only the provider's own token endpoint.
+	FieldRefreshToken = "refresh_token"
 )
 
 // Token is the single-token shorthand, for the schemes that use one.

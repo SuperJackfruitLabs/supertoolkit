@@ -174,3 +174,51 @@ func ExchangeGitHubApp(apiBase string, client *http.Client) func(context.Context
 		return out.Token, out.ExpiresAt, nil
 	}
 }
+
+// ExchangeRefresh builds an Acquirer exchange for the OAuth 2.0 refresh grant.
+//
+// This is the operation most providers now need: the store holds a refresh
+// token and the client's identity, and the broker turns that into a short-lived
+// access token on demand. The long-lived value never reaches the wire to the
+// API — only to the provider's own token endpoint.
+//
+// `persist` is not optional and not a convenience. A provider that rotates
+// invalidates the old refresh token the moment it issues a new one, so a
+// rotation that is not written back locks the operator out at the next refresh
+// — and the failure surfaces hours later, nowhere near its cause. The refresher
+// therefore stores the token it was handed back before returning the access
+// token it was asked for.
+func ExchangeRefresh(
+	refresh func(ctx context.Context, service string, m Material) (access, newRefresh string, expires time.Time, err error),
+	persist func(service string, m Material) error,
+) func(context.Context, string, Material) (string, time.Time, error) {
+	return func(ctx context.Context, service string, m Material) (string, time.Time, error) {
+		if err := m.Require(FieldRefreshToken, FieldClientID); err != nil {
+			return "", time.Time{}, fmt.Errorf("oauth2 refresh: %w", err)
+		}
+		access, newRefresh, expires, err := refresh(ctx, service, m)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		if newRefresh != "" && newRefresh != m[FieldRefreshToken] {
+			// Write the rotation back before handing out the access token. If
+			// this fails, the access token we hold still works but the next
+			// refresh will not, so it is an error now rather than a surprise
+			// later.
+			next := Material{}
+			for k, v := range m {
+				next[k] = v
+			}
+			next[FieldRefreshToken] = newRefresh
+			if persist == nil {
+				return "", time.Time{}, fmt.Errorf(
+					"oauth2 refresh: %s rotated its refresh token and there is nowhere to store it — the next refresh would fail", service)
+			}
+			if err := persist(service, next); err != nil {
+				return "", time.Time{}, fmt.Errorf(
+					"oauth2 refresh: %s rotated its refresh token and storing it failed: %w — reconnect the service before the access token expires", service, err)
+			}
+		}
+		return access, expires, nil
+	}
+}

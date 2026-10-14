@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,9 +38,19 @@ func startBroker(cfg *policy.Config, store *credential.Store, dir string) (*sess
 	if err != nil {
 		return nil, err
 	}
+	// Every brokered effect is recorded durably, so `stk audit` and the web UI
+	// can answer what happened after this process is gone.
+	obs, err := newObserver(cfg, dir, "run")
+	if err != nil {
+		return nil, err
+	}
+	acqs := newAcquirers(cfg, store, &http.Client{Timeout: 60 * time.Second})
 	b, err := broker.New(broker.Options{
 		Config: cfg, CA: ca,
-		Secrets: store.Get, // the only inbound path for a secret
+		// The only inbound path for a secret, and the one place every scheme
+		// is dispatched: two of them acquire a short-lived token first.
+		Secrets:  secretSource(cfg, store, acqs),
+		Observer: obs,
 	})
 	if err != nil {
 		return nil, err

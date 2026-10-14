@@ -53,7 +53,7 @@ func cmdUI(args []string) error {
 	api := webui.API(webui.Deps{
 		Config: cfg, Store: store, Queue: svc.queue,
 		Status: func() []webui.Check { return uiChecks(cfg, store, dir) },
-		Audit:  func(int) []webui.Effect { return nil }, // the daemon's ledger lands here next
+		Audit:  auditForUI(dir),
 		SetPolicy: func(category, action string, a policy.Action) error {
 			return setPolicyInFile(configPath(), category, action, a)
 		},

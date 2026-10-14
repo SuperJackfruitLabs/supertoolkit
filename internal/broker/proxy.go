@@ -41,6 +41,7 @@ type Stats struct {
 // Record is one audited effect. It carries fingerprints, never a secret.
 type Record struct {
 	When     time.Time
+	Service  string
 	Host     string
 	Method   string
 	Path     string
@@ -69,6 +70,8 @@ type Broker struct {
 
 	auditMu sync.Mutex
 	audit   []Record
+
+	observer Observer
 }
 
 // Options configure a broker. Only cfg, ca and src are required.
@@ -79,6 +82,29 @@ type Options struct {
 	Logger   *slog.Logger
 	Upstream *http.Transport
 	Dial     func(ctx context.Context, network, addr string) (net.Conn, error)
+	// Intercept are extra hostnames to terminate TLS for, beyond the ones the
+	// configured services declare. They are mapped to the first configured
+	// service, so its placement and auth scheme apply.
+	//
+	// This exists for `stk doctor --probe`, which must drive a real request
+	// through a real broker at a hostname that can never resolve — a .invalid
+	// name, so that a client failing DNS proves it bypassed the proxy. Every
+	// other caller leaves it empty, and the set of intercepted hosts stays
+	// exactly what policy declares.
+	Intercept []string
+	// Observer receives every effect for durable recording. It is an interface
+	// rather than a *ledger.Ledger so the broker owns no storage decision and
+	// its tests need no filesystem: the mapping from a wire record to an audit
+	// entry happens at the edge, where the catalogue is already in hand.
+	Observer Observer
+}
+
+// Observer is told about each effect as it completes.
+//
+// It is called on the request path, so an implementation that blocks delays a
+// request. Writing one append-only line does not; anything slower should buffer.
+type Observer interface {
+	Observe(Record)
 }
 
 // New builds a broker.
@@ -89,6 +115,7 @@ func New(o Options) (*Broker, error) {
 	b := &Broker{
 		cfg: o.Config, ca: o.CA, src: o.Secrets,
 		log:      o.Logger,
+		observer: o.Observer,
 		upstream: o.Upstream,
 		dial:     o.Dial,
 		byHost:   map[string]*policy.Service{},
@@ -108,7 +135,19 @@ func New(o Options) (*Broker, error) {
 	}
 	for _, name := range o.Config.Services() {
 		s, _ := o.Config.Service(name)
-		b.byHost[s.Entry().Host] = s
+		for _, h := range s.Entry().Hosts() {
+			b.byHost[h] = s
+		}
+	}
+	if len(o.Intercept) > 0 {
+		names := o.Config.Services()
+		if len(names) == 0 {
+			return nil, fmt.Errorf("broker: Intercept needs at least one configured service to borrow a scheme from")
+		}
+		s, _ := o.Config.Service(names[0])
+		for _, h := range o.Intercept {
+			b.byHost[h] = s
+		}
 	}
 	return b, nil
 }
@@ -136,6 +175,28 @@ func (b *Broker) record(r Record) {
 	b.auditMu.Lock()
 	b.audit = append(b.audit, r)
 	b.auditMu.Unlock()
+	if b.observer != nil {
+		b.observer.Observe(r)
+	}
+}
+
+// isUpgrade reports whether this request asks to leave HTTP behind.
+//
+// Both headers are checked because either alone is meaningless: RFC 9110
+// requires Connection to list Upgrade, and a request naming a protocol without
+// it is not an upgrade request.
+func isUpgrade(r *http.Request) bool {
+	if r.Header.Get("Upgrade") == "" {
+		return false
+	}
+	for _, v := range r.Header.Values("Connection") {
+		for _, tok := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(tok), "upgrade") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func fingerprint(s string) string {
@@ -241,7 +302,34 @@ func (b *Broker) interceptTLS(client net.Conn, host string, svc *policy.Service)
 }
 
 func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto string, svc *policy.Service) {
-	rec := Record{When: time.Now(), Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto}
+	rec := Record{When: time.Now(), Service: svc.Name, Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto}
+
+	// A protocol upgrade cannot survive this path. Forwarding through a
+	// round-trip into a ResponseWriter gives no way to hand the raw connection
+	// to the client, so a WebSocket handshake would appear to succeed and then
+	// hang — which reads as the provider's fault and is the most expensive kind
+	// of wrong answer. Saying so is cheap and the alternative is a day of
+	// someone else's debugging.
+	if isUpgrade(r) {
+		rec.Status = "501 upgrade not brokered"
+		b.record(rec)
+		b.log.Warn("refusing a protocol upgrade on an intercepted host", "host", host, "upgrade", r.Header.Get("Upgrade"))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusNotImplemented)
+		fmt.Fprintf(w, `supertoolkit cannot broker a %s upgrade to %s.
+
+The credential is substituted on an HTTP request, and an upgraded connection
+carries no further HTTP requests to substitute into. Nothing was sent.
+
+Tunnel the host instead of brokering it: remove %s from the services in
+your supertoolkit.yaml, and the broker will pass its traffic through
+unopened. The connection will work and will carry whatever credential the
+client itself holds — which is the trade this product otherwise avoids.
+
+See docs/limitations.md.
+`, r.Header.Get("Upgrade"), host, svc.Name)
+		return
+	}
 
 	secret, err := b.src(svc.Name)
 	if err != nil {
