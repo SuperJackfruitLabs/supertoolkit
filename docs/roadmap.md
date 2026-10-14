@@ -54,21 +54,43 @@ the credential briefly exists on the sealing machine. The notification adapter
 approval are the same shape. See [design.md](design.md#connecting-a-service-where-there-is-no-browser)
 and [plan-phase-5.md](plan-phase-5.md).
 
-## Phase 6 — release
+## Phase 6 — release readiness — **gaps closed, awaiting the human test**
 
-Apache-2.0 public, GitHub mirror, `install.sh` with `SHA256SUMS`, brew. The
-acceptance test is a bare laptop with no SJL infrastructure present.
+See [plan-phase-6.md](plan-phase-6.md). What landed:
+
+- **A durable effects ledger.** The audit screen had returned an empty list
+  since Phase 4, because the broker recorded in memory and `stk ui` is another
+  process. `stk audit` and the UI now read the same append-only file.
+- **OAuth 2.0 authorization code + PKCE, with refresh rotation.** Replaced the
+  planned OAuth 1.0a after checking X's live docs: media upload is OAuth 2.0
+  only, so 1.0a could not post an image.
+- **Eleven connectors**, one per auth scheme and placement.
+- **`stk doctor --probe`** — proof that each client here goes through the
+  broker, using a `.invalid` host so a DNS failure proves a bypass.
+- **Three measurements**, in [measurements.md](measurements.md).
+- **README, [limitations.md](limitations.md), [acceptance.md](acceptance.md)**,
+  Apache-2.0, NOTICE, a verifying `install.sh`, and reproducible builds.
+
+Two bugs the new tests found, both silent: `Entry.Request()` sent no body, so
+`create_issue` dropped its required title; and `-ldflags -X main.version` was
+ignored against a `const`, so every release binary would have reported
+`0.0.1-dev`.
+
+**Remaining:** the human half of [acceptance.md](acceptance.md), then the
+GitHub mirror and the public switch — the operator's call, not a task.
+Homebrew after the first tag exists.
 
 ## Unscheduled, and each needs a decision rather than a sprint
 
 | Item | Why it is not a phase |
 |---|---|
-| **WebSocket upgrade handling** | Breaks under the obvious implementation: forwarding through a round-trip into a response writer has no hijack path. Needed the moment a brokered service uses WebSockets, and not before |
+| **WebSocket upgrade handling** | **Now refused loudly** with a 501 and an explanation, instead of appearing to succeed and hanging. Full support still needs a hijack path; tunnelling the host works today and loses injection |
 | **Non-HTTP protocols** | Postgres, MySQL, Redis, Kafka, SMTP, IMAP. A CONNECT proxy cannot inject into a Postgres handshake; these need a protocol-aware local proxy, which is a second product shape |
 | **Inbound webhooks** | Receiving and verifying provider events is half of what an integration platform does, and all of it is a new surface with a different security posture |
 | **Connectors as pinned binaries** | `connector-protocol/v1` is already specified. It earns its place when a service needs code we have to ship, which no service does yet |
 | **Identity chaining** | ID-JAG and RFC 8693 against whichever issuer a deployment has. This is the step that makes it a product rather than a utility — and the drafts are still moving, so it should follow the RFC rather than predict it |
 | **vsock transport** | For microsandboxes, where the sandbox has no filesystem shared with the host. Needs a guest-side shim, since curl cannot speak AF_VSOCK |
-| **Brokered mTLS, certificate pinning** | Untested. A tunnelled host keeps its own mTLS intact, so this only matters for a service we intercept that also demands a client certificate |
-| **Bodies above 64 KB** | Unproven rather than broken: the proxy was transparent at every size tested, but no endpoint accepted a large upload. X media upload is multipart, so this matters when a publishing connector lands |
-| **Measured latency** | The broker's overhead is below network noise and has never been isolated. It needs a local upstream to measure, and nothing yet depends on the number |
+| **Brokered mTLS, certificate pinning** | **Measured: does not work.** 502, loud, nothing sent — the broker holds no client certificate. Tunnel that host. Changing it means a client certificate per service in the store |
+| **Bodies above 64 KB** | **Measured: transparent to 8 MB**, hashes matching end to end, credential still substituted. Nothing buffers a whole body, so the next limit is the provider's |
+| **Measured latency** | **Measured: ~79 µs median, 459 µs p99**, against 56 µs direct on loopback. A cross-region round trip is 250–1,900 times that |
+| **GraphQL APIs** | New entry. Every call is `POST /graphql` with the operation in the body, so policy cannot name what it allows and the ledger cannot say what happened. Linear was dropped from the launch catalogue for this; a test now fails any entry with that shape |

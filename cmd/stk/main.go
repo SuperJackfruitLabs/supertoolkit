@@ -9,7 +9,11 @@ import (
 	"os"
 )
 
-const version = "0.0.1-dev"
+// version is a var, not a const, because the release build stamps it with
+// -ldflags "-X main.version=...". As a const the linker flag is silently
+// ignored and every released binary reports the development version — which is
+// exactly what happened the first time scripts/release.sh ran.
+var version = "0.0.1-dev"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `stk — supertoolkit

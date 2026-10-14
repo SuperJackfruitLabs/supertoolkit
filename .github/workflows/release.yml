@@ -1,0 +1,53 @@
+# Release workflow for the public GitHub mirror.
+#
+# Forge is primary; this exists so a tag pushed to the mirror produces the
+# archives install.sh expects. It does not build from a branch: a release is a
+# tag or it is not a release.
+name: release
+
+on:
+  push:
+    tags: ['*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The suite must be green before anything is published. A release that
+      # skips its own tests is a release nobody can trust the checksums of.
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: scripts/release.sh "${GITHUB_REF_NAME}"
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/stk_*.tar.gz
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+          body: |
+            Verify before you install:
+
+                curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SHA256SUMS
+                sha256sum -c SHA256SUMS
+
+            Or let the installer do it:
+
+                curl -fsSL https://supertoolkit.dev/install.sh | sh
+
+            See docs/limitations.md before trusting the broker with anything
+            that matters, and run `stk doctor --probe` on the machine you
+            intend to use it on.
