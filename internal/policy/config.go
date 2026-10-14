@@ -41,6 +41,9 @@ func (a Action) String() string {
 	}
 }
 
+// ParseAction reads a policy word, for callers outside this package.
+func ParseAction(s string) (Action, error) { return parseAction(s) }
+
 func parseAction(s string) (Action, error) {
 	switch s {
 	case "agent":

@@ -1,0 +1,43 @@
+/* Shared table and pill styling for the screens, from the approved mockups. */
+.stk-table {
+  width: 100%; border-collapse: collapse; font-size: 13.5px;
+  background: var(--vk-color-raised); border: 1px solid var(--vk-color-line);
+}
+.stk-table thead th {
+  text-align: left; font-family: var(--vk-font-mono); font-size: 10.5px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--vk-color-faint);
+  font-weight: 500; padding: 9px 12px; border-bottom: 1px solid var(--vk-color-line);
+  background: var(--vk-color-surface);
+}
+.stk-table tbody td { padding: 11px 12px; border-bottom: 1px solid var(--vk-color-line); vertical-align: middle; }
+.stk-table tbody tr:last-child td { border-bottom: 0; }
+.mono { font-family: var(--vk-font-mono); font-size: 12.5px; }
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+.light { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+.light.ok { background: var(--vk-color-success); }
+.light.warn { background: var(--vk-color-signal); }
+.light.off { background: var(--vk-color-line); }
+.pill {
+  display: inline-block; font-family: var(--vk-font-mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 8px; border: 1px solid;
+}
+.pill.agent { color: var(--vk-color-success-text); border-color: var(--vk-color-success); background: var(--vk-color-success-wash); }
+.pill.approval { color: var(--vk-color-signal-text); border-color: var(--vk-color-signal); background: var(--vk-color-signal-wash); }
+.pill.deny { color: var(--vk-color-faint); border-color: var(--vk-color-line); background: var(--vk-color-surface); }
+.pill.quiet { color: var(--vk-color-muted); border-color: var(--vk-color-line); background: transparent; }
+.wire { font-family: var(--vk-font-mono); font-size: 11.5px; color: var(--vk-color-faint); }
+.note { font-size: 12.5px; color: var(--vk-color-muted); }
+.stk-btn {
+  font-family: var(--vk-font-body); font-size: 13px; font-weight: 550; padding: 7px 14px;
+  border: 1px solid var(--vk-color-line); background: var(--vk-color-raised);
+  color: var(--vk-color-text); cursor: pointer;
+}
+.stk-btn.primary { background: var(--vk-color-primary); color: var(--vk-color-primary-fg); border-color: var(--vk-color-primary); }
+.stk-btn.danger { color: var(--vk-color-signal-text); border-color: var(--vk-color-signal); }
+.stk-btn.sm { font-size: 12px; padding: 5px 10px; }
+.inv {
+  display: flex; gap: 12px; align-items: baseline; padding: 12px 16px;
+  border-left: 3px solid var(--vk-color-primary); background: var(--vk-color-surface);
+}
+.inv b { font-size: 13.5px; }
+.inv span { font-size: 12.5px; color: var(--vk-color-muted); }

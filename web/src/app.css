@@ -1,0 +1,13 @@
+@import '@superjackfruit/vibekit/fonts.css';
+@import '@superjackfruit/vibekit/vibekit.css';
+
+/* supertoolkit's own page furniture, under vibekit's layer so these resets can
+ * never restyle a vibekit component. */
+@layer stk {
+  body {
+    margin: 0;
+    background: var(--vk-color-bg);
+    color: var(--vk-color-text);
+    font-family: var(--vk-font-body);
+  }
+}

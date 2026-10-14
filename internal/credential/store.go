@@ -219,6 +219,16 @@ func (s *Store) Revoke(service string) error {
 	return err
 }
 
+// Fields lists the field names a stored credential has, decrypting only to read
+// the names. Names only — never values, which is what makes this safe to show.
+func (s *Store) Fields(service string) []string {
+	m, err := s.Material(service)
+	if err != nil {
+		return nil
+	}
+	return m.Fields()
+}
+
 // Has reports whether a credential is stored, without decrypting it.
 func (s *Store) Has(service string) bool {
 	_, err := os.Stat(s.path(service))
