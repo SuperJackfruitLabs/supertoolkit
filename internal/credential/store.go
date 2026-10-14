@@ -1,0 +1,176 @@
+package credential
+
+import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"golang.org/x/crypto/argon2"
+)
+
+// Store holds credentials on disk, encrypted with a key derived from a
+// passphrase.
+//
+// Two decisions matter here. The key is derived with **Argon2id**, not by
+// padding or truncating the passphrase to 32 bytes — that approach leaves a weak
+// passphrase weak, and it is a mistake already present elsewhere in this estate.
+// And the plaintext is padded to a fixed block before sealing, so the file does
+// not reveal how long a token is.
+type Store struct {
+	dir  string
+	key  []byte
+	salt []byte
+}
+
+const (
+	saltLen  = 16
+	keyLen   = 32
+	padBlock = 256 // tokens are padded up to a multiple of this, hiding length
+)
+
+// Argon2id parameters. Deliberately modest, because this runs on a laptop at
+// every broker start, not once at login.
+const (
+	argonTime    = 3
+	argonMemory  = 64 * 1024
+	argonThreads = 4
+)
+
+// OpenStore opens, or creates, a credential store.
+func OpenStore(dir, passphrase string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	saltPath := filepath.Join(dir, "salt")
+	salt, err := os.ReadFile(saltPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		salt = make([]byte, saltLen)
+		if _, err := rand.Read(salt); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(saltPath, salt, 0o600); err != nil {
+			return nil, err
+		}
+	}
+	return &Store{dir: dir, key: deriveKey(passphrase, salt), salt: salt}, nil
+}
+
+// deriveKey turns a passphrase into an encryption key.
+//
+// Exported-for-test via the package boundary on purpose: the property that
+// distinguishes a real KDF from padding a passphrase to 32 bytes is that the
+// **salt changes the key**. Padding ignores the salt, so a test that only varies
+// the passphrase cannot tell the two apart.
+func deriveKey(passphrase string, salt []byte) []byte {
+	return argon2.IDKey([]byte(passphrase), salt, argonTime, argonMemory, argonThreads, keyLen)
+}
+
+func (s *Store) path(service string) string {
+	// Service names come from the catalogue, not from user input, but Base
+	// keeps a traversal out of the path regardless.
+	return filepath.Join(s.dir, filepath.Base(service)+".cred")
+}
+
+type sealed struct {
+	Nonce []byte `json:"nonce"`
+	Data  []byte `json:"data"`
+}
+
+// Put stores a credential, replacing any previous one.
+func (s *Store) Put(service, secret string) error {
+	block, err := aes.NewCipher(s.key)
+	if err != nil {
+		return err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return err
+	}
+
+	// Length hiding: prefix the real length, then pad to a block boundary.
+	raw := []byte(secret)
+	total := ((len(raw)+4)/padBlock + 1) * padBlock
+	plain := make([]byte, total)
+	plain[0] = byte(len(raw) >> 24)
+	plain[1] = byte(len(raw) >> 16)
+	plain[2] = byte(len(raw) >> 8)
+	plain[3] = byte(len(raw))
+	copy(plain[4:], raw)
+	if _, err := io.ReadFull(rand.Reader, plain[4+len(raw):]); err != nil {
+		return err
+	}
+
+	out, err := json.Marshal(sealed{Nonce: nonce, Data: aead.Seal(nil, nonce, plain, []byte(service))})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.path(service), out, 0o600)
+}
+
+// Get returns a stored credential.
+//
+// This is the one function in the package that produces a secret, and it is
+// reachable only from the broker's own secret source — never from a request
+// handler, and never over any socket.
+func (s *Store) Get(service string) (string, error) {
+	raw, err := os.ReadFile(s.path(service))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("no credential stored for %q: run `stk connect %s`", service, service)
+		}
+		return "", err
+	}
+	var env sealed
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return "", fmt.Errorf("credential for %q is corrupt: %w", service, err)
+	}
+	block, err := aes.NewCipher(s.key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	plain, err := aead.Open(nil, env.Nonce, env.Data, []byte(service))
+	if err != nil {
+		// A wrong passphrase lands here. Return nothing alongside the error:
+		// a partial or garbage credential is worse than none.
+		return "", fmt.Errorf("could not decrypt the credential for %q: wrong passphrase, or the store was tampered with", service)
+	}
+	if len(plain) < 4 {
+		return "", fmt.Errorf("credential for %q is truncated", service)
+	}
+	n := int(plain[0])<<24 | int(plain[1])<<16 | int(plain[2])<<8 | int(plain[3])
+	if n < 0 || 4+n > len(plain) {
+		return "", fmt.Errorf("credential for %q has an invalid length header", service)
+	}
+	return string(plain[4 : 4+n]), nil
+}
+
+// Revoke deletes a stored credential.
+func (s *Store) Revoke(service string) error {
+	err := os.Remove(s.path(service))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// Has reports whether a credential is stored, without decrypting it.
+func (s *Store) Has(service string) bool {
+	_, err := os.Stat(s.path(service))
+	return err == nil
+}
