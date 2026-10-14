@@ -5,3 +5,7 @@
 /.stk/
 ca.pem
 ca-key.pem
+# Web app build inputs; the embedded copy under internal/webui/build is committed.
+/web/node_modules/
+/web/.svelte-kit/
+/web/build/

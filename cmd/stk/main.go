@@ -23,6 +23,8 @@ func usage() {
   stk mcp install <host>       print the client configuration (no secret in it)
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
   stk version
 
@@ -51,6 +53,8 @@ func main() {
 		err = cmdMCP(os.Args[2:])
 	case "approvals", "approval":
 		err = cmdApprovals(os.Args[2:])
+	case "ui":
+		err = cmdUI(os.Args[2:])
 	case "doctor":
 		err = cmdDoctor()
 	case "version", "--version", "-v":
