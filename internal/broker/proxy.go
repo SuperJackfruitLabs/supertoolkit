@@ -41,6 +41,7 @@ type Stats struct {
 // Record is one audited effect. It carries fingerprints, never a secret.
 type Record struct {
 	When     time.Time
+	Service  string
 	Host     string
 	Method   string
 	Path     string
@@ -69,6 +70,8 @@ type Broker struct {
 
 	auditMu sync.Mutex
 	audit   []Record
+
+	observer Observer
 }
 
 // Options configure a broker. Only cfg, ca and src are required.
@@ -79,6 +82,19 @@ type Options struct {
 	Logger   *slog.Logger
 	Upstream *http.Transport
 	Dial     func(ctx context.Context, network, addr string) (net.Conn, error)
+	// Observer receives every effect for durable recording. It is an interface
+	// rather than a *ledger.Ledger so the broker owns no storage decision and
+	// its tests need no filesystem: the mapping from a wire record to an audit
+	// entry happens at the edge, where the catalogue is already in hand.
+	Observer Observer
+}
+
+// Observer is told about each effect as it completes.
+//
+// It is called on the request path, so an implementation that blocks delays a
+// request. Writing one append-only line does not; anything slower should buffer.
+type Observer interface {
+	Observe(Record)
 }
 
 // New builds a broker.
@@ -89,6 +105,7 @@ func New(o Options) (*Broker, error) {
 	b := &Broker{
 		cfg: o.Config, ca: o.CA, src: o.Secrets,
 		log:      o.Logger,
+		observer: o.Observer,
 		upstream: o.Upstream,
 		dial:     o.Dial,
 		byHost:   map[string]*policy.Service{},
@@ -136,6 +153,9 @@ func (b *Broker) record(r Record) {
 	b.auditMu.Lock()
 	b.audit = append(b.audit, r)
 	b.auditMu.Unlock()
+	if b.observer != nil {
+		b.observer.Observe(r)
+	}
 }
 
 func fingerprint(s string) string {
@@ -241,7 +261,7 @@ func (b *Broker) interceptTLS(client net.Conn, host string, svc *policy.Service)
 }
 
 func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto string, svc *policy.Service) {
-	rec := Record{When: time.Now(), Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto}
+	rec := Record{When: time.Now(), Service: svc.Name, Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto}
 
 	secret, err := b.src(svc.Name)
 	if err != nil {

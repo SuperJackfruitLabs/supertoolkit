@@ -266,6 +266,52 @@ func (e *Entry) Capability(name string) (Capability, bool) {
 	return Capability{}, false
 }
 
+// CapabilityFor names the capability a request represents, matching the
+// method and the path against each capability's template.
+//
+// The proxy only ever sees a method and a path; the audit ledger wants the name
+// an operator would recognise. Without this, an audit entry reads
+// `POST /2/tweets` where it could read `post_tweet`, and the difference decides
+// whether anyone reads the ledger at all.
+func (e *Entry) CapabilityFor(method, path string) (Capability, bool) {
+	for _, c := range e.Capabilities {
+		if !strings.EqualFold(c.Method, method) {
+			continue
+		}
+		if pathMatchesTemplate(path, c.Path) {
+			return c, true
+		}
+	}
+	return Capability{}, false
+}
+
+// pathMatchesTemplate compares a concrete path against one holding {name}
+// segments. A template segment matches any single non-empty segment, which is
+// enough because every catalogue path is a fixed shape — no wildcards, no
+// optional tails.
+func pathMatchesTemplate(path, template string) bool {
+	if template == path {
+		return true
+	}
+	ps := strings.Split(strings.Trim(path, "/"), "/")
+	ts := strings.Split(strings.Trim(template, "/"), "/")
+	if len(ps) != len(ts) {
+		return false
+	}
+	for i := range ts {
+		if strings.HasPrefix(ts[i], "{") && strings.HasSuffix(ts[i], "}") {
+			if ps[i] == "" {
+				return false
+			}
+			continue
+		}
+		if ts[i] != ps[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // Names lists every known service.
 func Names() []string {
 	out := make([]string, 0, len(builtin))

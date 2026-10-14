@@ -24,6 +24,8 @@ func usage() {
   stk serve                   run the broker daemon on a Unix socket
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
   stk mcp install <host>       print the client configuration (no secret in it)
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
   stk ui [--bind addr] [--no-open]
@@ -56,6 +58,8 @@ func main() {
 		err = cmdServe()
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
+	case "audit":
+		err = cmdAudit(os.Args[2:])
 	case "approvals", "approval":
 		err = cmdApprovals(os.Args[2:])
 	case "ui":

@@ -29,7 +29,11 @@ type rig struct {
 	seen     chan string // what Authorization the provider received
 }
 
-func newRig(t *testing.T) *rig {
+func newRig(t *testing.T) *rig { return newRigWithObserver(t, nil) }
+
+// newRigWithObserver is newRig with a durable audit sink. The observer needs the
+// loaded config, which the rig builds, so it arrives as a function of it.
+func newRigWithObserver(t *testing.T, mk func(*policy.Config) broker.Observer) *rig {
 	t.Helper()
 
 	provCA, err := broker.NewCA("e2e provider CA", time.Hour)
@@ -75,8 +79,12 @@ func newRig(t *testing.T) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var obs broker.Observer
+	if mk != nil {
+		obs = mk(cfg)
+	}
 	b, err := broker.New(broker.Options{
-		Config: cfg, CA: ca, Secrets: store.Get,
+		Config: cfg, CA: ca, Secrets: store.Get, Observer: obs,
 		Upstream: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: provCA.Pool()},
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
