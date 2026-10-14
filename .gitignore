@@ -1,0 +1,7 @@
+/stk
+/dist/
+*.test
+# Local state: the CA, the key, the tokens. Never committed.
+/.stk/
+ca.pem
+ca-key.pem
