@@ -346,3 +346,59 @@ func TestBrokerIsNotAnAPI(t *testing.T) {
 		t.Fatal("the refusal body contained the secret")
 	}
 }
+
+// A WebSocket handshake through the round-trip path has no way to hand the raw
+// connection back, so it would appear to succeed and then hang — which reads as
+// the provider's fault. It must fail loudly, naming the host and the way out.
+func TestProtocolUpgradeIsRefusedWithAnExplanation(t *testing.T) {
+	f := newFixture(t, githubOnly)
+
+	req, _ := http.NewRequest("GET", "https://api.github.com/live", nil)
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Authorization", "Bearer "+Placeholder("github"))
+
+	resp, err := f.client(true).Do(req)
+	if err != nil {
+		t.Fatalf("the request failed instead of being answered: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	for _, want := range []string{"websocket", "api.github.com", "Nothing was sent", "Tunnel the host"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the explanation does not mention %q:\n%s", want, text)
+		}
+	}
+	// Nothing was sent upstream, and the credential was not substituted.
+	if st := f.broker.Stats(); st.Swap != 0 {
+		t.Errorf("Stats() = %+v, want no substitution for a refused upgrade", st)
+	}
+	// It is still recorded: an operator wants to see the attempt.
+	audit := f.broker.Audit()
+	if len(audit) == 0 || !strings.Contains(audit[len(audit)-1].Status, "501") {
+		t.Errorf("the refused upgrade was not audited: %+v", audit)
+	}
+}
+
+// An Upgrade header without Connection: Upgrade is not an upgrade request, and
+// must pass through normally rather than being refused.
+func TestUpgradeHeaderAloneIsNotAnUpgrade(t *testing.T) {
+	f := newFixture(t, githubOnly)
+	req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+	req.Header.Set("Upgrade", "websocket") // no Connection: Upgrade
+	req.Header.Set("Authorization", "Bearer "+Placeholder("github"))
+
+	resp, err := f.client(true).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotImplemented {
+		t.Fatal("a request that is not an upgrade was refused as one")
+	}
+}
