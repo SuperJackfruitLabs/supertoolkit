@@ -32,8 +32,13 @@ func (f *fakeStore) Revoke(s string) error {
 	return nil
 }
 
+// performed records every effect the rig actually carried out, so a test can
+// assert that approving causes the effect exactly once.
+var performed []string
+
 func rig(t *testing.T) (http.Handler, Deps, *approval.Queue, *fakeStore) {
 	t.Helper()
+	performed = nil
 	p := filepath.Join(t.TempDir(), "supertoolkit.yaml")
 	os.WriteFile(p, []byte(`
 workspace: test
@@ -56,9 +61,20 @@ servers:
 		"github":  {"token"},
 		"aws-sts": {"access_key_id", "secret_access_key"},
 	}}
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	d := Deps{
 		Config: cfg, Store: store, Queue: q,
+		// The rig decides and performs, the way cmd/stk does, so the test
+		// exercises the path a browser actually takes.
+		Decide: func(id string, allow bool, who string) (*approval.Effect, error) {
+			return q.DecideAndPerform(id, allow, who, func(e *approval.Effect) (string, error) {
+				performed = append(performed, e.ID)
+				return "201 Created", nil
+			})
+		},
 		Status: func() []Check {
 			return []Check{{Label: "leak check", State: "ok", Detail: "no credential reachable"}}
 		},
@@ -243,5 +259,134 @@ func TestWritesAreBehindTheToken(t *testing.T) {
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s without a token = %d, want 401", p, rec.Code)
 		}
+	}
+}
+
+// The UI is a separate program that reads these responses by field name, so the
+// field names are a contract. This pins them.
+//
+// Without it, adding JSON tags to an internal struct renamed every field in
+// /api/approvals, the screen rendered blank rows reading "NaNh ago", and the
+// Approve and Refuse buttons silently disappeared because they are gated on a
+// state that had become undefined. Nothing failed; the page just stopped
+// working. A shape test is the only thing that catches that.
+func TestAPIShapesAreStable(t *testing.T) {
+	h, _, q, _ := rig(t)
+	q.Submit("github", "create_issue", "Open an issue.", map[string]string{"title": "t"})
+
+	cases := []struct {
+		path string
+		list string
+		want []string
+	}{
+		{"/api/approvals", "effects", []string{
+			"id", "service", "capability", "summary", "args", "submitted", "expires", "state", "decided_by"}},
+		{"/api/audit", "effects", []string{
+			"when", "category", "action", "policy", "caller", "credential", "outcome"}},
+		{"/api/status", "checks", []string{"label", "state", "detail"}},
+	}
+	for _, c := range cases {
+		t.Run(c.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest("GET", c.path, nil))
+			if rec.Code != 200 {
+				t.Fatalf("status %d", rec.Code)
+			}
+			// A response may carry scalars beside its list, so decode loosely
+			// and inspect only the list this screen reads.
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("not JSON: %v — %s", err, rec.Body.String())
+			}
+			raw, ok := body[c.list].([]any)
+			if !ok || len(raw) == 0 {
+				t.Fatalf("%q held no rows: %s", c.list, rec.Body.String())
+			}
+			row, ok := raw[0].(map[string]any)
+			if !ok {
+				t.Fatalf("%q[0] is not an object: %s", c.list, rec.Body.String())
+			}
+			for _, field := range c.want {
+				if _, ok := row[field]; !ok {
+					t.Errorf("field %q is missing — the UI reads it by name and will render blank", field)
+				}
+			}
+		})
+	}
+}
+
+// The approvals response must never carry a credential, and must carry enough
+// for a person to judge the act rather than a description of it.
+func TestApprovalsCarryTheRequestAndNoCredential(t *testing.T) {
+	h, _, q, _ := rig(t)
+	q.Submit("github", "create_issue", "Open an issue.", map[string]string{
+		"owner": "o", "repo": "r", "title": "the exact title that would be sent"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/approvals", nil))
+	body := rec.Body.String()
+
+	for _, want := range []string{"the exact title that would be sent", "create_issue", "pending"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the response does not carry %q, so a person cannot judge the act", want)
+		}
+	}
+	for _, never := range []string{"ghp_", "secret", "token"} {
+		if strings.Contains(strings.ToLower(body), never) {
+			t.Errorf("the response mentions %q", never)
+		}
+	}
+}
+
+// Approving from a browser must cause the effect, not merely record that
+// someone said yes.
+//
+// This is the bug that made the audit trail false: the decision was written and
+// no code anywhere performed the effect, so `approved` meant nothing had
+// happened. It passed every test, because no test asked whether the effect
+// occurred — only whether the decision was recorded.
+func TestApprovingCausesTheEffectAndRecordsWhatHappened(t *testing.T) {
+	h, _, q, _ := rig(t)
+	e := q.Submit("github", "create_issue", "Open an issue.", map[string]string{"title": "t"})
+
+	body := strings.NewReader(`{"id":"` + e.ID + `","allow":true,"who":"web"}`)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/approvals/decide", body))
+	if rec.Code != 200 {
+		t.Fatalf("deciding = %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	if len(performed) != 1 || performed[0] != e.ID {
+		t.Fatalf("the effect ran %d time(s); approving must cause it", len(performed))
+	}
+	// The response says what happened, not only that it was allowed.
+	if !strings.Contains(rec.Body.String(), "201 Created") {
+		t.Errorf("the response does not say what happened: %s", rec.Body.String())
+	}
+	// And the record carries the outcome, so the trail is true.
+	got, ok := q.Get(e.ID)
+	if !ok {
+		t.Fatal("the effect vanished")
+	}
+	if got.Outcome != "201 Created" {
+		t.Errorf("recorded outcome = %q, want what the provider answered", got.Outcome)
+	}
+	if !got.Performs {
+		t.Error("the record does not say the decider carried it out, so a waiter might run it again")
+	}
+}
+
+// Refusing must perform nothing at all.
+func TestRefusingPerformsNothing(t *testing.T) {
+	h, _, q, _ := rig(t)
+	e := q.Submit("github", "create_issue", "Open an issue.", nil)
+
+	body := strings.NewReader(`{"id":"` + e.ID + `","allow":false,"who":"web"}`)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/approvals/decide", body))
+	if rec.Code != 200 {
+		t.Fatalf("deciding = %d (%s)", rec.Code, rec.Body.String())
+	}
+	if len(performed) != 0 {
+		t.Fatalf("a refusal performed %d effect(s)", len(performed))
 	}
 }

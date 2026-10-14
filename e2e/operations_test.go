@@ -141,7 +141,10 @@ services:
 		Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
 	}
 
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	prof, _ := cfg.Profile("")
 	srvMCP, err := mcp.NewServer(mcp.Options{
 		Config: cfg, Profile: prof, Queue: q, ApprovalWait: 0,

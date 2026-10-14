@@ -47,16 +47,19 @@ export type PolicyRow = {
   ceiling: 'agent' | 'approval' | 'deny';
 };
 
+// Matches webui.Approval exactly. The Go side pins these names in
+// TestAPIShapesAreStable, because a rename on either side renders blank rows
+// and silently removes the Approve and Refuse buttons rather than failing.
 export type Effect = {
-  ID: string;
-  Service: string;
-  Capability: string;
-  Summary: string;
-  Args: Record<string, string> | null;
-  Submitted: string;
-  Expires: string;
-  State: 'pending' | 'approved' | 'refused' | 'expired';
-  DecidedBy: string;
+  id: string;
+  service: string;
+  capability: string;
+  summary: string;
+  args: Record<string, string> | null;
+  submitted: string;
+  expires: string;
+  state: 'pending' | 'approved' | 'refused' | 'expired';
+  decided_by: string;
 };
 
 export type AuditEffect = {

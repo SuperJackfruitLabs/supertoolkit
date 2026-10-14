@@ -7,10 +7,10 @@
   let error = $state('');
 
   async function decide(e: Effect, allow: boolean) {
-    busy = e.ID;
+    busy = e.id;
     error = '';
     try {
-      await api.decide(e.ID, allow);
+      await api.decide(e.id, allow);
       location.reload();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -20,7 +20,12 @@
   }
 
   const ago = (iso: string) => {
-    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    const t = new Date(iso).getTime();
+    // "NaNh ago" is what this printed when the field it reads was renamed. A
+    // time we cannot read is worth saying plainly rather than rendering as
+    // arithmetic on a missing value.
+    if (!Number.isFinite(t)) return 'an unknown time';
+    const s = Math.max(0, (Date.now() - t) / 1000);
     if (s < 90) return `${Math.round(s)}s`;
     if (s < 5400) return `${Math.round(s / 60)}m`;
     return `${Math.round(s / 3600)}h`;
@@ -37,36 +42,36 @@
     {#if !d.effects.length}
       <p class="note">Nothing is waiting on you.</p>
     {/if}
-    {#each d.effects as e (e.ID)}
+    {#each d.effects as e (e.id)}
       <div class="eff">
         <div class="eff-h">
-          <span class="light {e.State === 'pending' ? 'warn' : 'off'}"></span>
-          <span class="who">{e.Service} / {e.Capability}</span>
-          <span class="pill {e.State === 'pending' ? 'approval' : 'deny'}">{e.State}</span>
+          <span class="light {e.state === 'pending' ? 'warn' : 'off'}"></span>
+          <span class="who">{e.service} / {e.capability}</span>
+          <span class="pill {e.state === 'pending' ? 'approval' : 'deny'}">{e.state}</span>
           <span class="spacer"></span>
           <span class="age">
-            {#if e.State === 'pending'}waiting {ago(e.Submitted)}{:else}{e.State} · {ago(e.Submitted)} ago{/if}
+            {#if e.state === 'pending'}waiting {ago(e.submitted)}{:else}{e.state} · {ago(e.submitted)} ago{/if}
           </span>
         </div>
         <div class="eff-b">
-          <div class="exact">{e.Summary}</div>
-          {#if e.Args && Object.keys(e.Args).length}
+          <div class="exact">{e.summary}</div>
+          {#if e.args && Object.keys(e.args).length}
             <dl>
-              {#each Object.entries(e.Args) as [k, v]}
+              {#each Object.entries(e.args) as [k, v]}
                 <dt>{k}</dt><dd class="mono">{v}</dd>
               {/each}
             </dl>
           {/if}
-          {#if e.State === 'expired'}
+          {#if e.state === 'expired'}
             <p class="note">Nobody decided in time, so nothing happened. Expiry is never approval.</p>
           {/if}
         </div>
-        {#if e.State === 'pending'}
+        {#if e.state === 'pending'}
           <div class="eff-f">
-            <button class="stk-btn primary" disabled={busy === e.ID} onclick={() => decide(e, true)}>Approve</button>
-            <button class="stk-btn danger" disabled={busy === e.ID} onclick={() => decide(e, false)}>Refuse</button>
+            <button class="stk-btn primary" disabled={busy === e.id} onclick={() => decide(e, true)}>Approve</button>
+            <button class="stk-btn danger" disabled={busy === e.id} onclick={() => decide(e, false)}>Refuse</button>
             <span class="spacer"></span>
-            <span class="note mono">id {e.ID}</span>
+            <span class="note mono">id {e.id}</span>
           </div>
         {/if}
       </div>

@@ -34,6 +34,12 @@ type Deps struct {
 	Audit func(limit int) []Effect
 	// SetPolicy persists one capability's policy.
 	SetPolicy func(category, action string, a policy.Action) error
+	// Decide records a decision **and carries out what was approved**, so that
+	// approving from a browser causes the effect rather than only recording
+	// that someone said yes. Without it this screen can write `approved` for
+	// something that never happens, which is a false statement in the audit
+	// trail rather than a missing feature.
+	Decide func(id string, allow bool, who string) (*approval.Effect, error)
 }
 
 // Check is one status line.
@@ -41,6 +47,29 @@ type Check struct {
 	Label  string `json:"label"`
 	State  string `json:"state"` // ok | warn | bad
 	Detail string `json:"detail"`
+}
+
+// Approval is one waiting effect, as the approvals screen shows it.
+//
+// It exists because the handler used to serialise internal/approval.Effect
+// straight to the wire. That made the storage format and the public API the
+// same struct: adding JSON tags for the on-disk format silently renamed every
+// field in the HTTP response, the screen rendered blank rows reading "NaNh
+// ago", and the Approve and Refuse buttons never appeared at all — they are
+// gated on a state that had become undefined.
+//
+// A DTO here means the internal type can change without the UI noticing, and
+// TestAPIShapesAreStable pins these names so the reverse cannot happen either.
+type Approval struct {
+	ID         string            `json:"id"`
+	Service    string            `json:"service"`
+	Capability string            `json:"capability"`
+	Summary    string            `json:"summary"`
+	Args       map[string]string `json:"args"`
+	Submitted  time.Time         `json:"submitted"`
+	Expires    time.Time         `json:"expires"`
+	State      string            `json:"state"`
+	DecidedBy  string            `json:"decided_by"`
 }
 
 // Effect is one audited effect, as the audit screen shows it.
@@ -181,7 +210,17 @@ func ceilingFor(k catalog.Kind) policy.Action {
 }
 
 func (d Deps) approvals(w http.ResponseWriter, r *http.Request) {
-	write(w, map[string]any{"effects": d.Queue.List()})
+	list := d.Queue.List()
+	out := make([]Approval, 0, len(list))
+	for _, e := range list {
+		out = append(out, Approval{
+			ID: e.ID, Service: e.Service, Capability: e.Capability,
+			Summary: e.Summary, Args: e.Args,
+			Submitted: e.Submitted, Expires: e.Expires,
+			State: string(e.State), DecidedBy: e.DecidedBy,
+		})
+	}
+	write(w, map[string]any{"effects": out})
 }
 
 func (d Deps) audit(w http.ResponseWriter, r *http.Request) {
@@ -248,15 +287,23 @@ func (d Deps) decide(w http.ResponseWriter, r *http.Request) {
 	if p.Who == "" {
 		p.Who = "web"
 	}
-	if err := d.Queue.Decide(p.ID, p.Allow, p.Who); err != nil {
+	if d.Decide == nil {
+		fail(w, http.StatusInternalServerError,
+			"this interface cannot carry out an approval, so it will not record one — restart `stk ui`")
+		return
+	}
+	e, err := d.Decide(p.ID, p.Allow, p.Who)
+	if err != nil && e == nil {
 		fail(w, http.StatusConflict, "%v", err)
 		return
 	}
-	state := "refused"
-	if p.Allow {
-		state = "approved"
+	// The response says what happened, not only what was decided. An approval
+	// whose effect failed is reported as such rather than as a plain success.
+	res := map[string]string{"id": p.ID, "state": string(e.State), "by": p.Who, "outcome": e.Outcome}
+	if e.Error != "" {
+		res["error"] = e.Error
 	}
-	write(w, map[string]string{"id": p.ID, "state": state, "by": p.Who})
+	write(w, res)
 }
 
 func (d Deps) revoke(w http.ResponseWriter, r *http.Request) {
