@@ -12,6 +12,7 @@ import (
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/approval"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/broker"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/daemon"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcp"
@@ -36,6 +37,10 @@ type service struct {
 
 func newService(cfg *policy.Config, store *credential.Store) *service {
 	client := &http.Client{Timeout: 60 * time.Second}
+	acq := &credential.Acquirer{
+		Material: store.Material,
+		Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
+	}
 	return &service{
 		cfg: cfg, store: store, queue: approval.New(approvalTTL),
 		perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
@@ -43,22 +48,53 @@ func newService(cfg *policy.Config, store *credential.Store) *service {
 			if !ok {
 				return nil, fmt.Errorf("unknown service %q", svcName)
 			}
-			secret, err := store.Get(svcName)
-			if err != nil {
+			if err := authorize(ctx, svcName, svc.Entry(), req, store, acq); err != nil {
 				return nil, err
 			}
-			e := svc.Entry()
-			// The placeholder is written in and immediately substituted, so the
-			// same injection path is used here as on the proxy, rather than a
-			// second one that could drift.
-			switch e.Placement {
-			case 0: // bearer
-				req.Header.Set("Authorization", "Bearer "+broker.Placeholder(svcName))
-			}
-			credential.Inject(req, broker.Placeholder(svcName), secret, e.Placement, e.Field)
 			req.Header.Set("User-Agent", "supertoolkit/"+version)
 			return client.Do(req)
 		},
+	}
+}
+
+// authorize attaches whatever this service's scheme requires.
+//
+// One switch, dispatching on the catalogue's declared operation, so there is a
+// single place where a credential meets a request and no second path to drift.
+// Three of the four arms never put a long-lived secret on the wire.
+func authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Request,
+	store *credential.Store, acq *credential.Acquirer) error {
+	switch e.Auth {
+	case catalog.AuthSigV4:
+		m, err := store.Material(name)
+		if err != nil {
+			return err
+		}
+		return credential.SignSigV4(req, m, e.Region, e.AWSService, time.Now())
+
+	case catalog.AuthGitHubApp:
+		// The private key stays in the broker; a short-lived installation token
+		// goes out, and twenty concurrent callers cause one exchange.
+		tok, err := acq.Token(ctx, name)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		return nil
+
+	default:
+		secret, err := store.Get(name)
+		if err != nil {
+			return err
+		}
+		// The placeholder is written in and immediately substituted, so this
+		// shares the proxy's injection path rather than duplicating it.
+		if e.Placement == catalog.BearerHeader {
+			req.Header.Set("Authorization", "Bearer "+broker.Placeholder(name))
+		}
+		credential.Inject(req, broker.Placeholder(name), secret, e.Placement, e.Field)
+		return nil
 	}
 }
 

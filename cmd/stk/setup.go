@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"sort"
@@ -129,21 +130,72 @@ func cmdConnect(args []string) error {
 		return err
 	}
 
-	fi, _ := os.Stdin.Stat()
-	if fi.Mode()&os.ModeCharDevice != 0 {
-		fmt.Fprintln(os.Stderr, "  reading the credential from stdin; paste it and press ctrl-D")
-	}
-	buf := make([]byte, 8192)
-	n, _ := os.Stdin.Read(buf)
-	secret := strings.TrimSpace(string(buf[:n]))
-	if secret == "" {
-		return fmt.Errorf("no credential on stdin")
-	}
-	if err := store.Put(name, secret); err != nil {
+	entry, _ := catalog.Lookup(name)
+	fields := entry.Auth.Fields()
+
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
 		return err
 	}
-	fmt.Printf("  %s connected · credential sealed in %s · never in %s\n", name, dir, configPath())
+	m, err := parseMaterial(string(raw), fields)
+	if err != nil {
+		return fmt.Errorf("%w\n\n  this service needs %s. Either pipe one value per field as\n  `field=value` lines, or pipe a single value for a one-field service",
+			err, strings.Join(fields, ", "))
+	}
+	if err := store.PutMaterial(name, m); err != nil {
+		return err
+	}
+	fmt.Printf("  %s connected · %s\n", name, entry.Auth)
+	fmt.Printf("  %d field(s) sealed in %s: %s\n", len(m), dir, strings.Join(m.Fields(), ", "))
+	fmt.Printf("  never in %s\n", configPath())
+	fmt.Printf("  %s\n", entry.Auth.Reassurance())
 	return nil
+}
+
+// parseMaterial reads either `field=value` lines, or a single bare value for a
+// service that needs exactly one field.
+//
+// A private key spans many lines, so a field's value continues until the next
+// `field=` line — otherwise a PEM would have to be escaped, which is the sort of
+// friction that gets worked around by pasting a key into a config file instead.
+func parseMaterial(input string, fields []string) (credential.Material, error) {
+	want := map[string]bool{}
+	for _, f := range fields {
+		want[f] = true
+	}
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return nil, fmt.Errorf("nothing was supplied on stdin")
+	}
+	if len(fields) == 1 && !strings.Contains(trimmed, "=") {
+		return credential.Material{fields[0]: trimmed}, nil
+	}
+
+	m := credential.Material{}
+	current := ""
+	var buf []string
+	flush := func() {
+		if current != "" {
+			m[current] = strings.TrimSpace(strings.Join(buf, "\n"))
+		}
+		buf = nil
+	}
+	for _, line := range strings.Split(input, "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok && want[strings.TrimSpace(k)] {
+			flush()
+			current = strings.TrimSpace(k)
+			buf = []string{v}
+			continue
+		}
+		if current != "" {
+			buf = append(buf, line)
+		}
+	}
+	flush()
+	if err := m.Require(fields...); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // loadForRun opens everything the broker needs.

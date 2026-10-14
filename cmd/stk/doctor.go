@@ -62,8 +62,16 @@ func doctorChecks() []check {
 		note: fmt.Sprintf("%s · %d service(s)", configPath(), len(cfg.Services()))})
 
 	for _, name := range cfg.Services() {
-		out = append(out, check{ok: store.Has(name), label: "credential for " + name,
-			note: map[bool]string{true: "sealed", false: "missing — run `stk connect " + name + "`"}[store.Has(name)]})
+		svc, _ := cfg.Service(name)
+		auth := svc.Entry().Auth
+		note := auth.String()
+		if !store.Has(name) {
+			out = append(out, check{label: "credential for " + name,
+				note: "missing — run `stk connect " + name + "`"})
+			continue
+		}
+		note += " — " + auth.Reassurance()
+		out = append(out, check{ok: true, label: "credential for " + name, note: note})
 	}
 
 	// NO_PROXY is a confirmed bypass: a client that honours it goes straight

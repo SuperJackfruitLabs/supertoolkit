@@ -40,6 +40,66 @@ const (
 	QueryParam
 )
 
+// Auth says which credential operation a service needs. It is what the broker
+// dispatches on, so a new scheme is a catalogue entry rather than a branch in
+// the request path.
+type Auth int
+
+const (
+	// AuthToken substitutes a stored token. The simplest case, and the only one
+	// where a long-lived secret reaches the wire.
+	AuthToken Auth = iota
+	// AuthSigV4 signs with a stored key pair. The credential is an HMAC over the
+	// whole request, so it cannot be substituted.
+	AuthSigV4
+	// AuthGitHubApp mints a JWT from a stored private key and exchanges it for a
+	// short-lived installation token.
+	AuthGitHubApp
+)
+
+func (a Auth) String() string {
+	switch a {
+	case AuthSigV4:
+		return "sign (AWS SigV4)"
+	case AuthGitHubApp:
+		return "acquire (GitHub App installation token)"
+	default:
+		return "substitute (token)"
+	}
+}
+
+// Fields are the credential fields a service needs, which `stk connect` prompts
+// for and `Material.Require` checks.
+func (a Auth) Fields() []string {
+	switch a {
+	case AuthSigV4:
+		return []string{"access_key_id", "secret_access_key"}
+	case AuthGitHubApp:
+		return []string{"app_id", "installation_id", "private_key"}
+	default:
+		return []string{"token"}
+	}
+}
+
+// LongLivedOnTheWire reports whether this operation sends a long-lived secret.
+// `stk doctor` shows it, because it is the difference that matters if a request
+// is ever logged somewhere it should not be.
+func (a Auth) LongLivedOnTheWire() bool { return a == AuthToken }
+
+// Reassurance explains, accurately per scheme, what leaves the broker. Signing
+// emits a signature rather than a credential, so one sentence cannot cover both
+// without being wrong about one of them.
+func (a Auth) Reassurance() string {
+	switch a {
+	case AuthSigV4:
+		return "each request is signed in the broker; the stored key never goes on the wire"
+	case AuthGitHubApp:
+		return "the broker trades the stored key for a token that expires in an hour; the key never goes on the wire"
+	default:
+		return "the stored token is what goes on the wire, so treat it as long-lived"
+	}
+}
+
 // Param is one input to a capability.
 type Param struct {
 	Name     string
@@ -68,9 +128,14 @@ type Entry struct {
 	// EnvVar is where a client expects to find its credential. `stk run` puts
 	// the worthless placeholder here, so the client is configured normally and
 	// never learns it is being brokered.
-	EnvVar       string
-	Placement    Placement
-	Field        string
+	EnvVar    string
+	Placement Placement
+	Field     string
+	// Auth is the credential operation this service needs.
+	Auth Auth
+	// Region and AWSService are the SigV4 scope, used only when Auth is AuthSigV4.
+	Region       string
+	AWSService   string
 	Capabilities []Capability
 }
 
@@ -78,6 +143,40 @@ type Entry struct {
 // of MCP servers already, and an entry here is only needed where we front a
 // service directly.
 var builtin = map[string]*Entry{
+	"aws-sts": {
+		// A deliberately read-only entry: GetCallerIdentity is the AWS
+		// equivalent of "who am I", so a signing service can be connected and
+		// verified without granting anything.
+		Name: "aws-sts", Host: "sts.amazonaws.com", Auth: AuthSigV4,
+		Region: "us-east-1", AWSService: "sts",
+		Capabilities: []Capability{
+			{
+				Name: "whoami", Kind: Read, Method: "GET",
+				Path:    "/?Action=GetCallerIdentity&Version=2011-06-15",
+				Summary: "The identity the credentials belong to.",
+			},
+		},
+	},
+	"github-app": {
+		Name: "github-app", Host: "api.github.com", Auth: AuthGitHubApp,
+		Capabilities: []Capability{
+			{
+				Name: "list_installation_repos", Kind: Read, Method: "GET",
+				Path:    "/installation/repositories",
+				Summary: "Repositories this installation can reach.",
+			},
+			{
+				Name: "create_issue", Kind: Write, Method: "POST",
+				Path:    "/repos/{owner}/{repo}/issues",
+				Summary: "Open an issue as the app.",
+				Params: []Param{
+					{Name: "owner", Required: true},
+					{Name: "repo", Required: true},
+					{Name: "title", Required: true, Summary: "Issue title."},
+				},
+			},
+		},
+	},
 	"github": {
 		Name: "github", Host: "api.github.com", Placement: BearerHeader, EnvVar: "GH_TOKEN",
 		Capabilities: []Capability{
@@ -175,7 +274,12 @@ func (e *Entry) Request(capability string, args map[string]string) (*http.Reques
 	if i := strings.Index(path, "{"); i >= 0 {
 		return nil, fmt.Errorf("%s/%s: unfilled parameter in path %q", e.Name, capability, path)
 	}
-	u := &url.URL{Scheme: "https", Host: e.Host, Path: path}
+	// A shape may carry a literal query string, as the AWS STS action does.
+	query := ""
+	if i := strings.Index(path, "?"); i >= 0 {
+		path, query = path[:i], path[i+1:]
+	}
+	u := &url.URL{Scheme: "https", Host: e.Host, Path: path, RawQuery: query}
 	return http.NewRequest(c.Method, u.String(), nil)
 }
 
