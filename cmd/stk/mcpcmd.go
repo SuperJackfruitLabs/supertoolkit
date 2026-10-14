@@ -31,7 +31,7 @@ func cmdMCP(args []string) error {
 			return mcpInstall(args[i+1:], profile)
 		}
 	}
-	cfg, store, _, err := loadForRun()
+	cfg, store, dir, err := loadForRun()
 	if err != nil {
 		return err
 	}
@@ -39,14 +39,15 @@ func cmdMCP(args []string) error {
 	if !ok {
 		return fmt.Errorf("unknown profile %q; declared: %s", profile, strings.Join(cfg.Profiles(), ", "))
 	}
-	svc := newService(cfg, store)
+	svc, err := newService(cfg, store, dir, "mcp")
+	if err != nil {
+		return err
+	}
 	defer svc.closeHosts()
 	// A fronted child needs the broker's address, so the broker starts here too.
-	if _, _, dir, err := loadForRun(); err == nil {
-		if sess, serr := startBroker(cfg, store, dir); serr == nil {
-			defer sess.stop()
-			svc.childEnvFor = sess.childEnvFor
-		}
+	if sess, serr := startBroker(cfg, store, dir); serr == nil {
+		defer sess.stop()
+		svc.childEnvFor = sess.childEnvFor
 	}
 	srv, err := mcp.NewServer(mcp.Options{
 		Config: cfg, Profile: prof, Queue: svc.queue, Exec: svc.perform,

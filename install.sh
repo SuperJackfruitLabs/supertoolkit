@@ -9,8 +9,11 @@
 #   curl -fsSL https://supertoolkit.dev/install.sh | sh
 #
 # Environment:
-#   STK_VERSION   a tag to install, default the latest release
-#   STK_BIN_DIR   where to put the binary, default /usr/local/bin or ~/.local/bin
+#   STK_VERSION    a tag to install, default the latest release
+#   STK_BIN_DIR    where to put the binary, default /usr/local/bin or ~/.local/bin
+#   STK_BASE_URL   where to fetch from, for a mirror or an air-gapped copy.
+#                  SHA256SUMS is still required and still verified: a mirror is
+#                  a convenience, not a reason to trust what it serves.
 set -eu
 
 REPO="${STK_REPO:-SuperJackfruitLabs/supertoolkit}"
@@ -47,7 +50,10 @@ case "$arch" in
   *) die "unsupported architecture '$arch'. Build from source." ;;
 esac
 
-if [ "$VERSION" = "latest" ]; then
+if [ -n "${STK_BASE_URL:-}" ]; then
+  base="${STK_BASE_URL%/}"
+  say "fetching from $base"
+elif [ "$VERSION" = "latest" ]; then
   base="https://github.com/$REPO/releases/latest/download"
 else
   base="https://github.com/$REPO/releases/download/$VERSION"

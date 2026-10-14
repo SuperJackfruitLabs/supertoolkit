@@ -43,7 +43,10 @@ func cmdUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	svc := newService(cfg, store)
+	svc, err := newService(cfg, store, dir, "ui")
+	if err != nil {
+		return err
+	}
 	defer svc.closeHosts()
 
 	token, err := webui.NewToken()
@@ -57,6 +60,9 @@ func cmdUI(args []string) error {
 		SetPolicy: func(category, action string, a policy.Action) error {
 			return setPolicyInFile(configPath(), category, action, a)
 		},
+		// Approving here performs the effect here, in this process, which is
+		// the whole point: the agent that asked may be long gone.
+		Decide: svc.decideAndPerform,
 	})
 	assets, haveAssets := webui.Assets()
 	var assetHandler http.Handler
