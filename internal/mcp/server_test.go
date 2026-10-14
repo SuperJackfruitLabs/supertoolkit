@@ -49,7 +49,10 @@ func newRig(t *testing.T, profile string, wait time.Duration) *rig {
 	if !ok {
 		t.Fatalf("profile %q not found", profile)
 	}
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	sent := make(chan *http.Request, 8)
 	srv, err := NewServer(Options{
 		Config: cfg, Profile: prof, Queue: q, ApprovalWait: wait,
@@ -226,7 +229,7 @@ func TestApprovedEffectHappensExactlyOnce(t *testing.T) {
 	if len(pend) != 1 {
 		t.Fatalf("nothing queued")
 	}
-	if err := r.q.Decide(pend[0].ID, true, "operator"); err != nil {
+	if _, err := r.q.Decide(pend[0].ID, true, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -302,3 +305,83 @@ func TestUnknownMethodIsAnRPCError(t *testing.T) {
 }
 
 var _ = fmt.Sprintf
+
+// The scenario that produced a double execution.
+//
+// A person approves in another process — a browser, the daemon — and that
+// process carries the effect out, because the agent may have stopped waiting or
+// never waited at all. If the waiting agent then performs it too, the issue is
+// created twice and the second one is nobody's decision.
+//
+// Exactly one party performs an approved effect, and the record says which.
+func TestAnApprovalPerformedByTheDeciderIsNotRunAgainByTheWaiter(t *testing.T) {
+	r := newRig(t, "", 3*time.Second)
+	done := make(chan string, 1)
+	go func() {
+		done <- r.callTool(t, "execute_action", map[string]string{
+			"category": "github", "action": "create_issue",
+			"args": `{"owner":"o","repo":"r","title":"t"}`,
+		})
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(r.q.Pending()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	pend := r.q.Pending()
+	if len(pend) != 1 {
+		t.Fatal("nothing queued")
+	}
+
+	// The decider performs, as cmd/stk does for both the daemon and the UI.
+	var byDecider int
+	if _, err := r.q.DecideAndPerform(pend[0].ID, true, "web", func(e *approval.Effect) (string, error) {
+		byDecider++
+		return "201 Created", nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-done:
+		if strings.HasPrefix(got, "ERROR:") {
+			t.Fatalf("the waiter reported an error: %s", got)
+		}
+		// It must report what happened rather than claim to have done it.
+		if !strings.Contains(got, "201 Created") {
+			t.Errorf("the waiter did not report the outcome: %s", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("execute_action never returned after the decision")
+	}
+
+	if byDecider != 1 {
+		t.Errorf("the decider performed %d time(s), want 1", byDecider)
+	}
+	// The waiter must not have performed it at all: r.sent counts requests the
+	// MCP server itself made.
+	if n := len(r.sent); n != 0 {
+		t.Fatalf("the waiting agent performed the effect %d time(s) as well — it ran twice in total", n)
+	}
+}
+
+// A person must never be asked to approve something that cannot run.
+//
+// A malformed call used to queue an approval anyway: the operator saw a summary
+// with no arguments, approved it, and it failed — their decision spent on
+// something that could never have taken effect. Worse, a capability with no
+// required parameters would have *succeeded*, performing an effect whose
+// contents nobody could see.
+func TestAMalformedCallIsRefusedBeforeAnyoneIsAsked(t *testing.T) {
+	r := newRig(t, "", 2*time.Second)
+	got := r.callTool(t, "execute_action", map[string]string{
+		"category": "github", "action": "create_issue",
+		"args": `{"repo":"r","title":"t"}`, // owner is required and absent
+	})
+	if !strings.Contains(got, "owner") {
+		t.Errorf("the refusal does not name the missing parameter: %s", got)
+	}
+	if n := len(r.q.List()); n != 0 {
+		t.Fatalf("%d approval(s) were queued; nobody should have been asked", n)
+	}
+}

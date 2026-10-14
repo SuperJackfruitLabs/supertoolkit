@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -141,4 +143,15 @@ func auditForUI(dir string) func(int) []webui.Effect {
 		}
 		return out
 	}
+}
+
+// fingerprint describes a credential without being it, the same way the broker
+// does: a short SHA-256 prefix. Two requests carrying the same credential show
+// the same fingerprint, which is enough to tell them apart without the value.
+func fingerprint(s string) string {
+	if s == "" {
+		return "(absent)"
+	}
+	sum := sha256.Sum256([]byte(s))
+	return "sha256:" + hex.EncodeToString(sum[:])[:12]
 }

@@ -131,7 +131,10 @@ servers:
 	host = mcphost.New(mcphost.Spec{Name: "faker", Command: bin, Env: env})
 	defer host.Close()
 
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	prof, _ := cfg.Profile("")
 	srv, err := mcp.NewServer(mcp.Options{
 		Config: cfg, Profile: prof, Queue: q, ApprovalWait: 0,
@@ -213,7 +216,10 @@ servers:
 	host := mcphost.New(mcphost.Spec{Name: "faker", Command: bin, Env: env})
 	defer host.Close()
 
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	prof, _ := cfg.Profile("")
 	srv, _ := mcp.NewServer(mcp.Options{
 		Config: cfg, Profile: prof, Queue: q, ApprovalWait: 0,

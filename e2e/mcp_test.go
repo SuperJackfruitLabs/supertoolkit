@@ -87,7 +87,10 @@ func newAgent(t *testing.T, profile string, wait time.Duration) *agent {
 	if !ok {
 		t.Fatalf("profile %q not found", profile)
 	}
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: provCA.Pool()},
@@ -221,7 +224,7 @@ func TestApprovalBlocksUntilDecidedThenRunsOnce(t *testing.T) {
 	default:
 	}
 
-	if err := a.q.Decide(pend[0].ID, true, "operator"); err != nil {
+	if _, err := a.q.Decide(pend[0].ID, true, "operator"); err != nil {
 		t.Fatal(err)
 	}
 	select {

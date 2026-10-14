@@ -371,6 +371,15 @@ func (s *Server) execute(ctx context.Context, category, action, rawArgs string) 
 	svc, _ := s.cfg.Service(category)
 	c, _ := svc.Entry().Capability(action)
 
+	// Build the request before asking anyone to approve it. A call that cannot
+	// produce a valid request will fail however it is decided, and spending a
+	// person's attention on a decision that cannot take effect is worse than
+	// refusing it now — they would approve something, watch nothing happen, and
+	// have no idea why.
+	if _, err := svc.Entry().Request(action, args); err != nil {
+		return errText("%v", err)
+	}
+
 	// The one enforcement point.
 	switch s.profile.Resolve(category, action) {
 	case policy.ActionDeny:
@@ -395,6 +404,18 @@ func (s *Server) execute(ctx context.Context, category, action, rawArgs string) 
 				"state": state, "id": e.ID,
 				"note": "not approved, so nothing was done",
 			})
+		}
+		// Exactly one party performs an approved effect, and it is whoever
+		// decided — because the person may approve from a browser long after
+		// this process stopped waiting, or instead of it ever waiting at all.
+		// Falling through to perform here as well would run the effect twice.
+		if d.Performed {
+			out := map[string]any{"state": string(d.State), "id": e.ID, "outcome": d.Outcome}
+			if d.Err != "" {
+				out["error"] = d.Err
+				out["note"] = "approved, but carrying it out failed"
+			}
+			return obj(out)
 		}
 	}
 	return s.perform(ctx, category, svc, action, args)

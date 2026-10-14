@@ -88,7 +88,10 @@ profiles:
 			{Name: "wipe_everything", Description: "Wipe it all."},
 		},
 	}
-	q := approval.New(time.Minute)
+	q, qerr := approval.Open(t.TempDir(), time.Minute)
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
 	srv, err := NewServer(Options{
 		Config: cfg, Profile: prof, Queue: q, ApprovalWait: wait,
 		Exec:    func(context.Context, string, *http.Request) (*http.Response, error) { return nil, nil },
