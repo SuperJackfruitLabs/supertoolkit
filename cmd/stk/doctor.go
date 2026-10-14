@@ -66,8 +66,15 @@ func doctorChecks() []check {
 		auth := svc.Entry().Auth
 		note := auth.String()
 		if !store.Has(name) {
-			out = append(out, check{label: "credential for " + name,
-				note: "missing — run `stk connect " + name + "`"})
+			// On a machine with no browser, `stk connect` means pasting a
+			// token by hand — the habit this product exists to replace. Where
+			// the headless path is available, name it here, because doctor is
+			// where someone looks when a service is not working yet.
+			advice := "missing — run `stk connect " + name + "`"
+			if svc.Device().Supported() {
+				advice += " or `stk connect " + name + " --device` with no browser here"
+			}
+			out = append(out, check{label: "credential for " + name, note: advice})
 			continue
 		}
 		note += " — " + auth.Reassurance()
