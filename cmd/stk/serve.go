@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/daemon"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcp"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcphost"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
 
@@ -25,7 +27,7 @@ import (
 const approvalTTL = 30 * time.Minute
 
 // service bundles what the daemon serves: policy, credentials, the broker that
-// performs effects, and the approval queue.
+// performs effects, the approval queue, and any fronted MCP servers.
 type service struct {
 	cfg   *policy.Config
 	store *credential.Store
@@ -33,6 +35,50 @@ type service struct {
 	// perform makes the real call with the credential attached. It is a closure
 	// over the store so no credential is ever returned to a caller.
 	perform mcp.Executor
+
+	// hosts are children we did not write, started lazily and kept running.
+	hostsMu sync.Mutex
+	hosts   map[string]*mcphost.Host
+	// childEnvFor builds a child's environment. Set by the caller, because the
+	// proxy address is only known once the broker is listening.
+	childEnvFor func(server string) []string
+}
+
+// frontedServer starts a child on first use and reuses it after.
+//
+// Lazy on purpose: a workspace may declare servers an agent never touches in a
+// session, and starting them all at boot would spend memory and processes on
+// tools nobody asked for.
+func (s *service) frontedServer(name string) (mcp.FrontedServer, error) {
+	srv, ok := s.cfg.Server(name)
+	if !ok {
+		return nil, fmt.Errorf("unknown server %q", name)
+	}
+	s.hostsMu.Lock()
+	defer s.hostsMu.Unlock()
+	if h, ok := s.hosts[name]; ok {
+		return h, nil
+	}
+	env := []string{}
+	if s.childEnvFor != nil {
+		env = s.childEnvFor(name)
+	}
+	h := mcphost.New(mcphost.Spec{Name: name, Command: srv.Command, Args: srv.Args, Env: env})
+	if err := h.Start(context.Background()); err != nil {
+		return nil, err
+	}
+	s.hosts[name] = h
+	return h, nil
+}
+
+// closeHosts stops every child.
+func (s *service) closeHosts() {
+	s.hostsMu.Lock()
+	defer s.hostsMu.Unlock()
+	for _, h := range s.hosts {
+		h.Close()
+	}
+	s.hosts = map[string]*mcphost.Host{}
 }
 
 func newService(cfg *policy.Config, store *credential.Store) *service {
@@ -43,6 +89,7 @@ func newService(cfg *policy.Config, store *credential.Store) *service {
 	}
 	return &service{
 		cfg: cfg, store: store, queue: approval.New(approvalTTL),
+		hosts: map[string]*mcphost.Host{},
 		perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
 			svc, ok := cfg.Service(svcName)
 			if !ok {
@@ -107,6 +154,7 @@ func (s *service) handle(uid int, r daemon.Request) daemon.Response {
 	}
 	srv, err := mcp.NewServer(mcp.Options{
 		Config: s.cfg, Profile: prof, Queue: s.queue, Exec: s.perform,
+		Servers:      s.frontedServer,
 		ApprovalWait: 0, // the MCP caller gets `pending`; a human decides out of band
 	})
 	if err != nil {
@@ -154,6 +202,17 @@ func cmdServe() error {
 		return err
 	}
 	svc := newService(cfg, store)
+	defer svc.closeHosts()
+
+	// Fronted children need the broker's address, so the broker starts first
+	// and the child environment is built from it.
+	sess, err := startBroker(cfg, store, dir)
+	if err != nil {
+		return err
+	}
+	defer sess.stop()
+	svc.childEnvFor = sess.childEnvFor
+
 	sock := socketPath(dir)
 	d, err := daemon.Listen(sock, svc.handle)
 	if err != nil {

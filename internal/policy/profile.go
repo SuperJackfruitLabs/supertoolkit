@@ -21,6 +21,24 @@ type Profile struct {
 	allow map[string]map[string]bool
 }
 
+// AllowsAction reports whether the profile's own allow-list admits an action,
+// without needing to know the category's action list.
+//
+// A fronted MCP server's tools are discovered from the child at runtime, so
+// they cannot be validated against a static catalogue the way a native
+// service's capabilities are. This answers only the narrowing question; the
+// policy question is the server's.
+func (p *Profile) AllowsAction(category, action string) bool {
+	if p.allow == nil {
+		return true
+	}
+	caps, ok := p.allow[category]
+	if !ok {
+		return false
+	}
+	return caps["*"] || caps[action]
+}
+
 // Visible reports whether this profile may see a capability at all.
 func (p *Profile) Visible(service, capability string) bool {
 	svc, ok := p.cfg.Service(service)

@@ -23,6 +23,7 @@ import (
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/approval"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcphost"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
 
@@ -40,12 +41,21 @@ var ToolNames = []string{
 // never sees a credential.
 type Executor func(ctx context.Context, service string, req *http.Request) (*http.Response, error)
 
+// FrontedServer is one MCP server we did not write, already running with a
+// placeholder instead of a credential.
+type FrontedServer interface {
+	ListTools(ctx context.Context) ([]mcphost.Tool, error)
+	Tool(ctx context.Context, name string) (mcphost.Tool, bool, error)
+	CallTool(ctx context.Context, name string, args map[string]string) (string, bool, error)
+}
+
 // Server answers MCP over a reader and writer.
 type Server struct {
 	cfg     *policy.Config
 	profile *policy.Profile
 	queue   *approval.Queue
 	exec    Executor
+	servers func(name string) (FrontedServer, error)
 	waitFor time.Duration
 	mu      sync.Mutex
 }
@@ -56,6 +66,9 @@ type Options struct {
 	Profile *policy.Profile
 	Queue   *approval.Queue
 	Exec    Executor
+	// Servers resolves a fronted MCP server by name. Optional: without it a
+	// configured server reports as having no actions rather than failing oddly.
+	Servers func(name string) (FrontedServer, error)
 	// ApprovalWait is how long execute_action blocks for a decision before
 	// returning `pending`. Zero returns immediately.
 	ApprovalWait time.Duration
@@ -66,7 +79,8 @@ func NewServer(o Options) (*Server, error) {
 	if o.Config == nil || o.Profile == nil || o.Queue == nil || o.Exec == nil {
 		return nil, fmt.Errorf("mcp: Config, Profile, Queue and Exec are all required")
 	}
-	return &Server{cfg: o.Config, profile: o.Profile, queue: o.Queue, exec: o.Exec, waitFor: o.ApprovalWait}, nil
+	return &Server{cfg: o.Config, profile: o.Profile, queue: o.Queue, exec: o.Exec,
+		servers: o.Servers, waitFor: o.ApprovalWait}, nil
 }
 
 // --- JSON-RPC 2.0 ---
@@ -245,11 +259,24 @@ func (s *Server) discover() toolResult {
 		Category string `json:"category"`
 		Host     string `json:"host"`
 		Actions  int    `json:"actions"`
+		// Kind tells an agent whether it is using a capability we modelled or a
+		// server someone else wrote, which affects how literally the action
+		// descriptions should be read.
+		Kind string `json:"kind"`
 	}
 	var out []cat
 	for _, name := range s.profile.Services() {
 		svc, _ := s.cfg.Service(name)
-		out = append(out, cat{Category: name, Host: svc.Entry().Host, Actions: len(s.profile.Capabilities(name))})
+		out = append(out, cat{Category: name, Host: svc.Entry().Host,
+			Actions: len(s.profile.Capabilities(name)), Kind: "service"})
+	}
+	for _, name := range s.cfg.Servers() {
+		tools := s.serverTools(name)
+		if len(tools) == 0 {
+			continue
+		}
+		srv, _ := s.cfg.Server(name)
+		out = append(out, cat{Category: name, Host: srv.Host, Actions: len(tools), Kind: "fronted server"})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Category < out[j].Category })
 	if len(out) == 0 {
@@ -259,6 +286,22 @@ func (s *Server) discover() toolResult {
 }
 
 func (s *Server) actions(category string) toolResult {
+	if s.cfg.IsServer(category) {
+		tools := s.serverTools(category)
+		if len(tools) == 0 {
+			return errText("no category %q is available to you", category)
+		}
+		type act struct {
+			Action  string `json:"action"`
+			Summary string `json:"summary"`
+			Policy  string `json:"policy"`
+		}
+		out := make([]act, 0, len(tools))
+		for _, ft := range tools {
+			out = append(out, act{Action: ft.tool.Name, Summary: ft.tool.Description, Policy: ft.action.String()})
+		}
+		return obj(map[string]any{"category": category, "kind": "fronted server", "actions": out})
+	}
 	svc, ok := s.cfg.Service(category)
 	if !ok || len(s.profile.Capabilities(category)) == 0 {
 		return errText("no category %q is available to you", category)
@@ -277,6 +320,18 @@ func (s *Server) actions(category string) toolResult {
 }
 
 func (s *Server) details(category, action string) toolResult {
+	if s.cfg.IsServer(category) {
+		ft, ok := s.frontedTool(category, action)
+		if !ok {
+			return errText("no action %q is available to you in %q", action, category)
+		}
+		return obj(map[string]any{
+			"category": category, "action": ft.tool.Name, "kind": "fronted server",
+			"summary": ft.tool.Description, "policy": ft.action.String(),
+			// The child's own schema, passed through rather than reinterpreted.
+			"input_schema": ft.tool.InputSchema,
+		})
+	}
 	// A capability outside the profile is refused as unavailable, not described.
 	// Describing it would tell the agent that something it may not use exists.
 	if !s.profile.Visible(category, action) {
@@ -301,6 +356,9 @@ func (s *Server) details(category, action string) toolResult {
 }
 
 func (s *Server) execute(ctx context.Context, category, action, rawArgs string) toolResult {
+	if s.cfg.IsServer(category) {
+		return s.executeFronted(ctx, category, action, rawArgs)
+	}
 	if !s.profile.Visible(category, action) {
 		return errText("no action %q is available to you in %q", action, category)
 	}
