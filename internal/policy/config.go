@@ -90,6 +90,8 @@ func (s *Service) Policy(capability string) Action {
 type Config struct {
 	Workspace string
 	services  map[string]*Service
+	// profiles is name -> service -> capability -> allowed.
+	profiles map[string]map[string]map[string]bool
 }
 
 // Service finds a configured service.
@@ -126,6 +128,7 @@ type file struct {
 		Scopes       []string          `yaml:"scopes"`
 		Capabilities map[string]string `yaml:"capabilities"`
 	} `yaml:"services"`
+	Profiles map[string]map[string][]string `yaml:"profiles"`
 }
 
 // Load reads and validates a config file.
@@ -139,7 +142,11 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	cfg := &Config{Workspace: f.Workspace, services: map[string]*Service{}}
+	cfg := &Config{
+		Workspace: f.Workspace,
+		services:  map[string]*Service{},
+		profiles:  map[string]map[string]map[string]bool{},
+	}
 	for name, sf := range f.Services {
 		entry, ok := catalog.Lookup(name)
 		if !ok {
@@ -154,6 +161,21 @@ func Load(path string) (*Config, error) {
 			svc.explicit[cap] = a
 		}
 		cfg.services[name] = svc
+	}
+
+	for pname, svcs := range f.Profiles {
+		allow := map[string]map[string]bool{}
+		for sname, caps := range svcs {
+			if _, ok := cfg.services[sname]; !ok {
+				return nil, fmt.Errorf("%s: profile %q names service %q, which is not configured", path, pname, sname)
+			}
+			set := map[string]bool{}
+			for _, c := range caps {
+				set[c] = true
+			}
+			allow[sname] = set
+		}
+		cfg.profiles[pname] = allow
 	}
 	return cfg, nil
 }
