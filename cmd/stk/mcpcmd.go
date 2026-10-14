@@ -40,8 +40,17 @@ func cmdMCP(args []string) error {
 		return fmt.Errorf("unknown profile %q; declared: %s", profile, strings.Join(cfg.Profiles(), ", "))
 	}
 	svc := newService(cfg, store)
+	defer svc.closeHosts()
+	// A fronted child needs the broker's address, so the broker starts here too.
+	if _, _, dir, err := loadForRun(); err == nil {
+		if sess, serr := startBroker(cfg, store, dir); serr == nil {
+			defer sess.stop()
+			svc.childEnvFor = sess.childEnvFor
+		}
+	}
 	srv, err := mcp.NewServer(mcp.Options{
 		Config: cfg, Profile: prof, Queue: svc.queue, Exec: svc.perform,
+		Servers: svc.frontedServer,
 		// An agent waiting on stdio cannot be left blocked indefinitely, but a
 		// short wait lets a human approve in time to keep the turn alive.
 		ApprovalWait: 90 * time.Second,

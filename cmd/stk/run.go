@@ -18,6 +18,9 @@ type session struct {
 	broker *broker.Broker
 	env    []string
 	stop   func()
+	// childEnvFor builds the environment for one fronted server: the same
+	// proxy and CA as any other child, with that server's placeholder.
+	childEnvFor func(server string) []string
 }
 
 // startBroker brings up a broker on a loopback port.
@@ -49,58 +52,38 @@ func startBroker(cfg *policy.Config, store *credential.Store, dir string) (*sess
 
 	proxy := "http://" + ln.Addr().String()
 	env := childEnv(cfg, proxy, caPath)
-	return &session{broker: b, env: env, stop: func() { ln.Close() }}, nil
+	forServer := func(name string) []string {
+		srv, ok := cfg.Server(name)
+		if !ok {
+			return env
+		}
+		ph := map[string]string{}
+		if srv.EnvVar != "" {
+			ph[srv.EnvVar] = broker.Placeholder(name)
+		}
+		return broker.ChildEnv(broker.OSEnv(), proxy, caPath, ph, srv.Env)
+	}
+	return &session{broker: b, env: env, stop: func() { ln.Close() }, childEnvFor: forServer}, nil
 }
 
-// childEnv builds the environment a brokered child runs with.
-//
-// Three things here come straight from spiking real clients:
-//
-//   - NODE_USE_ENV_PROXY is set, because Node's fetch ignores proxy environment
-//     variables by default and would otherwise go straight out and succeed,
-//     which is the silent failure this product exists to prevent.
-//   - NO_PROXY is cleared, because it is a confirmed bypass: anything that can
-//     set it can opt itself out of the broker.
-//   - The CA is announced in four different variables, because curl, Go, Python
-//     and Node each read a different one.
+// childEnv builds the environment for a command run under `stk run`, using the
+// shared implementation so the placeholder, proxy and CA rules cannot drift
+// from the ones a fronted MCP server gets.
 func childEnv(cfg *policy.Config, proxyURL, caPath string) []string {
-	env := os.Environ()
-	drop := map[string]bool{
-		"NO_PROXY": true, "no_proxy": true, // a confirmed bypass
-		"HTTPS_PROXY": true, "https_proxy": true,
-		"HTTP_PROXY": true, "http_proxy": true,
-	}
-	out := make([]string, 0, len(env)+10)
-	for _, kv := range env {
-		name := kv
-		if i := indexByte(kv, '='); i >= 0 {
-			name = kv[:i]
-		}
-		if drop[name] {
-			continue
-		}
-		out = append(out, kv)
-	}
-	out = append(out,
-		"HTTPS_PROXY="+proxyURL,
-		"https_proxy="+proxyURL,
-		"HTTP_PROXY="+proxyURL,
-		"http_proxy="+proxyURL,
-		"SSL_CERT_FILE="+caPath,
-		"CURL_CA_BUNDLE="+caPath,
-		"REQUESTS_CA_BUNDLE="+caPath,
-		"NODE_EXTRA_CA_CERTS="+caPath,
-		"NODE_USE_ENV_PROXY=1",
-		"STK_BROKERED=1",
-	)
-	// The placeholder goes where each client expects its credential.
+	placeholders := map[string]string{}
 	for _, name := range cfg.Services() {
 		svc, _ := cfg.Service(name)
 		if v := svc.Entry().EnvVar; v != "" {
-			out = append(out, v+"="+broker.Placeholder(name))
+			placeholders[v] = broker.Placeholder(name)
 		}
 	}
-	return out
+	for _, name := range cfg.Servers() {
+		srv, _ := cfg.Server(name)
+		if srv.EnvVar != "" {
+			placeholders[srv.EnvVar] = broker.Placeholder(name)
+		}
+	}
+	return broker.ChildEnv(broker.OSEnv(), proxyURL, caPath, placeholders, nil)
 }
 
 func indexByte(s string, b byte) int {

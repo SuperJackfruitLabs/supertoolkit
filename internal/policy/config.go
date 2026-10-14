@@ -92,6 +92,8 @@ type Config struct {
 	services  map[string]*Service
 	// profiles is name -> service -> capability -> allowed.
 	profiles map[string]map[string]map[string]bool
+	// servers are MCP servers we did not write, fronted as categories.
+	servers map[string]*Server
 }
 
 // Service finds a configured service.
@@ -117,6 +119,11 @@ func (c *Config) InterceptHosts() map[string]bool {
 	for _, s := range c.services {
 		out[s.entry.Host] = true
 	}
+	// A fronted server's host is intercepted too: that is how its placeholder
+	// becomes a real credential on the way out.
+	for _, s := range c.servers {
+		out[s.Host] = true
+	}
 	return out
 }
 
@@ -129,6 +136,17 @@ type file struct {
 		Capabilities map[string]string `yaml:"capabilities"`
 	} `yaml:"services"`
 	Profiles map[string]map[string][]string `yaml:"profiles"`
+	Servers  map[string]serverFile          `yaml:"servers"`
+}
+
+// serverFile mirrors one `servers:` entry on disk.
+type serverFile struct {
+	Command      string            `yaml:"command"`
+	Args         []string          `yaml:"args"`
+	Host         string            `yaml:"host"`
+	EnvVar       string            `yaml:"env_var"`
+	Env          map[string]string `yaml:"env"`
+	Capabilities map[string]string `yaml:"capabilities"`
 }
 
 // Load reads and validates a config file.
@@ -146,6 +164,7 @@ func Load(path string) (*Config, error) {
 		Workspace: f.Workspace,
 		services:  map[string]*Service{},
 		profiles:  map[string]map[string]map[string]bool{},
+		servers:   map[string]*Server{},
 	}
 	for name, sf := range f.Services {
 		entry, ok := catalog.Lookup(name)
@@ -163,11 +182,17 @@ func Load(path string) (*Config, error) {
 		cfg.services[name] = svc
 	}
 
+	if err := cfg.loadServers(path, f.Servers); err != nil {
+		return nil, err
+	}
+
 	for pname, svcs := range f.Profiles {
 		allow := map[string]map[string]bool{}
 		for sname, caps := range svcs {
-			if _, ok := cfg.services[sname]; !ok {
-				return nil, fmt.Errorf("%s: profile %q names service %q, which is not configured", path, pname, sname)
+			_, isService := cfg.services[sname]
+			_, isServer := cfg.servers[sname]
+			if !isService && !isServer {
+				return nil, fmt.Errorf("%s: profile %q names %q, which is neither a configured service nor a server", path, pname, sname)
 			}
 			set := map[string]bool{}
 			for _, c := range caps {
