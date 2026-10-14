@@ -83,10 +83,7 @@ func (s *service) closeHosts() {
 
 func newService(cfg *policy.Config, store *credential.Store) *service {
 	client := &http.Client{Timeout: 60 * time.Second}
-	acq := &credential.Acquirer{
-		Material: store.Material,
-		Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
-	}
+	acqs := newAcquirers(cfg, store, client)
 	return &service{
 		cfg: cfg, store: store, queue: approval.New(approvalTTL),
 		hosts: map[string]*mcphost.Host{},
@@ -95,7 +92,7 @@ func newService(cfg *policy.Config, store *credential.Store) *service {
 			if !ok {
 				return nil, fmt.Errorf("unknown service %q", svcName)
 			}
-			if err := authorize(ctx, svcName, svc.Entry(), req, store, acq); err != nil {
+			if err := authorize(ctx, svcName, svc.Entry(), req, store, acqs); err != nil {
 				return nil, err
 			}
 			req.Header.Set("User-Agent", "supertoolkit/"+version)
@@ -110,7 +107,7 @@ func newService(cfg *policy.Config, store *credential.Store) *service {
 // single place where a credential meets a request and no second path to drift.
 // Three of the four arms never put a long-lived secret on the wire.
 func authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Request,
-	store *credential.Store, acq *credential.Acquirer) error {
+	store *credential.Store, acqs *acquirers) error {
 	switch e.Auth {
 	case catalog.AuthSigV4:
 		m, err := store.Material(name)
@@ -122,12 +119,23 @@ func authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Req
 	case catalog.AuthGitHubApp:
 		// The private key stays in the broker; a short-lived installation token
 		// goes out, and twenty concurrent callers cause one exchange.
-		tok, err := acq.Token(ctx, name)
+		tok, err := acqs.githubApp.Token(ctx, name)
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Authorization", "Bearer "+tok)
 		req.Header.Set("Accept", "application/vnd.github+json")
+		return nil
+
+	case catalog.AuthOAuth2:
+		// The refresh token stays in the broker and only ever reaches the
+		// provider's own token endpoint; a short-lived access token goes to
+		// the API.
+		tok, err := acqs.oauth2.Token(ctx, name)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
 		return nil
 
 	default:

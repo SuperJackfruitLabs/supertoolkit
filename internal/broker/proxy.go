@@ -125,7 +125,9 @@ func New(o Options) (*Broker, error) {
 	}
 	for _, name := range o.Config.Services() {
 		s, _ := o.Config.Service(name)
-		b.byHost[s.Entry().Host] = s
+		for _, h := range s.Entry().Hosts() {
+			b.byHost[h] = s
+		}
 	}
 	return b, nil
 }

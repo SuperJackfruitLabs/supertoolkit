@@ -115,23 +115,31 @@ func cmdAdd(args []string) error {
 // to the broker, and no credential passes through a keyboard at all.
 func cmdConnect(args []string) error {
 	var name string
-	device := false
+	device, browser := false, false
 	for _, a := range args {
 		switch a {
 		case "--device":
 			device = true
+		case "--browser":
+			browser = true
 		default:
 			if name != "" {
-				return fmt.Errorf("usage: stk connect <service> [--device]")
+				return fmt.Errorf("usage: stk connect <service> [--device|--browser]")
 			}
 			name = a
 		}
 	}
 	if name == "" {
-		return fmt.Errorf("usage: stk connect <service> [--device]   (the credential is read from stdin)")
+		return fmt.Errorf("usage: stk connect <service> [--device|--browser]   (the credential is read from stdin)")
+	}
+	if device && browser {
+		return fmt.Errorf("--device and --browser are two different flows; pick one")
 	}
 	if device {
 		return connectDevice(name, os.Stdout)
+	}
+	if browser {
+		return connectBrowser(name, os.Stdout, os.Stdin, openInBrowser)
 	}
 	if _, ok := catalog.Lookup(name); !ok {
 		return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())

@@ -188,3 +188,97 @@ func TestGitHubAppExchangeErrorDoesNotLeakTheKey(t *testing.T) {
 		t.Fatalf("the error leaked key material: %v", err)
 	}
 }
+
+// The failure that surfaces hours later: a provider rotates the refresh token,
+// the rotation is not written back, and the next refresh is refused.
+func TestRotatedRefreshTokenIsPersistedBeforeTheAccessTokenIsReturned(t *testing.T) {
+	stored := Material{FieldClientID: "cid", FieldRefreshToken: "r1"}
+	var persisted []string
+
+	ex := ExchangeRefresh(
+		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
+			// Behave like a rotating provider: r1 -> r2.
+			if m[FieldRefreshToken] != "r1" {
+				return "", "", time.Time{}, fmt.Errorf("the provider refused a stale refresh token")
+			}
+			return "access-1", "r2", time.Now().Add(2 * time.Hour), nil
+		},
+		func(service string, m Material) error {
+			persisted = append(persisted, m[FieldRefreshToken])
+			stored = m
+			return nil
+		},
+	)
+
+	access, expires, err := ex(context.Background(), "x", stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if access != "access-1" {
+		t.Errorf("access = %q", access)
+	}
+	if expires.IsZero() {
+		t.Error("no expiry, so the token would be cached forever")
+	}
+	if len(persisted) != 1 || persisted[0] != "r2" {
+		t.Fatalf("persisted %v, want the rotated token written back exactly once", persisted)
+	}
+	if stored[FieldRefreshToken] != "r2" {
+		t.Errorf("the store still holds %q", stored[FieldRefreshToken])
+	}
+	// The client id must survive the rotation — a Material that loses it cannot
+	// refresh again.
+	if stored[FieldClientID] != "cid" {
+		t.Error("the rotation dropped the client id")
+	}
+}
+
+// A rotation with nowhere to go is an error now rather than a lockout later.
+
+func TestRotationWithNoPlaceToStoreFailsNow(t *testing.T) {
+	ex := ExchangeRefresh(
+		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
+			return "access", "rotated", time.Now().Add(time.Hour), nil
+		}, nil)
+	_, _, err := ex(context.Background(), "x", Material{FieldClientID: "c", FieldRefreshToken: "old"})
+	if err == nil {
+		t.Fatal("a rotation with nowhere to store it was accepted")
+	}
+	if !strings.Contains(err.Error(), "next refresh would fail") {
+		t.Errorf("err = %v, want it to say what breaks", err)
+	}
+}
+
+// A failed write is reported, because the access token in hand still works and
+// the breakage is entirely in the future.
+func TestFailedPersistenceSaysToReconnect(t *testing.T) {
+	ex := ExchangeRefresh(
+		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
+			return "access", "rotated", time.Now().Add(time.Hour), nil
+		},
+		func(string, Material) error { return fmt.Errorf("disk full") })
+	_, _, err := ex(context.Background(), "x", Material{FieldClientID: "c", FieldRefreshToken: "old"})
+	if err == nil {
+		t.Fatal("a failed write was ignored")
+	}
+	if !strings.Contains(err.Error(), "reconnect") {
+		t.Errorf("err = %v, want it to say what the operator should do", err)
+	}
+}
+
+// A provider that does not rotate must not cause a pointless write on every
+// single refresh.
+func TestNonRotatingProviderWritesNothing(t *testing.T) {
+	writes := 0
+	ex := ExchangeRefresh(
+		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
+			return "access", m[FieldRefreshToken], time.Now().Add(time.Hour), nil
+		},
+		func(string, Material) error { writes++; return nil })
+	if _, _, err := ex(context.Background(), "x", Material{FieldClientID: "c", FieldRefreshToken: "same"}); err != nil {
+		t.Fatal(err)
+	}
+	if writes != 0 {
+		t.Errorf("wrote %d times for a provider that did not rotate", writes)
+	}
+}

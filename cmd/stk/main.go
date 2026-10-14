@@ -19,6 +19,8 @@ func usage() {
   stk connect <service>       store a credential, read from stdin
   stk connect <service> --device
                               connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
   stk handover key|seal|open  move a credential to a broker that has no browser
   stk run -- <command>        run a command with the broker in front of it
   stk serve                   run the broker daemon on a Unix socket
