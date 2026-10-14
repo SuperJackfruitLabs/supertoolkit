@@ -81,6 +81,10 @@ func (c *CA) Pool() *x509.CertPool {
 	return p
 }
 
+// LeafForTest mints a leaf, for tests that need to stand up a provider signed
+// by a CA of their own. Production code uses leafFor through the handshake path.
+func (c *CA) LeafForTest(host string) (*tls.Certificate, error) { return c.leafFor(host) }
+
 // leafFor mints, and then reuses, a leaf for one hostname.
 func (c *CA) leafFor(host string) (*tls.Certificate, error) {
 	c.mu.Lock()

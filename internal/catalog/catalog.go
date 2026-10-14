@@ -42,6 +42,10 @@ type Entry struct {
 	Name string
 	// Host is the single hostname the broker intercepts for this service.
 	Host string
+	// EnvVar is where a client expects to find its credential. `stk run` puts
+	// the worthless placeholder here, so the client is configured normally and
+	// never learns it is being brokered.
+	EnvVar string
 	// Placement and Field say how to inject. Field names the header or query
 	// parameter for APIKeyHeader and QueryParam, and the username for
 	// BasicHeader.
@@ -55,7 +59,7 @@ type Entry struct {
 // service directly.
 var builtin = map[string]*Entry{
 	"github": {
-		Name: "github", Host: "api.github.com", Placement: BearerHeader,
+		Name: "github", Host: "api.github.com", Placement: BearerHeader, EnvVar: "GH_TOKEN",
 		Capabilities: []Capability{
 			{"list_repos", Read},
 			{"read_file", Read},

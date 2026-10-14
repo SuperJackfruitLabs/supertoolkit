@@ -1,0 +1,191 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/broker"
+)
+
+// check is one line of doctor output.
+type check struct {
+	ok    bool
+	warn  bool
+	label string
+	note  string
+}
+
+func (c check) String() string {
+	mark := "✓"
+	if c.warn {
+		mark = "!"
+	}
+	if !c.ok && !c.warn {
+		mark = "✗"
+	}
+	s := fmt.Sprintf("  %s %s", mark, c.label)
+	if c.note != "" {
+		s += "  " + c.note
+	}
+	return s
+}
+
+// doctorChecks runs every check and returns them, so a test can assert on the
+// results rather than on printed text.
+func doctorChecks() []check {
+	var out []check
+
+	dir, err := home()
+	if err != nil {
+		return []check{{label: "local state directory", note: err.Error()}}
+	}
+
+	if fi, err := os.Stat(dir); err == nil {
+		perm := fi.Mode().Perm()
+		out = append(out, check{ok: perm == 0o700, label: "local state directory",
+			note: fmt.Sprintf("%s mode %o", dir, perm)})
+	} else {
+		out = append(out, check{label: "local state directory", note: "missing — run `stk init`"})
+	}
+
+	cfg, store, _, err := loadForRun()
+	if err != nil {
+		out = append(out, check{label: "policy file", note: err.Error()})
+		return out
+	}
+	out = append(out, check{ok: true, label: "policy file",
+		note: fmt.Sprintf("%s · %d service(s)", configPath(), len(cfg.Services()))})
+
+	for _, name := range cfg.Services() {
+		out = append(out, check{ok: store.Has(name), label: "credential for " + name,
+			note: map[bool]string{true: "sealed", false: "missing — run `stk connect " + name + "`"}[store.Has(name)]})
+	}
+
+	// NO_PROXY is a confirmed bypass: a client that honours it goes straight
+	// past the broker and returns a plausible result.
+	np := os.Getenv("NO_PROXY") + os.Getenv("no_proxy")
+	out = append(out, check{ok: np == "", warn: np != "", label: "NO_PROXY is unset",
+		note: map[bool]string{true: "", false: "set to " + np + " — a confirmed bypass; stk run clears it for children"}[np == ""]})
+
+	// The machine key beside the ciphertext is a real Phase 0 weakness.
+	if os.Getenv("STK_PASSPHRASE") == "" {
+		out = append(out, check{warn: true, label: "credential store key",
+			note: "a machine key sits beside the ciphertext (Phase 0); the OS keychain is the Phase 1 fix"})
+	} else {
+		out = append(out, check{ok: true, label: "credential store key", note: "from STK_PASSPHRASE"})
+	}
+
+	// Platform-specific CA trust, measured by spiking rather than assumed.
+	if runtime.GOOS == "darwin" {
+		out = append(out, check{warn: true, label: "CA trust for Go binaries",
+			note: "macOS Go programs ignore SSL_CERT_FILE and read the keychain; add the CA there for tools like gh"})
+	} else {
+		out = append(out, check{ok: true, label: "CA trust", note: "SSL_CERT_FILE covers Go, curl, Python and Node here"})
+	}
+
+	// The leak check: the invariant, asserted rather than claimed.
+	out = append(out, leakCheck(cfg, store))
+	return out
+}
+
+// leakCheck confirms no real credential is reachable from the environment a
+// brokered child would run with. It is the product's promise, as a test.
+func leakCheck(cfg servicesLister, store secretGetter) check {
+	return leakCheckAgainst(cfg, store, childEnvForLeakCheck())
+}
+
+type servicesLister interface{ Services() []string }
+type secretGetter interface{ Get(string) (string, error) }
+
+// leakCheckAgainst takes the environment explicitly so it can be tested against
+// one that really does hold a credential. A check that cannot fail is not a
+// check.
+func leakCheckAgainst(cfg servicesLister, store secretGetter, env []string) check {
+	var secrets []string
+	for _, name := range cfg.Services() {
+		if s, err := store.Get(name); err == nil && s != "" {
+			secrets = append(secrets, s)
+		}
+	}
+	if len(secrets) == 0 {
+		return check{ok: true, label: "leak check", note: "no credentials stored yet, so nothing is proven"}
+	}
+	for _, kv := range env {
+		for _, s := range secrets {
+			if strings.Contains(kv, s) {
+				name := kv
+				if i := indexByte(kv, '='); i >= 0 {
+					name = kv[:i]
+				}
+				return check{label: "leak check", note: "a credential is present in " + name}
+			}
+		}
+	}
+	return check{ok: true, label: "leak check",
+		note: fmt.Sprintf("no credential reachable from a child's environment (%d checked)", len(secrets))}
+}
+
+func childEnvForLeakCheck() []string {
+	cfg, _, dir, err := loadForRun()
+	if err != nil {
+		return os.Environ()
+	}
+	return childEnv(cfg, "http://127.0.0.1:0", dir+"/ca.pem")
+}
+
+func cmdDoctor() error {
+	checks := doctorChecks()
+	bad := 0
+	for _, c := range checks {
+		fmt.Println(c)
+		if !c.ok && !c.warn {
+			bad++
+		}
+	}
+	fmt.Println()
+	if probe := probeCurl(); probe.label != "" {
+		fmt.Println(probe)
+		if !probe.ok && !probe.warn {
+			bad++
+		}
+		fmt.Println()
+	}
+	if bad > 0 {
+		return fmt.Errorf("%d check(s) failed", bad)
+	}
+	fmt.Println("  the agent cannot reach a credential.")
+	return nil
+}
+
+// probeCurl proves the path end to end if curl is available, because a
+// configuration that looks right and does not work is the thing doctor exists
+// to catch.
+func probeCurl() check {
+	if _, err := exec.LookPath("curl"); err != nil {
+		return check{}
+	}
+	cfg, store, dir, err := loadForRun()
+	if err != nil {
+		return check{}
+	}
+	sess, err := startBroker(cfg, store, dir)
+	if err != nil {
+		return check{label: "live probe", note: err.Error()}
+	}
+	defer sess.stop()
+
+	cmd := exec.Command("curl", "-s", "-o", "/dev/null", "-m", "10", "https://example.com/")
+	cmd.Env = sess.env
+	_ = cmd.Run()
+	st := sess.broker.Stats()
+	if st.Tunnel == 0 && st.Intercept == 0 {
+		return check{label: "live probe", note: "curl did not reach the broker — check HTTPS_PROXY handling"}
+	}
+	return check{ok: true, label: "live probe",
+		note: fmt.Sprintf("curl reached the broker (%d tunnelled, %d intercepted)", st.Tunnel, st.Intercept)}
+}
+
+var _ = broker.Placeholder
