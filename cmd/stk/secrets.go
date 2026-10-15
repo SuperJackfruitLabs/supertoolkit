@@ -39,7 +39,12 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 					}
 					o := svc.OAuth2()
 					if o.TokenURL == "" {
-						return "", "", time.Time{}, fmt.Errorf("%s has no OAuth 2.0 token endpoint", service)
+						// A device-granted token refreshes at the device
+						// flow's own token endpoint, which is the same one.
+						o.TokenURL = svc.Device().TokenURL
+					}
+					if o.TokenURL == "" {
+						return "", "", time.Time{}, fmt.Errorf("%s has no token endpoint to refresh against", service)
 					}
 					tok, err := oauth2flow.Refresh(ctx, oauth2flow.Config{
 						TokenURL:     o.TokenURL,
@@ -63,6 +68,36 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 	}
 }
 
+// effectiveAuth is the operation a stored credential actually performs.
+//
+// The catalogue says what a service usually needs; the store says what was
+// actually obtained, and the two can differ. A GitHub token granted through the
+// device flow is a plain bearer token to the API and an OAuth 2.0 grant to the
+// token endpoint, so the catalogue calls it a substitution while it is really
+// an acquisition.
+//
+// That matters because the difference is what every user-facing line about the
+// credential is derived from. `stk doctor` told an operator "the stored token
+// is what goes on the wire, so treat it as long-lived" about a credential that
+// refreshes itself — the second time one of these sentences described the
+// catalogue instead of the thing in front of it.
+func effectiveAuth(entry *catalog.Entry, store *credential.Store, service string) catalog.Auth {
+	if refreshable(store, service) {
+		return catalog.AuthOAuth2
+	}
+	return entry.Auth
+}
+
+// refreshable reports whether the stored credential can renew itself.
+func refreshable(store *credential.Store, service string) bool {
+	for _, f := range store.Fields(service) {
+		if f == credential.FieldRefreshToken {
+			return true
+		}
+	}
+	return false
+}
+
 // secretSource is what the egress proxy asks for a service's credential.
 //
 // Three of the five schemes never hand over a long-lived secret: two acquire a
@@ -75,6 +110,13 @@ func secretSource(cfg *policy.Config, store *credential.Store, acqs *acquirers) 
 		svc, ok := cfg.Service(service)
 		if !ok {
 			return "", fmt.Errorf("unknown service %q", service)
+		}
+		// A credential that carries a refresh token renews itself, whatever the
+		// catalogue says its scheme is. A device-granted GitHub token is a
+		// plain bearer token to the API and an OAuth 2.0 grant to the token
+		// endpoint, and only what was stored can tell the difference.
+		if refreshable(store, service) {
+			return acqs.oauth2.Token(context.Background(), service)
 		}
 		switch svc.Entry().Auth {
 		case catalog.AuthGitHubApp:

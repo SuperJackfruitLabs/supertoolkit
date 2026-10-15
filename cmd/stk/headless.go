@@ -101,7 +101,7 @@ func connectDevice(name string, out io.Writer) error {
 	}
 
 	fmt.Fprintf(out, "  waiting — checking every %s, giving up at %s\n\n",
-		auth.Interval, auth.ExpiresAt.Format(time.Kitchen))
+		auth.Interval, auth.ExpiresAt.Local().Format("15:04 MST"))
 
 	tok, err := deviceflow.Poll(ctx, deviceflow.Config{
 		TokenURL: dev.TokenURL, ClientID: dev.ClientID,
@@ -114,18 +114,40 @@ func connectDevice(name string, out io.Writer) error {
 		return err
 	}
 
-	if err := store.PutMaterial(name, credential.Material{credential.FieldToken: tok.AccessToken}); err != nil {
+	// Keep the refresh token when the provider issues one.
+	//
+	// GitHub returns one whenever the app has token expiration enabled, and
+	// discarding it meant a device-granted connection died at its expiry and
+	// needed a person with a phone again — on a machine with no browser, which
+	// is the one place that cannot be asked. Whether a credential can renew
+	// itself is a property of what the provider issued, not of the catalogue,
+	// so the stored material carries what it needs to do so.
+	m := credential.Material{credential.FieldToken: tok.AccessToken}
+	if tok.RefreshToken != "" {
+		m[credential.FieldRefreshToken] = tok.RefreshToken
+		m[credential.FieldClientID] = dev.ClientID
+	}
+	if err := store.PutMaterial(name, m); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  %s connected · %s\n", name, svc.Entry().Auth)
+	scheme := effectiveAuth(svc.Entry(), store, name)
+	fmt.Fprintf(out, "  %s connected · %s\n", name, scheme)
 	fmt.Fprintf(out, "  sealed in %s, never in %s\n", dir, configPath())
 	if tok.Scope != "" {
 		fmt.Fprintf(out, "  granted: %s\n", tok.Scope)
 	}
 	if !tok.ExpiresAt.IsZero() {
-		fmt.Fprintf(out, "  expires %s\n", tok.ExpiresAt.Format(time.RFC3339))
+		// Local time with its zone: a VPS on UTC and an operator on another
+		// clock cannot reconcile a bare time, and "giving up at 5:28AM" meant
+		// nothing to someone whose morning it was not.
+		fmt.Fprintf(out, "  the access token expires %s\n", tok.ExpiresAt.Local().Format("2006-01-02 15:04 MST"))
+		if tok.RefreshToken != "" {
+			fmt.Fprintf(out, "  a refresh token was issued and stored, so this renews itself without you\n")
+		} else {
+			fmt.Fprintf(out, "  no refresh token was issued, so you will have to connect again then\n")
+		}
 	}
-	fmt.Fprintf(out, "  %s\n", svc.Entry().Auth.Reassurance())
+	fmt.Fprintf(out, "  %s\n", scheme.Reassurance())
 	return nil
 }
 

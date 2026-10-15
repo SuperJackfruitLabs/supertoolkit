@@ -63,7 +63,9 @@ func doctorChecks() []check {
 
 	for _, name := range cfg.Services() {
 		svc, _ := cfg.Service(name)
-		auth := svc.Entry().Auth
+		// What the stored credential actually does, not what the catalogue
+		// expected it to be.
+		auth := effectiveAuth(svc.Entry(), store, name)
 		note := auth.String()
 		if !store.Has(name) {
 			// On a machine with no browser, `stk connect` means pasting a
