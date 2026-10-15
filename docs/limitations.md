@@ -125,9 +125,13 @@ Each of these is a product-shape decision. None is blocked; none is started.
 - **One client id per service, in the committed policy file.** supertoolkit
   ships none: a shared client id would make every installation look like the
   same app to the provider. You register your own.
-- **The OAuth redirect port is fixed at 7837**, because a provider matches the
-  redirect URI exactly against what was registered. A random port would mean
-  re-registering before every connect.
+- **The OAuth redirect must be a loopback URL.** The broker listens for the
+  redirect itself, so a callback pointing anywhere else never reaches the
+  machine — and one reachable from the network would let anybody on it deliver
+  a code there. `127.0.0.1` and `localhost` both work, on any port and path.
+  The default is `http://127.0.0.1:7837/callback`; an app that is already
+  registered with a different loopback callback names it under
+  `oauth2.redirect_uri` rather than being edited to suit us.
 - **A credential's rotation is written back before the access token is
   returned.** If that write fails, the connect fails loudly — the alternative is
   a lockout hours later, nowhere near its cause.

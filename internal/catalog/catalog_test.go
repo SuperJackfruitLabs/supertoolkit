@@ -416,3 +416,46 @@ func TestMultiHostServiceTargetsTheRightHostPerCapability(t *testing.T) {
 		}
 	}
 }
+
+// Reassurance() and LongLivedOnTheWire() describe the same fact, and must not
+// contradict each other.
+//
+// AuthOAuth2 had no case in Reassurance and fell through to the plain-token
+// default, so `stk doctor` told an operator "the stored token is what goes on
+// the wire, so treat it as long-lived" about a refresh token that never reaches
+// the API at all — while LongLivedOnTheWire() correctly said otherwise. A
+// reassurance that is wrong is worse than none: it is the sentence someone
+// decides how carefully to handle a credential by.
+func TestEveryAuthSchemeExplainsItselfConsistently(t *testing.T) {
+	for _, a := range []Auth{AuthToken, AuthSigV4, AuthGitHubApp, AuthOAuth2} {
+		r := a.Reassurance()
+		if r == "" {
+			t.Errorf("%v has no reassurance", a)
+			continue
+		}
+		longLived := a.LongLivedOnTheWire()
+		saysLongLived := strings.Contains(r, "long-lived")
+		saysNeverOnTheWire := strings.Contains(r, "never goes on the wire") ||
+			strings.Contains(r, "never the API")
+
+		if longLived != saysLongLived {
+			t.Errorf("%v: LongLivedOnTheWire()=%v but the reassurance says %q — they contradict",
+				a, longLived, r)
+		}
+		if longLived && saysNeverOnTheWire {
+			t.Errorf("%v sends a long-lived secret but claims it never goes on the wire: %q", a, r)
+		}
+		if !longLived && !saysNeverOnTheWire {
+			t.Errorf("%v keeps its secret off the wire but the reassurance does not say so: %q", a, r)
+		}
+	}
+	// And no two schemes share a sentence: a scheme that borrowed another's
+	// text is how the OAuth 2.0 one came to be wrong.
+	seen := map[string]Auth{}
+	for _, a := range []Auth{AuthToken, AuthSigV4, AuthGitHubApp, AuthOAuth2} {
+		if prev, dup := seen[a.Reassurance()]; dup {
+			t.Errorf("%v and %v share a reassurance, so one of them is describing the other", prev, a)
+		}
+		seen[a.Reassurance()] = a
+	}
+}

@@ -240,6 +240,12 @@ type Receiver struct {
 // Listen starts the receiver. The returned URI is what must be registered with
 // the provider and sent in the authorization request.
 func Listen(port int, state string) (*Receiver, string, error) {
+	return ListenAt(port, "/callback", state)
+}
+
+// ListenAt is Listen on a chosen path, for an already-registered callback whose
+// path is not ours to choose.
+func ListenAt(port int, path, state string) (*Receiver, string, error) {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return nil, "", fmt.Errorf("could not listen for the provider's redirect: %w", err)
@@ -247,11 +253,14 @@ func Listen(port int, state string) (*Receiver, string, error) {
 	r := &Receiver{
 		ln: ln, got: make(chan Redirect, 1), fail: make(chan error, 1), state: state,
 	}
+	if path == "" {
+		path = "/callback"
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", r.callback)
+	mux.HandleFunc(path, r.callback)
 	r.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go r.srv.Serve(ln)
-	return r, "http://" + ln.Addr().String() + "/callback", nil
+	return r, "http://" + ln.Addr().String() + path, nil
 }
 
 func (r *Receiver) callback(w http.ResponseWriter, req *http.Request) {

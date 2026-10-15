@@ -112,6 +112,7 @@ func (s *Service) OAuth2() catalog.OAuth2 {
 		o.AuthorizeURL = s.oauth2.AuthorizeURL
 		o.TokenURL = s.oauth2.TokenURL
 	}
+	o.RedirectURI = s.oauth2.RedirectURI
 	return o
 }
 
@@ -211,6 +212,13 @@ type deviceOverride struct {
 // why `stk connect --browser` reads it from stdin instead.
 type oauth2Override struct {
 	ClientID string `yaml:"client_id"`
+	// RedirectURI matches an already-registered callback.
+	//
+	// A provider validates this by exact match, and an operator with an
+	// existing app should not have to edit it to suit us. It must be a
+	// loopback address: the broker listens for the redirect itself, and a URI
+	// pointing anywhere else is one it can never receive.
+	RedirectURI string `yaml:"redirect_uri"`
 	// A self-hosted instance speaks the same protocol at other addresses, and
 	// the two endpoints move together for the same reason the device ones do:
 	// exchanging a code at a server that did not issue it never succeeds.

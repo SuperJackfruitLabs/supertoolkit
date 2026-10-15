@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -358,14 +360,24 @@ func connectBrowser(name string, out io.Writer, in io.Reader, openBrowser func(s
 	if err != nil {
 		return err
 	}
-	// Port 0 would give a different redirect URI every run, and a provider
-	// matches it exactly against what was registered. A fixed port is the only
-	// thing that works with a registered redirect.
-	rec, redirectURI, err := oauth2flow.Listen(oauthPort, state)
+	// A provider matches the redirect URI exactly against what was registered,
+	// so an operator with an existing app names theirs here and we listen on
+	// its port and path instead of insisting on ours.
+	port, path, err := loopbackRedirect(o.RedirectURI)
+	if err != nil {
+		return err
+	}
+	rec, redirectURI, err := oauth2flow.ListenAt(port, path, state)
 	if err != nil {
 		return err
 	}
 	defer rec.Close()
+	if o.RedirectURI != "" {
+		// Use their registered string verbatim: "localhost" and "127.0.0.1"
+		// are the same host and different strings, and the provider compares
+		// strings.
+		redirectURI = o.RedirectURI
+	}
 
 	flow := oauth2flow.Config{
 		AuthorizeURL: o.AuthorizeURL, TokenURL: o.TokenURL,
@@ -382,12 +394,20 @@ func connectBrowser(name string, out io.Writer, in io.Reader, openBrowser func(s
 	}
 	fmt.Fprintf(out, "\n  %s must be registered as a redirect URI for your app, exactly.\n\n", redirectURI)
 
+	// The URL is always printed, even when a browser opened.
+	//
+	// It was previously hidden on success, which cost exactly when it was worth
+	// most: a provider that refuses the request shows a generic page, and
+	// without the URL there is nothing to inspect. It also assumes the default
+	// browser is the one signed in to the right account, which is often not
+	// true for a work account — someone needs to be able to paste it elsewhere.
+	fmt.Fprintf(out, "  the request, in full:\n\n    %s\n\n", authURL)
 	if openBrowser != nil {
 		if err := openBrowser(authURL); err != nil {
-			fmt.Fprintf(out, "  could not open a browser (%v). Open this yourself:\n\n    %s\n\n", err, authURL)
+			fmt.Fprintf(out, "  could not open a browser (%v) — open the link above yourself.\n\n", err)
+		} else {
+			fmt.Fprintf(out, "  opened in your default browser. If that is not where you are signed in\n  to %s, paste the link into the one that is.\n\n", name)
 		}
-	} else {
-		fmt.Fprintf(out, "  open this:\n\n    %s\n\n", authURL)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -448,6 +468,46 @@ func connectBrowser(name string, out io.Writer, in io.Reader, openBrowser func(s
 // A variable rather than a constant only so a test can ask for an ephemeral
 // port and run alongside others.
 var oauthPort = 7837
+
+// loopbackRedirect reads a configured callback into a port and path.
+//
+// It must be loopback. The broker receives the redirect itself, so a URI
+// pointing at any other host is one it can never hear — and a redirect
+// reachable from the network is one anybody on that network can deliver a code
+// to.
+func loopbackRedirect(uri string) (int, string, error) {
+	if uri == "" {
+		return oauthPort, "/callback", nil
+	}
+	u, err := url.Parse(uri)
+	if err != nil {
+		return 0, "", fmt.Errorf("redirect_uri %q is not a URL: %w", uri, err)
+	}
+	host := u.Hostname()
+	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		return 0, "", fmt.Errorf(`redirect_uri %q points at %q.
+
+  it must be loopback — 127.0.0.1 or localhost — because the broker listens for
+  the redirect itself. A callback anywhere else never reaches this machine, and
+  one reachable from the network lets anybody on it deliver a code here.
+
+  register a loopback callback for the app, or use the device grant:
+    stk connect %s --device`, uri, host, "<service>")
+	}
+	port := oauthPort
+	if p := u.Port(); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n <= 0 || n > 65535 {
+			return 0, "", fmt.Errorf("redirect_uri %q has no usable port", uri)
+		}
+		port = n
+	}
+	path := u.Path
+	if path == "" {
+		path = "/"
+	}
+	return port, path, nil
+}
 
 func unsupportedOAuth2(name string, entry *catalog.Entry, o catalog.OAuth2) error {
 	if o.AuthorizeURL == "" || o.TokenURL == "" {

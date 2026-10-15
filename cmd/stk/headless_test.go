@@ -328,3 +328,50 @@ func TestConnectBrowserRefusesAGrantWithNoRefreshToken(t *testing.T) {
 		t.Errorf("err = %v, want it to name what is missing", err)
 	}
 }
+
+// A provider matches the redirect URI exactly against what was registered, so
+// an operator with an existing app must be able to name theirs rather than
+// edit the app to suit us.
+func TestAnAlreadyRegisteredRedirectIsHonoured(t *testing.T) {
+	port, path, err := loopbackRedirect("http://127.0.0.1:3000/oauth/x/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port != 3000 {
+		t.Errorf("port = %d, want 3000", port)
+	}
+	if path != "/oauth/x/callback" {
+		t.Errorf("path = %q, want the registered one", path)
+	}
+
+	// localhost and 127.0.0.1 are the same host and different strings, and the
+	// provider compares strings.
+	if _, _, err := loopbackRedirect("http://localhost:8080/cb"); err != nil {
+		t.Errorf("localhost was rejected: %v", err)
+	}
+	// The default stands when nothing is configured.
+	p, pa, _ := loopbackRedirect("")
+	if p != oauthPort || pa != "/callback" {
+		t.Errorf("default = %d %q", p, pa)
+	}
+}
+
+// The broker listens for the redirect itself, so a callback pointing anywhere
+// else can never reach this machine — and one reachable from the network lets
+// anybody on it deliver a code here.
+func TestANonLoopbackRedirectIsRefused(t *testing.T) {
+	for _, bad := range []string{
+		"https://example.com/callback",
+		"http://192.168.1.10:7837/callback",
+		"https://myapp.ngrok.io/cb",
+	} {
+		_, _, err := loopbackRedirect(bad)
+		if err == nil {
+			t.Errorf("redirect_uri %q was accepted", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "loopback") {
+			t.Errorf("err for %q = %v, want it to say why", bad, err)
+		}
+	}
+}

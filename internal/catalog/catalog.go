@@ -109,6 +109,8 @@ func (a Auth) Reassurance() string {
 		return "each request is signed in the broker; the stored key never goes on the wire"
 	case AuthGitHubApp:
 		return "the broker trades the stored key for a token that expires in an hour; the key never goes on the wire"
+	case AuthOAuth2:
+		return "the broker trades the stored refresh token for a short-lived access token; the refresh token only ever reaches the provider's token endpoint, never the API"
 	default:
 		return "the stored token is what goes on the wire, so treat it as long-lived"
 	}
@@ -147,6 +149,9 @@ type OAuth2 struct {
 	// endpoint, which `stk connect --browser` then reads from stdin rather than
 	// from the committed file.
 	Confidential bool
+	// RedirectURI, when set, is an already-registered callback to use instead
+	// of the default. Always loopback. Set from the policy file, never here.
+	RedirectURI string
 }
 
 // Supported reports whether the authorization-code path is configured.
