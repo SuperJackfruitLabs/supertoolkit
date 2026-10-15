@@ -55,6 +55,9 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 				// The rotation is written back to the same store the material
 				// came from, before the access token is handed out.
 				store.PutMaterial,
+				// And re-read from it when a refusal suggests another process
+				// rotated the token first.
+				store.Material,
 			),
 		},
 	}
