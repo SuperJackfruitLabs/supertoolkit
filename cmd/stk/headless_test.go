@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
 )
 
@@ -373,5 +374,155 @@ func TestANonLoopbackRedirectIsRefused(t *testing.T) {
 		if !strings.Contains(err.Error(), "loopback") {
 			t.Errorf("err for %q = %v, want it to say why", bad, err)
 		}
+	}
+}
+
+// GitHub issues a refresh token whenever the app has token expiration enabled,
+// and discarding it meant a device-granted connection died at its expiry and
+// needed a person with a phone again — on a machine with no browser, which is
+// the one place that cannot be asked.
+func TestDeviceFlowKeepsARefreshTokenWhenOneIsIssued(t *testing.T) {
+	const access, refresh = "gho_access_token", "ghr_refresh_token"
+	var polls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/device/code", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"device_code":"DEVICE-SECRET","user_code":"ABCD-1234",
+			"verification_uri":"https://example.invalid/device","interval":1,"expires_in":900}`)
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if polls.Add(1) == 1 {
+			fmt.Fprint(w, `{"error":"authorization_pending"}`)
+			return
+		}
+		// An app with token expiration enabled, as the operator's was.
+		fmt.Fprintf(w, `{"access_token":%q,"refresh_token":%q,"token_type":"bearer",
+			"scope":"repo,read:org","expires_in":28800,"refresh_token_expires_in":15897600}`, access, refresh)
+	})
+	prov := httptest.NewServer(mux)
+	t.Cleanup(prov.Close)
+
+	rig(t, fmt.Sprintf(`workspace: test
+services:
+  github:
+    scopes: []
+    device:
+      client_id: Ov23litestclientid
+      authorization_url: %s/device/code
+      token_url: %s/token
+`, prov.URL, prov.URL))
+
+	var out strings.Builder
+	if err := connectDevice("github", &out); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, _ := home()
+	pass, _, _ := credential.StoreKey(dir)
+	store, err := credential.OpenStore(dir, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := store.Material("github")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m[credential.FieldRefreshToken] != refresh {
+		t.Fatalf("the refresh token was dropped; the connection would die at its expiry and need a person with a phone on a headless machine")
+	}
+	// The client id must travel with it, or the refresh cannot be made.
+	if m[credential.FieldClientID] != "Ov23litestclientid" {
+		t.Errorf("client id = %q", m[credential.FieldClientID])
+	}
+	if m[credential.FieldToken] != access {
+		t.Errorf("access token = %q", m[credential.FieldToken])
+	}
+
+	// And the operator is told, rather than left to find out at the expiry.
+	text := out.String()
+	if !strings.Contains(text, "renews itself") {
+		t.Errorf("the output does not say the connection renews itself:\n%s", text)
+	}
+	for _, secret := range []string{access, refresh, "DEVICE-SECRET"} {
+		if strings.Contains(text, secret) {
+			t.Errorf("the output contains %q", secret)
+		}
+	}
+}
+
+// A provider that issues no refresh token must say so plainly, because then
+// someone really will have to connect again.
+func TestDeviceFlowSaysWhenAConnectionWillNotRenew(t *testing.T) {
+	prov, _ := fakeProvider(t, "gho_only_an_access_token")
+	rig(t, fmt.Sprintf(`workspace: test
+services:
+  github:
+    scopes: []
+    device:
+      client_id: Ov23litestclientid
+      authorization_url: %s/device/code
+      token_url: %s/token
+`, prov.URL, prov.URL))
+
+	var out strings.Builder
+	if err := connectDevice("github", &out); err != nil {
+		t.Fatal(err)
+	}
+	dir, _ := home()
+	pass, _, _ := credential.StoreKey(dir)
+	store, _ := credential.OpenStore(dir, pass)
+	m, _ := store.Material("github")
+	if _, ok := m[credential.FieldRefreshToken]; ok {
+		t.Error("a refresh token was invented where the provider issued none")
+	}
+}
+
+// Every user-facing line about a credential must describe the credential, not
+// the catalogue entry it was obtained under.
+//
+// `stk doctor` said "the stored token is what goes on the wire, so treat it as
+// long-lived" about a device-granted token that refreshes itself — the second
+// time one of these sentences described the table instead of the thing in front
+// of it. The first was the OAuth 2.0 browser flow.
+func TestAStoredRefreshTokenChangesWhatWeSayAboutIt(t *testing.T) {
+	rig(t, "workspace: test\nservices:\n  github:\n    scopes: []\n")
+	dir, _ := home()
+	pass, _, _ := credential.StoreKey(dir)
+	store, err := credential.OpenStore(dir, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, _ := catalog.Lookup("github")
+
+	// A plain token: the catalogue is right about it.
+	if err := store.PutMaterial("github", credential.Material{credential.FieldToken: "gho_plain"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := effectiveAuth(entry, store, "github"); got != catalog.AuthToken {
+		t.Errorf("a plain token reads as %v, want substitute", got)
+	}
+	if !strings.Contains(effectiveAuth(entry, store, "github").Reassurance(), "long-lived") {
+		t.Error("a plain token should be described as long-lived; it is")
+	}
+
+	// The same service, granted through the device flow with a refresh token.
+	if err := store.PutMaterial("github", credential.Material{
+		credential.FieldToken:        "gho_access",
+		credential.FieldRefreshToken: "ghr_refresh",
+		credential.FieldClientID:     "Ov23li",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := effectiveAuth(entry, store, "github")
+	if got != catalog.AuthOAuth2 {
+		t.Fatalf("a credential that refreshes itself reads as %v", got)
+	}
+	r := got.Reassurance()
+	if strings.Contains(r, "long-lived") {
+		t.Errorf("a self-renewing credential is still described as long-lived: %q", r)
+	}
+	if !strings.Contains(r, "short-lived access token") {
+		t.Errorf("reassurance = %q, want it to describe the refresh", r)
 	}
 }
