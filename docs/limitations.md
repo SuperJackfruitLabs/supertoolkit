@@ -117,6 +117,40 @@ Each of these is a product-shape decision. None is blocked; none is started.
 
 ---
 
+## The store key is only as good as the platform
+
+**On Linux there is usually no OS keychain, so the key that encrypts your
+credentials sits in a file beside the ciphertext.** Anything that can read one
+can read the other, and the encryption then protects against a stolen disk
+rather than against another process running as the same user.
+
+`stk doctor` says so rather than hiding it:
+
+```
+! credential store key  file beside the ciphertext — anything that can read one
+                        file can read the other; an OS keychain is not wired on
+                        this platform
+```
+
+On macOS the key comes from the login keychain and this warning does not
+appear. The difference matters most where it is least visible: a production
+token on a server is less well protected than the same token on a laptop, which
+is the opposite of what most people would assume.
+
+What you can do today:
+
+- `STK_PASSPHRASE` in the broker's environment takes precedence over the file,
+  so a key held by your init system — systemd `LoadCredential`, a secrets
+  manager, a prompt at start — never touches the disk.
+- Run the broker as its own OS user with a `0700` home, which is the posture
+  the design assumes anyway.
+- Treat a VPS credential as narrower in scope than a laptop one: shorter-lived,
+  fewer scopes, and revoked on suspicion rather than on proof.
+
+What would close it properly is wiring a Linux keyring — libsecret or the
+kernel keyring — which is a platform integration rather than a fix, and is not
+done.
+
 ## Operational limits
 
 - **The audit ledger rotates at 8 MB, keeping one generation.** An unbounded
