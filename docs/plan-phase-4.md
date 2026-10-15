@@ -4,7 +4,7 @@
 so supertoolkit looks like the rest of the suite in whichever vibe the person
 chose.
 
-**Mockups:** [vibekit#21](https://forge.superjackfruit.com/SuperJackfruitLabs/vibekit/pulls/21)
+**Mockups:** reviewed in vibekit, the suite design system (internal)
 — twenty artboards, five screens in four vibes. Approved before this plan.
 
 **Spec:** [design.md](design.md). **Roadmap:** [roadmap.md](roadmap.md).
