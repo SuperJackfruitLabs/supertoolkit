@@ -232,6 +232,15 @@ type Entry struct {
 	Device Device
 	// OAuth2 is the authorization-code path, used when Auth is AuthOAuth2.
 	OAuth2 OAuth2
+	// RevokeURL is a provider endpoint that invalidates a token, where one
+	// exists and we can reach it. Empty means we cannot revoke on the
+	// operator's behalf, and `stk revoke` says so rather than implying the
+	// credential is dead when it still works.
+	RevokeURL string
+	// RevokeAt is where a person can withdraw access themselves. It is always
+	// set, because there is always somewhere — and it is what an operator needs
+	// when a credential has leaked and the local copy is beside the point.
+	RevokeAt string
 	// Headers are static headers the request shape requires, independent of the
 	// credential. Notion rejects any request without a dated Notion-Version,
 	// which makes it part of the shape rather than something a caller should
@@ -248,6 +257,7 @@ type Entry struct {
 // service directly.
 var builtin = map[string]*Entry{
 	"aws-sts": {
+		RevokeAt: "https://console.aws.amazon.com/iam/home#/security_credentials",
 		// A deliberately read-only entry: GetCallerIdentity is the AWS
 		// equivalent of "who am I", so a signing service can be connected and
 		// verified without granting anything.
@@ -262,7 +272,8 @@ var builtin = map[string]*Entry{
 		},
 	},
 	"github-app": {
-		Name: "github-app", Host: "api.github.com", Auth: AuthGitHubApp,
+		RevokeAt: "https://github.com/settings/installations",
+		Name:     "github-app", Host: "api.github.com", Auth: AuthGitHubApp,
 		Capabilities: []Capability{
 			{
 				Name: "list_installation_repos", Kind: Read, Method: "GET",
@@ -290,7 +301,9 @@ var builtin = map[string]*Entry{
 	// still an open ask in X's own developer forum. Posting with an image is
 	// therefore impossible on 1.0a, which is why this entry is OAuth 2.0.
 	"x": {
-		Name: "x", Host: "api.x.com", EnvVar: "X_BEARER_TOKEN",
+		RevokeURL: "https://api.x.com/2/oauth2/revoke",
+		RevokeAt:  "https://x.com/settings/connected_accounts",
+		Name:      "x", Host: "api.x.com", EnvVar: "X_BEARER_TOKEN",
 		Placement: BearerHeader, Auth: AuthOAuth2,
 		OAuth2: OAuth2{
 			AuthorizeURL: "https://x.com/i/oauth2/authorize",
@@ -343,7 +356,8 @@ var builtin = map[string]*Entry{
 	},
 	// --- Slack ---
 	"slack": {
-		Name: "slack", Host: "slack.com", EnvVar: "SLACK_BOT_TOKEN",
+		RevokeAt: "https://slack.com/apps/manage",
+		Name:     "slack", Host: "slack.com", EnvVar: "SLACK_BOT_TOKEN",
 		Placement: BearerHeader, Auth: AuthToken,
 		Capabilities: []Capability{
 			{
@@ -372,7 +386,8 @@ var builtin = map[string]*Entry{
 	// kind of value that goes stale silently, so it lives here next to the
 	// paths rather than in a client.
 	"notion": {
-		Name: "notion", Host: "api.notion.com", EnvVar: "NOTION_TOKEN",
+		RevokeAt: "https://www.notion.so/my-integrations",
+		Name:     "notion", Host: "api.notion.com", EnvVar: "NOTION_TOKEN",
 		Placement: BearerHeader, Auth: AuthToken,
 		Headers: map[string]string{"Notion-Version": "2026-03-11"},
 		Capabilities: []Capability{
@@ -403,7 +418,9 @@ var builtin = map[string]*Entry{
 	// www.googleapis.com; intercepting only one of the three would leave the
 	// others tunnelled and the placeholder would arrive unswapped.
 	"google": {
-		Name: "google", Host: "sheets.googleapis.com",
+		RevokeURL: "https://oauth2.googleapis.com/revoke",
+		RevokeAt:  "https://myaccount.google.com/permissions",
+		Name:      "google", Host: "sheets.googleapis.com",
 		AlsoHosts: []string{"oauth2.googleapis.com", "www.googleapis.com"},
 		EnvVar:    "GOOGLE_ACCESS_TOKEN",
 		Placement: BearerHeader, Auth: AuthOAuth2,
@@ -450,7 +467,8 @@ var builtin = map[string]*Entry{
 	// string swap silently did nothing until a catalogue review caught it, so
 	// a live connector now depends on it.
 	"stripe": {
-		Name: "stripe", Host: "api.stripe.com", EnvVar: "STRIPE_SECRET_KEY",
+		RevokeAt: "https://dashboard.stripe.com/apikeys",
+		Name:     "stripe", Host: "api.stripe.com", EnvVar: "STRIPE_SECRET_KEY",
 		Placement: BasicHeader, Auth: AuthToken,
 		Capabilities: []Capability{
 			{
@@ -474,7 +492,8 @@ var builtin = map[string]*Entry{
 	},
 	// --- OpenAI ---
 	"openai": {
-		Name: "openai", Host: "api.openai.com", EnvVar: "OPENAI_API_KEY",
+		RevokeAt: "https://platform.openai.com/api-keys",
+		Name:     "openai", Host: "api.openai.com", EnvVar: "OPENAI_API_KEY",
 		Placement: BearerHeader, Auth: AuthToken,
 		Capabilities: []Capability{
 			{
@@ -495,7 +514,8 @@ var builtin = map[string]*Entry{
 	},
 	// --- Cloudflare ---
 	"cloudflare": {
-		Name: "cloudflare", Host: "api.cloudflare.com", EnvVar: "CLOUDFLARE_API_TOKEN",
+		RevokeAt: "https://dash.cloudflare.com/profile/api-tokens",
+		Name:     "cloudflare", Host: "api.cloudflare.com", EnvVar: "CLOUDFLARE_API_TOKEN",
 		Placement: BearerHeader, Auth: AuthToken,
 		Capabilities: []Capability{
 			{
@@ -540,7 +560,8 @@ var builtin = map[string]*Entry{
 	// and it is recorded in docs/limitations.md. Resend takes the slot: REST,
 	// and an agent that can send email is a real capability.
 	"resend": {
-		Name: "resend", Host: "api.resend.com", EnvVar: "RESEND_API_KEY",
+		RevokeAt: "https://resend.com/api-keys",
+		Name:     "resend", Host: "api.resend.com", EnvVar: "RESEND_API_KEY",
 		Placement: BearerHeader, Auth: AuthToken,
 		Capabilities: []Capability{
 			{
@@ -561,7 +582,8 @@ var builtin = map[string]*Entry{
 		},
 	},
 	"github": {
-		Name: "github", Host: "api.github.com", Placement: BearerHeader, EnvVar: "GH_TOKEN",
+		RevokeAt: "https://github.com/settings/applications",
+		Name:     "github", Host: "api.github.com", Placement: BearerHeader, EnvVar: "GH_TOKEN",
 		Device: Device{
 			AuthorizationURL: "https://github.com/login/device/code",
 			TokenURL:         "https://github.com/login/oauth/access_token",
