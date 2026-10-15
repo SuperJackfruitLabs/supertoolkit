@@ -1,0 +1,13 @@
+{
+  "name": "supertoolkit-landing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4329",
+    "build": "astro build",
+    "preview": "astro preview --port 4329"
+  },
+  "dependencies": {
+    "astro": "^5.14.1"
+  }
+}

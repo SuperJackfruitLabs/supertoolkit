@@ -1,0 +1,45 @@
+/* The landing page's palette and faces, so the two sites are one thing.
+   Every value here appears in landing/src/pages/index.astro's `:root`. */
+:root {
+  --stk-cyan: #20d8d9;
+  --stk-cyan-deep: #00c3e5;
+  --stk-display: 'Outfit', var(--sl-font);
+
+  --sl-font: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Starlight builds its accent ramp from these three. */
+  --sl-color-accent-low: #06343a;
+  --sl-color-accent: #0f9aa6;
+  --sl-color-accent-high: #8ceef0;
+
+  --sl-color-bg: #0d1017;
+  --sl-color-bg-nav: #0d1017;
+  --sl-color-bg-sidebar: #0d1017;
+  --sl-color-bg-inline-code: #141923;
+  --sl-color-hairline: rgba(255, 255, 255, 0.08);
+  --sl-color-hairline-light: rgba(255, 255, 255, 0.08);
+  --sl-color-white: #e9edf3;
+  --sl-color-gray-2: #c3cad6;
+  --sl-color-gray-3: #8b95a6;
+}
+
+:root[data-theme='light'] {
+  --stk-cyan: #0a9aa5;
+  --stk-cyan-deep: #067f93;
+  --sl-color-accent-low: #cdf3f5;
+  --sl-color-accent: #0a8d98;
+  --sl-color-accent-high: #064950;
+  --sl-color-bg: #f8f9fa;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+  --sl-color-bg-inline-code: #eef1f4;
+  --sl-color-hairline: rgba(32, 40, 61, 0.12);
+  --sl-color-white: #171c26;
+}
+
+h1, h2, h3, .site-title { font-family: var(--stk-display); letter-spacing: -0.02em; }
+
+/* The one thing the landing page spends cyan on, kept here too: the placeholder
+   an agent holds instead of a credential. */
+.placeholder { color: var(--stk-cyan); }

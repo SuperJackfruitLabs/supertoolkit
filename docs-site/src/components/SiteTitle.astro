@@ -1,0 +1,31 @@
+---
+/**
+ * The mark beside the name, as on the landing page.
+ *
+ * It replaces Starlight's own title rather than using the `logo` option, because
+ * `logo` wants an image file and this is an inline SVG whose colours follow the
+ * page's theme rather than being baked in.
+ */
+---
+<a href="/" class="site-title">
+  <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="stk-d" x1="8" y1="56" x2="46" y2="10" gradientUnits="userSpaceOnUse">
+        <stop stop-color="var(--stk-cyan-deep)" />
+        <stop offset="1" stop-color="var(--stk-cyan)" />
+      </linearGradient>
+    </defs>
+    <path d="M10 52 L30 32 L38 40 L18 60 Z" fill="url(#stk-d)" />
+    <path d="M30 32 L10 12 L18 4 L38 24 Z" fill="url(#stk-d)" opacity=".85" />
+    <path d="M44 6 h7 v18 a9 9 0 0 1 -18 0 V6 h7 v16 h4 Z" fill="var(--stk-cyan)" />
+  </svg>
+  <span>supertoolkit</span>
+</a>
+<style>
+  .site-title {
+    display: flex; align-items: center; gap: 9px;
+    text-decoration: none; color: var(--sl-color-white);
+    font-family: var(--stk-display); font-weight: 700; letter-spacing: -0.02em;
+    font-size: 1.05rem;
+  }
+</style>

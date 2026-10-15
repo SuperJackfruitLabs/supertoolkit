@@ -1,0 +1,356 @@
+---
+/**
+ * supertoolkit.dev — the public page.
+ *
+ * One page, no framework, no scripts. Its job is to explain the product to somebody who
+ * typed the domain, and then send them to the docs or the source. There is nothing to
+ * sign in to: supertoolkit runs on the reader's own machine, so the page sells nothing it
+ * cannot hand over.
+ *
+ * This directory is deliberately outside the Go module and has its own npm lockfile.
+ * `go build ./...` never looks in here.
+ *
+ * Every string in the hero is real.
+ *   stk:ref:github:v1   broker.Placeholder (internal/broker/proxy.go)
+ *   GH_TOKEN            the github entry's EnvVar (internal/catalog/catalog.go)
+ *   sha256:…            the fingerprint the audit ledger records, never the credential
+ *   get_user / agent / 200 OK
+ *                       a real `stk audit` line: capability, policy, provider status
+ * The five operations are catalog.Auth's cases and their Reassurance() text. The
+ * limitations are docs/limitations.md. If any of those change, this page is wrong.
+ *
+ * Colours and faces are listed once in `:root` below; docs-site/src/styles/theme.css uses
+ * the same values. Cyan is spent on three things only: the placeholder, the one invariant,
+ * and the approval — the parts of the page that are the product.
+ */
+import Mark from '../components/Mark.astro';
+import ShareMeta from '../components/ShareMeta.astro';
+
+const SITE = 'https://supertoolkit.dev';
+const DOCS = 'https://docs.supertoolkit.dev';
+const REPO = 'https://github.com/SuperJackfruitLabs/supertoolkit';
+const TITLE = 'supertoolkit — the agent never holds the credential';
+const DESCRIPTION =
+  'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Self-hosted, Apache-2.0.';
+
+// The five credential operations, from catalog.Auth. Three of them never put a
+// long-lived secret on the wire at all, which is the point of having five.
+const operations = [
+  { name: 'substitute', what: 'A stored token replaces the placeholder on the wire.', wire: 'long-lived', services: 'github · slack · notion · openai · cloudflare · resend' },
+  { name: 'substitute, scheme-aware', what: 'Decode the Basic header, replace the value, re-encode. A plain string swap matches nothing here.', wire: 'long-lived', services: 'stripe' },
+  { name: 'sign', what: 'The request is signed inside the broker. The credential is an HMAC over the method, path and body — not a value anything can carry.', wire: 'never', services: 'aws-sts' },
+  { name: 'mint', what: 'A JWT is minted from a stored private key and exchanged for an installation token that expires in an hour.', wire: 'never', services: 'github-app' },
+  { name: 'acquire', what: 'A stored refresh token is exchanged for a short-lived access token. The refresh token only ever reaches the provider’s token endpoint.', wire: 'never', services: 'x · google' },
+];
+
+// From docs/limitations.md. The warning label stays on.
+const limits = [
+  ['A client that ignores proxy configuration goes around the broker', 'It fails silently, sending the placeholder to the provider and getting a plausible 401. Nothing inside a proxy can detect a client that never speaks to it — so `stk doctor --probe` detects it from outside, using a hostname that can never resolve.'],
+  ['Brokered mTLS does not work', '502, loud, nothing sent. The broker holds no client certificate. Tunnel that host instead.'],
+  ['WebSocket and other upgrades are refused', 'A credential is substituted on an HTTP request, and an upgraded connection carries no further requests to substitute into. 501, with the way out.'],
+  ['On Linux the store key is a file beside the ciphertext', 'There is usually no OS keychain, so a credential on a server is less well protected than the same one on a laptop.'],
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{TITLE}</title>
+    <link rel="canonical" href={SITE} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <ShareMeta site={SITE} title={TITLE} description={DESCRIPTION} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    />
+    <style is:global>
+      /* The suite's bones: Plex Sans and Plex Mono, a dark-first surface stack, and one
+         display face of the product's own. supertoolkit's is Outfit, which is the
+         geometric sans the wordmark is drawn in. */
+      :root {
+        --bg: #0d1017; --surface: #141923; --inset: #070a0f; --line: rgba(255,255,255,.08);
+        --text: #e9edf3; --muted: #8b95a6; --code: #c9d1dc;
+        --cyan: #20d8d9; --cyan-deep: #00c3e5; --cyan-bright: #56f0ec;
+        --cyan-tint: rgba(32,216,217,.14); --ink: #20283d;
+        --warn: #f4a526; --warn-tint: rgba(244,165,38,.14);
+        --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+        --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        --display: 'Outfit', var(--sans);
+        --measure: 64rem;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme='dark']) {
+          --bg: #f8f9fa; --surface: #ffffff; --inset: #eef1f4; --line: rgba(32,40,61,.12);
+          --text: #171c26; --muted: #5c6678; --code: #2b3242;
+          --cyan: #0a9aa5; --cyan-deep: #067f93; --cyan-bright: #0cc0c4;
+          --cyan-tint: rgba(10,154,165,.12);
+        }
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: var(--sans); font-size: 16px; line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: inherit; }
+      code, pre, .mono { font-family: var(--mono); }
+      h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin: 0; }
+      .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 20px; }
+      .band { border-top: 1px solid var(--line); padding: 72px 0; }
+      .band h2 { font-size: clamp(1.4rem, 3.4vw, 2rem); margin-bottom: 10px; }
+      .lede { color: var(--muted); max-width: 46rem; }
+      .em { color: var(--cyan); font-style: normal; }
+    </style>
+  </head>
+
+  <body>
+    <header>
+      <div class="wrap bar">
+        <a class="brand" href="/"><Mark size={26} /><span>supertoolkit</span></a>
+        <nav>
+          <a href={DOCS}>Docs</a>
+          <a href={REPO}>Source</a>
+        </nav>
+      </div>
+
+      <div class="wrap hero">
+        <p class="kicker mono">credential broker for agents</p>
+        <h1>The agent never holds <em class="em">the credential</em>.</h1>
+        <p class="lede big">
+          An agent asks for an effect by name. The broker substitutes, signs or mints on the
+          wire, where the agent cannot reach. If it reads its own token, it has read nothing.
+        </p>
+
+        <!-- The substitution, which is the whole product in one picture. Both strings are real. -->
+        <div class="swap" role="img" aria-label="The child process holds a placeholder; the provider receives the real credential.">
+          <div class="swap-side">
+            <p class="swap-label mono">what the agent sees</p>
+            <pre class="box"><code>GH_TOKEN=<span class="em">stk:ref:github:v1</span></code></pre>
+            <p class="swap-note">Worthless off this host.</p>
+          </div>
+          <div class="swap-mid" aria-hidden="true">
+            <span class="mono">broker</span>
+            <div class="arrow"></div>
+          </div>
+          <div class="swap-side">
+            <p class="swap-label mono">what GitHub receives</p>
+            <pre class="box"><code>Authorization: Bearer <span class="redacted">ghp_••••••••••••</span></code></pre>
+            <p class="swap-note">Substituted on the wire. Never in the agent’s reach.</p>
+          </div>
+        </div>
+
+        <p class="sub mono">Apache-2.0 · runs on your machine · no account, no telemetry</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="band" aria-labelledby="p">
+        <div class="wrap">
+          <h2 id="p">The usual way puts the key in the agent’s context</h2>
+          <p class="lede">
+            To give an agent a tool you put an API key in an MCP config file. That file is
+            plaintext, any process can read it, and the agent reads it to start the server —
+            so the credential lands in the agent’s own context, and from there in the
+            transcript and wherever transcripts are kept.
+          </p>
+          <p class="lede">
+            supertoolkit holds the credential in a process the agent cannot read, and puts it
+            on the wire on the way out. Clients need no modification: they are started with
+            <code>HTTPS_PROXY</code> pointing at the broker and a placeholder where their
+            token would be.
+          </p>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="o">
+        <div class="wrap">
+          <h2 id="o">Five operations, and three never send a lasting secret</h2>
+          <p class="lede">
+            What a service needs decides what the broker does. The catalogue declares it, so
+            a new scheme is an entry rather than a branch in the request path.
+          </p>
+          <ul class="ops">
+            {operations.map((o) => (
+              <li>
+                <div class="op-head">
+                  <span class="op-name mono">{o.name}</span>
+                  <span class={o.wire === 'never' ? 'pill good' : 'pill warn'}>
+                    {o.wire === 'never' ? 'no long-lived secret on the wire' : 'long-lived on the wire'}
+                  </span>
+                </div>
+                <p>{o.what}</p>
+                <p class="op-svc mono">{o.services}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="a">
+        <div class="wrap">
+          <h2 id="a">A read is the agent’s. A write is <em class="em">yours</em>.</h2>
+          <p class="lede">
+            Policy is one file you commit, holding no secrets. Defaults come from the
+            catalogue and fail safe: a read is agent-callable, a write needs approval, and
+            anything unclassified is treated as a write.
+          </p>
+          <div class="two">
+            <pre class="box"><code>{`services:
+  github:
+    capabilities:
+      create_issue: approval
+profiles:
+  reader:
+    github: [get_user, list_repos]`}</code></pre>
+            <div class="card">
+              <p class="card-head mono">waiting on you</p>
+              <p class="card-what mono">github / create_issue</p>
+              <p class="card-args mono">title=“Flaky test in the broker”</p>
+              <p class="card-foot">
+                The agent is told <code>pending</code> and nothing happens. Approving performs
+                it and records what came back; refusing performs nothing. Expiry is never
+                approval.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="r">
+        <div class="wrap">
+          <h2 id="r">Afterwards, a record that answers the question</h2>
+          <p class="lede">
+            What was done, under which policy, and what the provider said. What is recorded
+            about the credential is a fingerprint, or the name of the operation that replaced
+            it — never the value, and there is a test for every scheme.
+          </p>
+          <pre class="box wide"><code>{`$ stk audit
+  Oct 15 02:20:28  github     create_issue             approval 201 Created
+                   POST /repos/you/your-repo/issues · credential: sha256:40a7a1d2319d
+  Oct 15 02:20:15  github     get_user                 agent    200 OK
+                   GET /user · credential: sha256:40a7a1d2319d`}</code></pre>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="l">
+        <div class="wrap">
+          <h2 id="l">What it does not do</h2>
+          <p class="lede">
+            Read this before trusting it with something that matters. Each of these is a
+            decision or a measurement, not an oversight.
+          </p>
+          <dl class="limits">
+            {limits.map(([head, body]) => (
+              <div>
+                <dt>{head}</dt>
+                <dd set:html={body.replace(/`([^`]+)`/g, '<code>$1</code>')} />
+              </div>
+            ))}
+          </dl>
+          <p class="lede">
+            The full list, with what each would cost to change, is in
+            <a href={`${DOCS}/limitations/`}> the limitations page</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="g">
+        <div class="wrap">
+          <h2 id="g">Have a look</h2>
+          <p class="lede">
+            It runs on your own machine. There is no account, nothing phones home, and the
+            only hosts it contacts are the providers you connect.
+          </p>
+          <pre class="box wide"><code>{`git clone ${REPO}
+cd supertoolkit && go build -o stk ./cmd/stk
+
+./stk init
+./stk add github && ./stk connect github
+./stk doctor --probe        # prove your clients go through the broker
+./stk run -- your-agent`}</code></pre>
+          <p class="cta">
+            <a class="button" href={DOCS}>Read the docs</a>
+            <a class="button ghost" href={REPO}>See the source</a>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap foot">
+        <span class="mono">Apache-2.0 · Super Jackfruit Labs</span>
+        <nav><a href={DOCS}>Docs</a><a href={REPO}>Source</a><a href={`${DOCS}/limitations/`}>Limitations</a></nav>
+      </div>
+    </footer>
+
+    <style>
+      .bar { display: flex; align-items: center; justify-content: space-between; padding-top: 20px; padding-bottom: 20px; }
+      .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em; }
+      nav { display: flex; gap: 22px; }
+      nav a { color: var(--muted); text-decoration: none; font-size: .95rem; }
+      nav a:hover { color: var(--text); }
+
+      .hero { padding: 56px 20px 80px; }
+      .kicker { color: var(--cyan); font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 18px; }
+      h1 { font-size: clamp(2.1rem, 6.4vw, 3.6rem); max-width: 18ch; }
+      .big { font-size: 1.12rem; margin: 20px 0 0; }
+      .sub { color: var(--muted); font-size: .85rem; margin-top: 28px; }
+
+      .swap { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center; margin-top: 40px; }
+      .swap-side { min-width: 0; }
+      .swap-label { color: var(--muted); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 8px; }
+      .swap-note { color: var(--muted); font-size: .85rem; margin: 10px 0 0; }
+      .swap-mid { display: grid; justify-items: center; gap: 6px; color: var(--muted); font-size: .72rem; }
+      .arrow { width: 46px; height: 2px; background: linear-gradient(90deg, var(--cyan-deep), var(--cyan)); position: relative; }
+      .arrow::after { content: ''; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: var(--cyan); }
+      .redacted { color: var(--muted); }
+      @media (max-width: 760px) {
+        .swap { grid-template-columns: 1fr; }
+        .swap-mid { justify-items: start; }
+        .arrow { transform: rotate(90deg); margin-left: 18px; }
+      }
+
+      .box { background: var(--inset); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0; overflow-x: auto; font-size: .88rem; color: var(--code); line-height: 1.6; }
+      .box.wide { margin-top: 24px; }
+
+      .ops { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .ops li { background: var(--surface); padding: 20px 22px; }
+      .ops p { margin: 8px 0 0; color: var(--muted); max-width: 54rem; }
+      .op-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .op-name { color: var(--text); font-weight: 500; }
+      .op-svc { font-size: .78rem; color: var(--muted); opacity: .8; }
+      .pill { font-family: var(--mono); font-size: .68rem; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+      .pill.good { background: var(--cyan-tint); color: var(--cyan); }
+      .pill.warn { background: var(--warn-tint); color: var(--warn); }
+
+      .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 28px; align-items: start; }
+      @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+      .card { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--cyan); border-radius: 10px; padding: 18px 20px; }
+      .card-head { color: var(--cyan); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 12px; }
+      .card-what { margin: 0; font-weight: 500; }
+      .card-args { margin: 4px 0 0; color: var(--muted); font-size: .85rem; }
+      .card-foot { margin: 14px 0 0; color: var(--muted); font-size: .9rem; }
+
+      .limits { margin: 28px 0 24px; display: grid; gap: 18px; }
+      .limits dt { font-weight: 600; }
+      .limits dd { margin: 6px 0 0; color: var(--muted); max-width: 54rem; }
+      .limits code, .lede code, .card-foot code { background: var(--inset); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: .86em; }
+
+      .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+      .button { display: inline-block; text-decoration: none; font-weight: 600; font-size: .95rem; padding: 11px 20px; border-radius: 9px; background: var(--cyan); color: #04171a; border: 1px solid transparent; }
+      .button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+      .button:hover { filter: brightness(1.08); }
+
+      footer { border-top: 1px solid var(--line); padding: 28px 0 56px; }
+      .foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: .85rem; }
+      .foot nav { gap: 18px; }
+    </style>
+  </body>
+</html>

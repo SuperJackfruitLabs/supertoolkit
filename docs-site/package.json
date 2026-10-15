@@ -1,0 +1,15 @@
+{
+  "name": "supertoolkit-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4330",
+    "build": "astro build",
+    "preview": "astro preview --port 4330",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.36.0",
+    "astro": "^5.14.1"
+  }
+}

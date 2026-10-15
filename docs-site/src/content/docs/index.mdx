@@ -1,0 +1,65 @@
+---
+title: supertoolkit
+description: A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire.
+template: splash
+hero:
+  tagline: The agent never holds, reads, or receives a credential. Not configurable, no override.
+  actions:
+    - text: Install
+      link: /install/
+      icon: right-arrow
+    - text: Read the limitations
+      link: /limitations/
+      variant: minimal
+    - text: Source
+      link: https://github.com/SuperJackfruitLabs/supertoolkit
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+The standard way to give an agent a tool is to put an API key in an MCP config
+file. That file is plaintext, any process can read it, and the agent reads it to
+start the server — so the credential ends up in the agent's own context, and
+from there in the transcript and wherever transcripts are kept.
+
+supertoolkit holds the credential in a process the agent cannot read, and puts
+it on the wire on the way out. The agent's environment carries a placeholder:
+
+```sh
+GH_TOKEN=stk:ref:github:v1
+```
+
+If the agent reads that, it has read nothing. It means nothing off this host.
+
+<CardGrid>
+  <Card title="Five operations" icon="setting">
+    Substitute a token, substitute inside a Basic header, sign with SigV4, mint
+    a JWT, or refresh an OAuth 2.0 grant. **Three of the five never put a
+    long-lived secret on the wire at all.**
+  </Card>
+  <Card title="A read is the agent's" icon="approve-check">
+    A write needs you. Defaults come from the catalogue and fail safe: anything
+    unclassified is treated as a write, and `deny` is a floor no profile lifts.
+  </Card>
+  <Card title="A record that answers" icon="document">
+    What was done, under which policy, and what the provider said — with a
+    fingerprint where the credential would be, never the value.
+  </Card>
+  <Card title="Runs on your machine" icon="laptop">
+    No account, no telemetry, no update check. The only hosts it contacts are
+    the providers you connect and the token endpoints they publish.
+  </Card>
+</CardGrid>
+
+## The one failure mode that cannot be fixed
+
+A client that ignores proxy configuration entirely goes around the broker, and
+**fails silently** — it sends the placeholder to the provider and gets a
+plausible 401 back, which reads as a credential problem rather than a routing
+one.
+
+Nothing inside a proxy can detect a client that never speaks to it. What can be
+done is detect it from outside, which is what `stk doctor --probe` is for. Run
+it before trusting a new client. See [Limitations](/limitations/).
