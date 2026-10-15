@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@superjackfruit/vibekit':
-        specifier: file:./vendor/vibekit-0.0.12.tgz
-        version: file:vendor/vibekit-0.0.12.tgz(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4))(svelte@5.57.2)
+        specifier: file:./vendor/vibekit-0.0.13.tgz
+        version: file:vendor/vibekit-0.0.13.tgz(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4))(svelte@5.57.2)
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: ^4.0.0
@@ -196,9 +196,9 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@superjackfruit/vibekit@file:vendor/vibekit-0.0.12.tgz':
-    resolution: {integrity: sha512-4VtaFr9G6TdWjUBxL0jk55EoH+c50d6JkaU6sQGMphe1umqEbdN+nwHwuGZsDxsJO+ESrjaNKC2niNtdRGOv9A==, tarball: file:vendor/vibekit-0.0.12.tgz}
-    version: 0.0.12
+  '@superjackfruit/vibekit@file:vendor/vibekit-0.0.13.tgz':
+    resolution: {integrity: sha512-bSZJvsviB5t1lm1sS2sCpQdYeYvIbycSoMo7sWXfjm36OMWzRcrru5i3YsFdgowptg6b8p06J5rmBDhnf6hMTw==, tarball: file:vendor/vibekit-0.0.13.tgz}
+    version: 0.0.13
     engines: {node: '>=22'}
     peerDependencies:
       svelte: ^5.56.0
@@ -681,7 +681,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@superjackfruit/vibekit@file:vendor/vibekit-0.0.12.tgz(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4))(svelte@5.57.2)':
+  '@superjackfruit/vibekit@file:vendor/vibekit-0.0.13.tgz(@internationalized/date@3.12.4)(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.2)(vite@8.3.4))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4))(svelte@5.57.2)':
     dependencies:
       '@fontsource-variable/archivo': 5.3.0
       '@fontsource-variable/azeret-mono': 5.3.0
