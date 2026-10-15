@@ -64,6 +64,14 @@ like success while the credential is a worthless placeholder.
 
 ## Reporting something
 
-Open an issue on [the repository](https://github.com/SuperJackfruitLabs/supertoolkit/issues).
-If it is sensitive, say so in the title and leave the detail out; you will get a
-private channel to continue in.
+Report a suspected vulnerability **privately**: open the repository's
+**Security** tab and choose **Report a vulnerability**. That creates an advisory
+only the maintainers can see. Please do not open a public issue for one.
+
+[SECURITY.md](https://github.com/SuperJackfruitLabs/supertoolkit/blob/main/SECURITY.md)
+sets out what is in scope, and which behaviours are already documented
+limitations rather than flaws.
+
+For anything that is not a vulnerability,
+[issues](https://github.com/SuperJackfruitLabs/supertoolkit/issues) are the
+right place.
