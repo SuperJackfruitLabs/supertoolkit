@@ -76,6 +76,10 @@ Numbers and the machine they came from: [docs/measurements.md](docs/measurements
 - **Bodies transparent to at least 8 MB**, hashes matching end to end, credential
   still substituted.
 - **Brokered mTLS does not work** — 502, loud, nothing sent. Tunnel that host.
+- **On Linux the store key is a file beside the ciphertext** — there is usually
+  no OS keychain, so a credential on a server is less well protected than the
+  same one on a laptop. `doctor` warns; `STK_PASSPHRASE` from your init system
+  avoids it.
 
 ## Policy
 
