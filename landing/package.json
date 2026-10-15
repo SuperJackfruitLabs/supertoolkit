@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "astro dev --port 4329",
     "build": "astro build",
-    "preview": "astro preview --port 4329"
+    "preview": "astro preview --port 4329",
+    "prebuild": "cp ../install.sh public/install.sh",
+    "predev": "cp ../install.sh public/install.sh"
   },
   "dependencies": {
     "astro": "^5.14.1"
