@@ -102,17 +102,30 @@ func (s *Store) PutMaterial(service string, m Material) error {
 }
 
 func (s *Store) putSealed(service, secret string) error {
-	block, err := aes.NewCipher(s.key)
+	out, err := s.seal(service, secret)
 	if err != nil {
 		return err
+	}
+	return os.WriteFile(s.path(service), []byte(out), 0o600)
+}
+
+// seal encrypts with the store's key, binding the result to `aad`.
+//
+// The additional data is what stops one sealed value being substituted for
+// another: a cached access token sealed under a different aad cannot be moved
+// into a credential file and opened there.
+func (s *Store) seal(aad, secret string) (string, error) {
+	block, err := aes.NewCipher(s.key)
+	if err != nil {
+		return "", err
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return err
+		return "", err
 	}
 	nonce := make([]byte, aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
-		return err
+		return "", err
 	}
 
 	// Length hiding: prefix the real length, then pad to a block boundary.
@@ -125,14 +138,44 @@ func (s *Store) putSealed(service, secret string) error {
 	plain[3] = byte(len(raw))
 	copy(plain[4:], raw)
 	if _, err := io.ReadFull(rand.Reader, plain[4+len(raw):]); err != nil {
-		return err
+		return "", err
 	}
 
-	out, err := json.Marshal(sealed{Nonce: nonce, Data: aead.Seal(nil, nonce, plain, []byte(service))})
+	out, err := json.Marshal(sealed{Nonce: nonce, Data: aead.Seal(nil, nonce, plain, []byte(aad))})
 	if err != nil {
-		return err
+		return "", err
 	}
-	return os.WriteFile(s.path(service), out, 0o600)
+	return string(out), nil
+}
+
+// open reverses seal. A value sealed under a different aad will not open.
+func (s *Store) open(aad, envelope string) (string, error) {
+	var env sealed
+	if err := json.Unmarshal([]byte(envelope), &env); err != nil {
+		return "", fmt.Errorf("sealed value is corrupt: %w", err)
+	}
+	block, err := aes.NewCipher(s.key)
+	if err != nil {
+		return "", err
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	plain, err := aead.Open(nil, env.Nonce, env.Data, []byte(aad))
+	if err != nil {
+		// A wrong passphrase lands here. Return nothing alongside the error:
+		// a partial or garbage value is worse than none.
+		return "", fmt.Errorf("could not decrypt: wrong passphrase, or the store was tampered with")
+	}
+	if len(plain) < 4 {
+		return "", fmt.Errorf("sealed value is truncated")
+	}
+	n := int(plain[0])<<24 | int(plain[1])<<16 | int(plain[2])<<8 | int(plain[3])
+	if n < 0 || 4+n > len(plain) {
+		return "", fmt.Errorf("sealed value has an invalid length header")
+	}
+	return string(plain[4 : 4+n]), nil
 }
 
 // Get returns a single-token credential.
@@ -182,32 +225,11 @@ func (s *Store) getSealed(service string) (string, error) {
 		}
 		return "", err
 	}
-	var env sealed
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return "", fmt.Errorf("credential for %q is corrupt: %w", service, err)
-	}
-	block, err := aes.NewCipher(s.key)
+	out, err := s.open(service, string(raw))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("credential for %q: %w", service, err)
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	plain, err := aead.Open(nil, env.Nonce, env.Data, []byte(service))
-	if err != nil {
-		// A wrong passphrase lands here. Return nothing alongside the error:
-		// a partial or garbage credential is worse than none.
-		return "", fmt.Errorf("could not decrypt the credential for %q: wrong passphrase, or the store was tampered with", service)
-	}
-	if len(plain) < 4 {
-		return "", fmt.Errorf("credential for %q is truncated", service)
-	}
-	n := int(plain[0])<<24 | int(plain[1])<<16 | int(plain[2])<<8 | int(plain[3])
-	if n < 0 || 4+n > len(plain) {
-		return "", fmt.Errorf("credential for %q has an invalid length header", service)
-	}
-	return string(plain[4 : 4+n]), nil
+	return out, nil
 }
 
 // Revoke deletes a stored credential.

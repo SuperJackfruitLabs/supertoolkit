@@ -27,10 +27,15 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 	return &acquirers{
 		githubApp: &credential.Acquirer{
 			Material: store.Material,
+			Shared:   store,
 			Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
 		},
 		oauth2: &credential.Acquirer{
 			Material: store.Material,
+			// Every process on this machine shares one short-lived token, so a
+			// fresh `stk run` reuses it instead of exchanging — which is what
+			// made concurrent invocations fight over a rotating refresh token.
+			Shared: store,
 			Exchange: credential.ExchangeRefresh(
 				func(ctx context.Context, service string, m credential.Material) (string, string, time.Time, error) {
 					svc, ok := cfg.Service(service)

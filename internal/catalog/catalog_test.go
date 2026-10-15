@@ -459,3 +459,23 @@ func TestEveryAuthSchemeExplainsItselfConsistently(t *testing.T) {
 		seen[a.Reassurance()] = a
 	}
 }
+
+// Every service must say where a person can withdraw access.
+//
+// Deleting our copy of a credential does not invalidate it at the provider. An
+// operator dealing with a leak needs the place that does, and a command that
+// implied otherwise would be the most dangerous sentence in the product.
+func TestEveryServiceSaysWhereToWithdrawAccess(t *testing.T) {
+	for _, name := range Names() {
+		e, _ := Lookup(name)
+		if e.RevokeAt == "" {
+			t.Errorf("%s has nowhere for a person to withdraw access", name)
+		}
+		if e.RevokeAt != "" && !strings.HasPrefix(e.RevokeAt, "https://") {
+			t.Errorf("%s: RevokeAt %q is not an https URL", name, e.RevokeAt)
+		}
+		if e.RevokeURL != "" && !strings.HasPrefix(e.RevokeURL, "https://") {
+			t.Errorf("%s: RevokeURL %q is not an https URL", name, e.RevokeURL)
+		}
+	}
+}

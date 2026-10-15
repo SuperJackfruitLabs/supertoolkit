@@ -32,9 +32,35 @@ type Acquirer struct {
 	// call never goes out with a token that expires mid-flight.
 	Early time.Duration
 
+	// Shared is the cross-process token cache. Without it each process holds
+	// its own short-lived token in memory, and `stk run` being a fresh process
+	// per invocation means every invocation exchanges — which against a
+	// provider that rotates its refresh token on each exchange makes concurrent
+	// invocations fight each other for it.
+	Shared SharedCache
+
 	mu    sync.Mutex
 	cache map[string]*entry
 }
+
+// SharedCache is a token cache every process on the machine can see.
+//
+// It is an interface so this package keeps no opinion about where it lives, and
+// so a test can supply one without a filesystem.
+type SharedCache interface {
+	// CachedToken returns a token still valid for at least `early`.
+	CachedToken(service string, early time.Duration) (string, time.Time, bool)
+	// CacheToken stores one for other processes.
+	CacheToken(service, token string, expires time.Time) error
+	// LockRefresh serialises exchanging. ok=false means the wait elapsed, and
+	// the caller should proceed anyway: a racing exchange beats no credential.
+	LockRefresh(service string, wait time.Duration) (release func(), ok bool)
+}
+
+// lockWait is how long a process waits for another's exchange before doing its
+// own. Long enough for one HTTP round trip to a token endpoint, short enough
+// that a wedged peer costs a delay rather than an outage.
+const lockWait = 10 * time.Second
 
 type entry struct {
 	token   string
@@ -50,6 +76,14 @@ func (a *Acquirer) Token(ctx context.Context, service string) (string, error) {
 	early := a.Early
 	if early <= 0 {
 		early = defaultEarly
+	}
+
+	// The shared cache first: another process may already hold a valid token,
+	// and using it means not exchanging at all.
+	if a.Shared != nil {
+		if tok, _, ok := a.Shared.CachedToken(service, early); ok {
+			return tok, nil
+		}
 	}
 
 	a.mu.Lock()
@@ -90,11 +124,36 @@ func (a *Acquirer) Token(ctx context.Context, service string) (string, error) {
 	a.cache[service] = &entry{wg: wg}
 	a.mu.Unlock()
 
+	// Serialise the exchange across processes. Whoever holds the lock does it;
+	// everyone else waits, then finds what it cached and exchanges nothing.
+	// Against a provider that rotates its refresh token this is the difference
+	// between one exchange and a fight over a token only one of them can use.
+	var release func()
+	if a.Shared != nil {
+		var locked bool
+		release, locked = a.Shared.LockRefresh(service, lockWait)
+		if locked {
+			defer release()
+			if tok, _, ok := a.Shared.CachedToken(service, early); ok {
+				a.mu.Lock()
+				delete(a.cache, service)
+				a.mu.Unlock()
+				wg.Done()
+				return tok, nil
+			}
+		}
+	}
+
 	m, err := a.Material(service)
 	var tok string
 	var exp time.Time
 	if err == nil {
 		tok, exp, err = a.Exchange(ctx, service, m)
+	}
+	// Publish it for the processes that are waiting, and for the next
+	// invocation, which would otherwise exchange again from cold.
+	if err == nil && a.Shared != nil && !exp.IsZero() {
+		_ = a.Shared.CacheToken(service, tok, exp)
 	}
 
 	a.mu.Lock()
