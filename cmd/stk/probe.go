@@ -164,7 +164,9 @@ func newProbeRig(home string) (*probeRig, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.caPath, err = ca.WriteCert(dir)
+	// Into the probe's own temporary directory: writing the install's ca.pem
+	// here destroyed the certificate clients had been told to trust.
+	r.caPath, err = ca.WriteCert(r.dir)
 	if err != nil {
 		return nil, err
 	}

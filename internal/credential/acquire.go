@@ -188,15 +188,36 @@ func ExchangeGitHubApp(apiBase string, client *http.Client) func(context.Context
 // — and the failure surfaces hours later, nowhere near its cause. The refresher
 // therefore stores the token it was handed back before returning the access
 // token it was asked for.
+//
+// `reread` re-reads the stored material after a refusal. A provider that
+// rotates invalidates the old token the instant it issues a new one, and X
+// rotates on *every* use — so two `stk run` invocations starting together each
+// refresh with the same stored token, one wins, and the other is refused with
+// `invalid_grant` for a token that was valid when it read it. The loser re-reads
+// and tries once with whatever the winner just stored, which turns the race
+// into nothing. It is optional: without it the behaviour is the previous one,
+// a failed call and an intact connection.
 func ExchangeRefresh(
 	refresh func(ctx context.Context, service string, m Material) (access, newRefresh string, expires time.Time, err error),
 	persist func(service string, m Material) error,
+	reread func(service string) (Material, error),
 ) func(context.Context, string, Material) (string, time.Time, error) {
 	return func(ctx context.Context, service string, m Material) (string, time.Time, error) {
 		if err := m.Require(FieldRefreshToken, FieldClientID); err != nil {
 			return "", time.Time{}, fmt.Errorf("oauth2 refresh: %w", err)
 		}
 		access, newRefresh, expires, err := refresh(ctx, service, m)
+		if err != nil && reread != nil {
+			// Another process may have rotated the token between our read and
+			// our use. Only retry when the stored value actually changed —
+			// retrying with the same token would just repeat the refusal.
+			if fresh, rerr := reread(service); rerr == nil &&
+				fresh[FieldRefreshToken] != "" &&
+				fresh[FieldRefreshToken] != m[FieldRefreshToken] {
+				m = fresh
+				access, newRefresh, expires, err = refresh(ctx, service, m)
+			}
+		}
 		if err != nil {
 			return "", time.Time{}, err
 		}

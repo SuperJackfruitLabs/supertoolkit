@@ -26,7 +26,7 @@ func cmdInit() error {
 	if err != nil {
 		return err
 	}
-	ca, err := broker.NewCA("supertoolkit local CA", 365*24*time.Hour)
+	ca, err := broker.LoadOrCreateCA(dir, "supertoolkit local CA", 365*24*time.Hour)
 	if err != nil {
 		return err
 	}
