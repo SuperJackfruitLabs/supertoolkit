@@ -1,0 +1,14 @@
+// docs.supertoolkit.dev: a Worker with static assets and no script.
+//
+// Same shape as landing/wrangler.jsonc; see the comment there for why this is a
+// Worker and not a Pages project. The custom domain is declared here, so
+// `wrangler deploy` attaches it. Deployed by scripts/deploy-sites.sh with the
+// operator's own `wrangler login`.
+{
+  "name": "supertoolkit-docs",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist", "not_found_handling": "404-page" },
+  "routes": [{ "pattern": "docs.supertoolkit.dev", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
+}

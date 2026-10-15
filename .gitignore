@@ -10,3 +10,11 @@ ca-key.pem
 /web/.svelte-kit/
 /web/build/
 dist/
+
+# Site builds — each site has its own lockfile and is built on deploy.
+landing/node_modules/
+landing/dist/
+landing/.astro/
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/

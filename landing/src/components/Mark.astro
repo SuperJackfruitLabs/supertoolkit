@@ -1,0 +1,24 @@
+---
+/**
+ * The multitool mark, inlined so the header needs no second request and the
+ * colours follow the page rather than a baked-in gradient.
+ *
+ * Traced from brand/product-logos/translucent-v2/products/supertoolkit.
+ */
+interface Props { size?: number }
+const { size = 28 } = Astro.props;
+---
+<svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true" class="mark">
+  <defs>
+    <linearGradient id="stk-a" x1="8" y1="56" x2="46" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="var(--cyan-deep)" />
+      <stop offset="1" stop-color="var(--cyan)" />
+    </linearGradient>
+  </defs>
+  <path d="M10 52 L30 32 L38 40 L18 60 Z" fill="url(#stk-a)" />
+  <path d="M30 32 L10 12 L18 4 L38 24 Z" fill="url(#stk-a)" opacity=".85" />
+  <path d="M44 6 h7 v18 a9 9 0 0 1 -18 0 V6 h7 v16 h4 Z" fill="var(--cyan)" />
+</svg>
+<style>
+  .mark { display: block; flex: none; }
+</style>
