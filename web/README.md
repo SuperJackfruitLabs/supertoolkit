@@ -1,6 +1,7 @@
 # supertoolkit's web app
 
-The five screens, built from [vibekit](https://forge.superjackfruit.com/SuperJackfruitLabs/vibekit)
+The five screens, built from vibekit, the suite design system, which is
+vendored here as a tarball so this builds with no access to anything else
 and served by the Go binary from `go:embed`.
 
 ## Why it is built this way

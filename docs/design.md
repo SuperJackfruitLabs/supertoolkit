@@ -1,7 +1,7 @@
 # Design
 
 The reasoning, the landscape review and the three spike rounds live in
-[the sketchbook idea](https://forge.superjackfruit.com/SuperJackfruitLabs/sketchbook/src/branch/main/ideas/2026-10-14-supertoolkit).
+the design notes that preceded it, which are internal.
 This file records only what is **decided and binding** for the code here.
 
 ## The invariant
