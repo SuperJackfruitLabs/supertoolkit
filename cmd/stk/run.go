@@ -30,7 +30,9 @@ type session struct {
 // daemon on a Unix socket, with its own OS user, is Phase 1 — this is enough to
 // prove the invariant and avoids inventing lifecycle management first.
 func startBroker(cfg *policy.Config, store *credential.Store, dir string) (*session, error) {
-	ca, err := broker.NewCA("supertoolkit session CA", 24*time.Hour)
+	// One CA per install, not per session: a fresh one here overwrote the
+	// certificate every other session and `stk init` had told clients to trust.
+	ca, err := broker.LoadOrCreateCA(dir, "supertoolkit local CA", 365*24*time.Hour)
 	if err != nil {
 		return nil, err
 	}

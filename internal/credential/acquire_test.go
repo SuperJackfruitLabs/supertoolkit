@@ -208,6 +208,7 @@ func TestRotatedRefreshTokenIsPersistedBeforeTheAccessTokenIsReturned(t *testing
 			stored = m
 			return nil
 		},
+		nil,
 	)
 
 	access, expires, err := ex(context.Background(), "x", stored)
@@ -239,7 +240,7 @@ func TestRotationWithNoPlaceToStoreFailsNow(t *testing.T) {
 	ex := ExchangeRefresh(
 		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
 			return "access", "rotated", time.Now().Add(time.Hour), nil
-		}, nil)
+		}, nil, nil)
 	_, _, err := ex(context.Background(), "x", Material{FieldClientID: "c", FieldRefreshToken: "old"})
 	if err == nil {
 		t.Fatal("a rotation with nowhere to store it was accepted")
@@ -256,7 +257,7 @@ func TestFailedPersistenceSaysToReconnect(t *testing.T) {
 		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
 			return "access", "rotated", time.Now().Add(time.Hour), nil
 		},
-		func(string, Material) error { return fmt.Errorf("disk full") })
+		func(string, Material) error { return fmt.Errorf("disk full") }, nil)
 	_, _, err := ex(context.Background(), "x", Material{FieldClientID: "c", FieldRefreshToken: "old"})
 	if err == nil {
 		t.Fatal("a failed write was ignored")
@@ -274,7 +275,7 @@ func TestNonRotatingProviderWritesNothing(t *testing.T) {
 		func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
 			return "access", m[FieldRefreshToken], time.Now().Add(time.Hour), nil
 		},
-		func(string, Material) error { writes++; return nil })
+		func(string, Material) error { writes++; return nil }, nil)
 	if _, _, err := ex(context.Background(), "x", Material{FieldClientID: "c", FieldRefreshToken: "same"}); err != nil {
 		t.Fatal(err)
 	}
