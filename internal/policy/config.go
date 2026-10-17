@@ -223,7 +223,7 @@ type file struct {
 		Capabilities map[string]string `yaml:"capabilities"`
 		Device       deviceOverride    `yaml:"device"`
 		OAuth2       oauth2Override    `yaml:"oauth2"`
-		Rules        []ruleFile        `yaml:"rules"`
+		Rules        []yaml.Node       `yaml:"rules"`
 		AllowGraphQL *bool             `yaml:"allow_graphql"`
 	} `yaml:"services"`
 	Profiles map[string]map[string][]string `yaml:"profiles"`
@@ -238,15 +238,41 @@ type ruleFile struct {
 	When  map[string]any `yaml:"when"`
 }
 
+// decodeRule reads one rules item, refusing any key but allow, deny and when.
+// A dropped misspelling such as `whn:` would turn a conditional allow into an
+// unconditional one, so unknown keys fail the load. Strictness is local to
+// rules; the rest of the file keeps its lenient decoding.
+func decodeRule(n *yaml.Node) (ruleFile, error) {
+	var rf ruleFile
+	if n.Kind != yaml.MappingNode {
+		return rf, fmt.Errorf("want a mapping with allow or deny")
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "allow", "deny", "when":
+		default:
+			return rf, fmt.Errorf("unknown key %q (line %d): want allow, deny or when", k, n.Content[i].Line)
+		}
+	}
+	if err := n.Decode(&rf); err != nil {
+		return rf, err
+	}
+	return rf, nil
+}
+
 // buildRules is the preset's rules followed by the operator's.
-func buildRules(name string, entry *catalog.Entry, sf []ruleFile) (*rules.Set, error) {
+func buildRules(name string, entry *catalog.Entry, nodes []yaml.Node) (*rules.Set, error) {
 	f := entry.Forge
 	all, err := rules.Preset(f.Provider, f.Preset)
 	if err != nil {
 		return nil, fmt.Errorf("service %q: %w", name, err)
 	}
-	for i, rf := range sf {
+	for i := range nodes {
 		id := fmt.Sprintf("user#%d", i+1)
+		rf, err := decodeRule(&nodes[i])
+		if err != nil {
+			return nil, fmt.Errorf("service %q rule %s: %w", name, id, err)
+		}
 		if (rf.Allow == "") == (rf.Deny == "") {
 			return nil, fmt.Errorf("service %q rule %s: want exactly one of allow or deny", name, id)
 		}
@@ -258,7 +284,7 @@ func buildRules(name string, entry *catalog.Entry, sf []ruleFile) (*rules.Set, e
 		if err != nil {
 			return nil, fmt.Errorf("service %q rule %s: %w", name, id, err)
 		}
-		if len(r.When) > 0 && (r.Pattern == "/graphql" || strings.HasPrefix(r.Pattern, "/graphql/")) {
+		if len(r.When) > 0 && (strings.EqualFold(r.Pattern, "/graphql") || strings.HasPrefix(strings.ToLower(r.Pattern), "/graphql/")) {
 			return nil, fmt.Errorf("service %q rule %s: a body condition cannot apply to %s: graphql bodies are not inspected", name, id, r.Pattern)
 		}
 		if allow {

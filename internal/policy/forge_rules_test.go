@@ -157,3 +157,53 @@ func TestAllowGraphQLDefaultsFalse(t *testing.T) {
 		t.Error("built-in not inert")
 	}
 }
+
+func TestLoadRejectsUnknownRuleKey(t *testing.T) {
+	for name, item := range map[string]string{
+		"whn":       "allow: \"PATCH /repos/{owner}/{repo}/issues/*\"\n        whn: {state: closed}",
+		"When":      "allow: \"PATCH /repos/{owner}/{repo}/issues/*\"\n        When: {state: closed}",
+		"deny typo": "deny: \"PATCH /repos/{owner}/{repo}/issues/*\"\n        whn: {state: closed}",
+	} {
+		_, err := Load(write(t, forgeWith("none", "    rules:\n      - "+item+"\n")))
+		if err == nil || !strings.Contains(err.Error(), "forge-main") || !strings.Contains(err.Error(), "user#1") || !strings.Contains(err.Error(), "unknown key") {
+			t.Errorf("%s: error = %v", name, err)
+		}
+	}
+}
+
+func TestLoadRejectsAllowAndDenyTogetherOrNeither(t *testing.T) {
+	for _, item := range []string{
+		"allow: \"GET /a\"\n        deny: \"GET /b\"",
+		"when: {state: closed}",
+	} {
+		_, err := Load(write(t, forgeWith("none", "    rules:\n      - "+item+"\n")))
+		if err == nil || !strings.Contains(err.Error(), "exactly one") {
+			t.Errorf("%q: error = %v", item, err)
+		}
+	}
+}
+
+func TestLoadValidRuleWithWhenStillLoads(t *testing.T) {
+	loadForge(t, forgeWith("none", "    rules:\n      - allow: \"PATCH /repos/{owner}/{repo}/issues/*\"\n        when: {state: closed}\n"))
+}
+
+func TestLoadRejectsGraphQLBodyConditionAnyCase(t *testing.T) {
+	_, err := Load(write(t, forgeWith("none", "    rules:\n      - allow: \"POST /GraphQL\"\n        when: {query: present}\n")))
+	if err == nil || !strings.Contains(err.Error(), "forge-main") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestLoadUserRuleIDsFollowPresetInOrder(t *testing.T) {
+	svc := loadForge(t, forgeWith("read", `    rules:
+      - allow: "POST /repos/{owner}/{repo}/labels"
+      - deny: "POST /repos/{owner}/{repo}/labels"
+`))
+	// deny wins, and names the second user rule; the first allow is id user#1.
+	if d := eval(t, svc, "POST", svc.APIPrefix()+"/repos/acme/widgets/labels"); d.Allowed || d.RuleID != "user#2" {
+		t.Errorf("decision = %+v, want deny by user#2", d)
+	}
+	if d := eval(t, svc, "GET", svc.APIPrefix()+"/repos/acme/widgets/issues"); d.RuleID == "" || !strings.HasPrefix(d.RuleID, "preset:") {
+		t.Errorf("preset rule id = %+v", d)
+	}
+}
