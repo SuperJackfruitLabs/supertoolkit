@@ -14,8 +14,11 @@ var presetTiers = []struct {
 }{
 	{"read", []presetLine{
 		{"GET", "/user"},
+		{"GET", repoBase},
 		{"GET", repoBase + "/**"},
 	}},
+	// PUT .../issues/*/labels replaces all labels. PATCH .../issues/* can
+	// close an issue. Operators restrict these with rules.
 	{"issues", []presetLine{
 		{"POST", repoBase + "/issues"},
 		{"PATCH", repoBase + "/issues/*"},
@@ -24,6 +27,9 @@ var presetTiers = []struct {
 		{"POST", repoBase + "/issues/*/labels"},
 		{"PUT", repoBase + "/issues/*/labels"},
 	}},
+	// PATCH .../pulls/* can close a PR and retarget its base branch;
+	// POST .../pulls/*/reviews can submit an approving review. Operators
+	// restrict these with rules.
 	{"pull-requests", []presetLine{
 		{"POST", repoBase + "/pulls"},
 		{"PATCH", repoBase + "/pulls/*"},
@@ -49,6 +55,9 @@ func Preset(provider, name string) ([]Rule, error) {
 	case "github":
 		mergeMethod = "PUT"
 	case "bitbucket":
+		if name == "none" {
+			return []Rule{}, nil
+		}
 		return nil, fmt.Errorf("no presets for bitbucket yet; use preset: none and write rules")
 	default:
 		return nil, fmt.Errorf("unknown provider %q for presets", provider)

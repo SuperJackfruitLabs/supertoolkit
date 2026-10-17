@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -53,10 +54,9 @@ func TestPresetsAreCumulative(t *testing.T) {
 func TestPresetRuleIDs(t *testing.T) {
 	for _, name := range presetOrder {
 		for i, r := range mustPreset(t, "forgejo", name) {
-			if want := "preset:" + name + "#"; !strings.HasPrefix(r.ID, want) {
-				t.Errorf("id %q lacks prefix %q", r.ID, want)
+			if want := fmt.Sprintf("preset:%s#%d", name, i+1); r.ID != want {
+				t.Errorf("id %q, want %q", r.ID, want)
 			}
-			_ = i
 		}
 		if _, err := NewSet([]string{"o/r"}, mustPreset(t, "github", name)); err != nil {
 			t.Errorf("%s ids not unique/valid: %v", name, err)
@@ -88,6 +88,12 @@ func TestPresetReadIncludesIdentity(t *testing.T) {
 	}
 	if presetAllows(t, "github", "read", "GET", "/repos/o/other/pulls/3") {
 		t.Error("other repo read allowed")
+	}
+	if !presetAllows(t, "github", "read", "GET", "/repos/o/r") {
+		t.Error("repo metadata denied")
+	}
+	if presetAllows(t, "github", "read", "GET", "/repos/o/other") {
+		t.Error("other repo metadata allowed")
 	}
 	if presetAllows(t, "github", "read", "GET", "/search/code") {
 		t.Error("search allowed")
@@ -179,5 +185,21 @@ func TestPresetUnknownFailsClosed(t *testing.T) {
 	}
 	if _, err := Preset("", ""); err == nil {
 		t.Error("empty accepted")
+	}
+}
+
+func TestBitbucketNoneIsEmptyOthersError(t *testing.T) {
+	rs, err := Preset("bitbucket", "none")
+	if err != nil || len(rs) != 0 {
+		t.Fatalf("none: %v %v", rs, err)
+	}
+	for _, n := range []string{"read", "issues", "pull-requests", "maintain", "bogus"} {
+		_, err := Preset("bitbucket", n)
+		if err == nil || err.Error() != "no presets for bitbucket yet; use preset: none and write rules" {
+			t.Errorf("%s: err = %v", n, err)
+		}
+	}
+	if _, err := Preset("gitlab", "none"); err == nil {
+		t.Error("unknown provider accepted for none")
 	}
 }
