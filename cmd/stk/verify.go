@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/verify"
 )
 
@@ -59,13 +62,19 @@ func cmdVerify(args []string) error {
 	if err != nil {
 		return err
 	}
-	secret, err := store.Get(name)
-	if err != nil {
-		return fmt.Errorf("%s has no stored credential: connect it first (`stk connect %s`)", name, name)
+	in := verify.Input{Entry: entry, ExpectLogin: expect, HTTP: verifyHTTP, BaseURL: verifyBaseURL}
+	if entry.Forge != nil && entry.Auth == catalog.AuthGitHubApp {
+		in.App, err = appVerifyInput(name, store)
+		if err != nil {
+			return err
+		}
+	} else {
+		in.Secret, err = store.Get(name)
+		if err != nil {
+			return fmt.Errorf("%s has no stored credential: connect it first (`stk connect %s`)", name, name)
+		}
 	}
-	res := verify.Run(context.Background(), verify.Input{
-		Entry: entry, Secret: secret, ExpectLogin: expect, HTTP: verifyHTTP, BaseURL: verifyBaseURL,
-	})
+	res := verify.Run(context.Background(), in)
 	if asJSON {
 		if err := json.NewEncoder(os.Stdout).Encode(res); err != nil {
 			return err
@@ -80,4 +89,37 @@ func cmdVerify(args []string) error {
 		return fmt.Errorf("%s failed verification: %s", name, res.Reason)
 	}
 	return nil
+}
+
+// appVerifyInput supplies an app grant's two credentials from the store and
+// the service's own acquirer, the same ones the proxy uses: the JWT is minted
+// from the stored material as the exchange mints it, and the installation
+// token comes through secretSource, already restricted to the configured
+// repositories. Neither is held until verify asks for it.
+func appVerifyInput(name string, store *credential.Store) (*verify.AppInput, error) {
+	cfg, err := policy.Load(configPath())
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := cfg.Service(name); !ok {
+		return nil, fmt.Errorf("%s is not configured", name)
+	}
+	if _, err := store.Material(name); err != nil {
+		return nil, fmt.Errorf("%s has no stored credential: connect it first (`stk connect %s`)", name, name)
+	}
+	client := verifyHTTP
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+	source := secretSource(cfg, store, newAcquirers(cfg, store, client))
+	return &verify.AppInput{
+		JWT: func() (string, error) {
+			m, err := store.Material(name)
+			if err != nil {
+				return "", err
+			}
+			return credential.MintJWT(m, map[string]any{"iss": m[credential.FieldAppID]}, 9*time.Minute)
+		},
+		InstallationToken: func() (string, error) { return source(name) },
+	}, nil
 }
