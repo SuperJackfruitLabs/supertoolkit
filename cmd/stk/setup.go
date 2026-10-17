@@ -83,7 +83,7 @@ func cmdAdd(args []string) error {
 	for _, name := range args {
 		entry, ok := catalog.Lookup(name)
 		if !ok {
-			return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())
+			return fmt.Errorf("unknown service %q: known services are %s; a git forge is defined by hand in the policy file with `kind: forge`", name, knownServices())
 		}
 		if strings.Contains(text, "\n  "+name+":") {
 			fmt.Printf("  %s already present\n", name)
@@ -141,8 +141,9 @@ func cmdConnect(args []string) error {
 	if browser {
 		return connectBrowser(name, os.Stdout, os.Stdin, openInBrowser)
 	}
-	if _, ok := catalog.Lookup(name); !ok {
-		return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())
+	entry, err := resolveEntry(name)
+	if err != nil {
+		return err
 	}
 	dir, err := home()
 	if err != nil {
@@ -157,7 +158,6 @@ func cmdConnect(args []string) error {
 		return err
 	}
 
-	entry, _ := catalog.Lookup(name)
 	fields := entry.Auth.Fields()
 
 	raw, err := io.ReadAll(os.Stdin)

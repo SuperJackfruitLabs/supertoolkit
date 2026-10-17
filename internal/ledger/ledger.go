@@ -45,6 +45,8 @@ type Entry struct {
 	// the name of the operation that replaced it.
 	Credential string `json:"credential,omitempty"`
 	Outcome    string `json:"outcome,omitempty"`
+	// Rule is the id of the rule that denied the request, when one did.
+	Rule string `json:"rule,omitempty"`
 }
 
 // Ledger appends effects to a file and reads them back.

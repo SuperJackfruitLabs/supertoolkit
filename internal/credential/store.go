@@ -106,7 +106,37 @@ func (s *Store) putSealed(service, secret string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path(service), []byte(out), 0o600)
+	return writeFileAtomic(s.path(service), []byte(out))
+}
+
+// writeFileAtomic replaces path with data so that a concurrent reader sees the
+// old file or the new one, never a truncated or half-written one. The proxy
+// reads the credential on every request, so a replace that truncates first
+// fails a call that was perfectly authorised.
+func writeFileAtomic(path string, data []byte) (err error) {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			f.Close()
+			os.Remove(f.Name())
+		}
+	}()
+	if err = f.Chmod(0o600); err != nil {
+		return err
+	}
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // seal encrypts with the store's key, binding the result to `aad`.

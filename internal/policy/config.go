@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/rules"
 )
 
 // Action is what may happen when a caller asks for a capability.
@@ -73,6 +75,23 @@ type Service struct {
 	// oauth2 is the operator's own OAuth app for the authorization-code path.
 	// The client id is public, for the same reason the device one is.
 	oauth2 oauth2Override
+	// ruleSet and allowGraphQL are set only for a forge service.
+	ruleSet      *rules.Set
+	allowGraphQL bool
+}
+
+// Rules is the request rule set of a forge service, nil for a built-in.
+func (s *Service) Rules() *rules.Set { return s.ruleSet }
+
+// AllowGraphQL reports whether /graphql is reachable; false unless set.
+func (s *Service) AllowGraphQL() bool { return s.allowGraphQL }
+
+// APIPrefix is the forge's API path prefix, "" for a built-in.
+func (s *Service) APIPrefix() string {
+	if s.entry.Forge == nil {
+		return ""
+	}
+	return s.entry.Forge.APIPrefix
 }
 
 // Entry exposes the catalogue record, which carries the host and the credential
@@ -190,14 +209,101 @@ func (c *Config) InterceptHosts() map[string]bool {
 type file struct {
 	Workspace string `yaml:"workspace"`
 	Services  map[string]struct {
+		// Kind is empty for a built-in service and "forge" for one defined here.
+		Kind         string            `yaml:"kind"`
+		Provider     string            `yaml:"provider"`
+		Host         string            `yaml:"host"`
+		APIPrefix    string            `yaml:"api_prefix"`
+		Auth         string            `yaml:"auth"`
+		Scheme       string            `yaml:"scheme"`
+		EnvVar       string            `yaml:"env_var"`
+		Repositories []string          `yaml:"repositories"`
+		Preset       string            `yaml:"preset"`
 		Scopes       []string          `yaml:"scopes"`
 		Capabilities map[string]string `yaml:"capabilities"`
 		Device       deviceOverride    `yaml:"device"`
 		OAuth2       oauth2Override    `yaml:"oauth2"`
+		Rules        []yaml.Node       `yaml:"rules"`
+		AllowGraphQL *bool             `yaml:"allow_graphql"`
 	} `yaml:"services"`
 	Profiles map[string]map[string][]string `yaml:"profiles"`
 	Servers  map[string]serverFile          `yaml:"servers"`
 	Notify   notifyFile                     `yaml:"notify"`
+}
+
+// ruleFile is one `rules:` item: exactly one of allow or deny.
+type ruleFile struct {
+	Allow string         `yaml:"allow"`
+	Deny  string         `yaml:"deny"`
+	When  map[string]any `yaml:"when"`
+}
+
+// decodeRule reads one rules item, refusing any key but allow, deny and when.
+// A dropped misspelling such as `whn:` would turn a conditional allow into an
+// unconditional one, so unknown keys fail the load. Strictness is local to
+// rules; the rest of the file keeps its lenient decoding.
+func decodeRule(n *yaml.Node) (ruleFile, error) {
+	var rf ruleFile
+	if n.Kind != yaml.MappingNode {
+		return rf, fmt.Errorf("want a mapping with allow or deny")
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "allow", "deny", "when":
+		default:
+			return rf, fmt.Errorf("unknown key %q (line %d): want allow, deny or when", k, n.Content[i].Line)
+		}
+	}
+	if err := n.Decode(&rf); err != nil {
+		return rf, err
+	}
+	return rf, nil
+}
+
+// buildRules is the preset's rules followed by the operator's.
+func buildRules(name string, entry *catalog.Entry, nodes []yaml.Node) (*rules.Set, error) {
+	f := entry.Forge
+	all, err := rules.Preset(f.Provider, f.Preset)
+	if err != nil {
+		return nil, fmt.Errorf("service %q: %w", name, err)
+	}
+	for i := range nodes {
+		id := fmt.Sprintf("user#%d", i+1)
+		rf, err := decodeRule(&nodes[i])
+		if err != nil {
+			return nil, fmt.Errorf("service %q rule %s: %w", name, id, err)
+		}
+		if (rf.Allow == "") == (rf.Deny == "") {
+			return nil, fmt.Errorf("service %q rule %s: want exactly one of allow or deny", name, id)
+		}
+		allow, line := true, rf.Allow
+		if rf.Deny != "" {
+			allow, line = false, rf.Deny
+		}
+		r, err := rules.ParseRule(id, line, rf.When, allow)
+		if err != nil {
+			return nil, fmt.Errorf("service %q rule %s: %w", name, id, err)
+		}
+		if len(r.When) > 0 && (strings.EqualFold(r.Pattern, "/graphql") || strings.HasPrefix(strings.ToLower(r.Pattern), "/graphql/")) {
+			return nil, fmt.Errorf("service %q rule %s: a body condition cannot apply to %s: graphql bodies are not inspected", name, id, r.Pattern)
+		}
+		if allow {
+			var owner, repo bool
+			for _, seg := range strings.Split(r.Pattern, "/") {
+				owner = owner || seg == "{owner}"
+				repo = repo || seg == "{repo}"
+			}
+			if owner != repo {
+				return nil, fmt.Errorf("service %q rule %s: an allow rule must use both {owner} and {repo} or neither; one alone binds more loosely than an exact repository", name, id)
+			}
+		}
+		all = append(all, r)
+	}
+	set, err := rules.NewSet(f.Repositories, all)
+	if err != nil {
+		return nil, fmt.Errorf("service %q: %w", name, err)
+	}
+	return set, nil
 }
 
 // deviceOverride mirrors a service's `device:` block.
@@ -271,9 +377,29 @@ func Load(path string) (*Config, error) {
 		notify:    Notify{Webhook: f.Notify.Webhook, File: f.Notify.File},
 	}
 	for name, sf := range f.Services {
-		entry, ok := catalog.Lookup(name)
-		if !ok {
-			return nil, fmt.Errorf("%s: unknown service %q: known services are %v", path, name, catalog.Names())
+		var entry *catalog.Entry
+		switch sf.Kind {
+		case "":
+			var ok bool
+			entry, ok = catalog.Lookup(name)
+			if !ok {
+				return nil, fmt.Errorf("%s: unknown service %q: known services are %v (a git forge is defined with `kind: forge`)", path, name, catalog.Names())
+			}
+		case "forge":
+			var err error
+			entry, err = catalog.NewForgeEntry(catalog.ForgeSpec{
+				Name: name, Provider: sf.Provider, Host: sf.Host, APIPrefix: sf.APIPrefix,
+				Auth: sf.Auth, Scheme: sf.Scheme, EnvVar: sf.EnvVar,
+				Repositories: sf.Repositories, Preset: sf.Preset,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+		default:
+			return nil, fmt.Errorf("%s: service %q: unknown kind %q: want forge, or leave kind out for a built-in", path, name, sf.Kind)
+		}
+		if entry.Forge == nil && (len(sf.Rules) > 0 || sf.AllowGraphQL != nil) {
+			return nil, fmt.Errorf("%s: service %q: rules and allow_graphql apply only to a `kind: forge` service", path, name)
 		}
 		svc := &Service{
 			Name: name, Scopes: sf.Scopes, explicit: map[string]Action{}, entry: entry,
@@ -285,6 +411,14 @@ func Load(path string) (*Config, error) {
 		if (sf.OAuth2.AuthorizeURL == "") != (sf.OAuth2.TokenURL == "") {
 			return nil, fmt.Errorf("%s: service %q: oauth2 needs both authorize_url and token_url, or neither — exchanging a code at a server that did not issue it never succeeds", path, name)
 		}
+		if entry.Forge != nil {
+			set, err := buildRules(name, entry, sf.Rules)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+			svc.ruleSet = set
+			svc.allowGraphQL = sf.AllowGraphQL != nil && *sf.AllowGraphQL
+		}
 		for cap, want := range sf.Capabilities {
 			a, err := parseAction(want)
 			if err != nil {
@@ -293,6 +427,20 @@ func Load(path string) (*Config, error) {
 			svc.explicit[cap] = a
 		}
 		cfg.services[name] = svc
+	}
+
+	// The proxy maps a host to one service, so two services on one host would
+	// have one silently win. Checked across every service, built-in or forge,
+	// and after the whole file is read so the order they are written in cannot
+	// hide it.
+	owner := map[string]string{}
+	for _, name := range cfg.Services() {
+		for _, h := range cfg.services[name].entry.Hosts() {
+			if other, taken := owner[h]; taken {
+				return nil, fmt.Errorf("%s: services %q and %q both use host %s: one service per host", path, other, name, h)
+			}
+			owner[h] = name
+		}
 	}
 
 	if err := cfg.loadServers(path, f.Servers); err != nil {

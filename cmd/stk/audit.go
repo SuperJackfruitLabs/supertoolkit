@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/broker"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/ledger"
@@ -29,22 +30,33 @@ type observer struct {
 
 func (o observer) Observe(r broker.Record) {
 	e := ledger.Entry{
-		When: r.When.UTC(), Service: r.Service, Host: r.Host,
-		Method: r.Method, Path: r.Path, Outcome: r.Status, Caller: o.caller,
+		When: r.When.UTC(), Service: r.Service, Host: escapeControl(r.Host),
+		Method: escapeControl(r.Method), Path: escapeControl(r.Path), Outcome: escapeControl(r.Status), Caller: o.caller,
+		Rule: escapeControl(r.Rule),
 	}
+	// A denied request never fetched a credential, so it must not carry a
+	// credential fingerprint; the rule that refused it is the evidence.
+	denied := r.Rule != "" && strings.HasPrefix(r.Status, "403 denied")
 	if svc, ok := o.cfg.Service(r.Service); ok {
-		if c, known := svc.Entry().CapabilityFor(r.Method, r.Path); known {
+		if denied {
+			e.Credential = svc.Entry().Auth.String()
+		} else if c, known := svc.Entry().CapabilityFor(r.Method, r.Path); known {
 			e.Capability = c.Name
 			e.Policy = svc.Policy(c.Name).String()
 		}
 		// What was sent, described without being it. A substituted token is
 		// identified by fingerprint; a signed request carries no token at all,
 		// so naming the operation is the honest answer.
-		if r.Injected != "" {
-			e.Credential = r.AuthzFP
-		} else {
-			e.Credential = svc.Entry().Auth.String()
+		if !denied {
+			if r.Injected != "" {
+				e.Credential = r.AuthzFP
+			} else {
+				e.Credential = svc.Entry().Auth.String()
+			}
 		}
+	}
+	if denied {
+		e.Capability, e.Policy = "(denied)", "deny"
 	}
 	if e.Capability == "" {
 		// A request the catalogue never named. Recording it matters more than
@@ -113,8 +125,12 @@ func cmdAudit(args []string) error {
 	fmt.Printf("  %d most recent effect(s) · %s\n\n", len(entries), led.Path())
 	for _, e := range entries {
 		fmt.Printf("  %s  %-10s %-24s %-8s %s\n",
-			e.When.Local().Format("Jan 02 15:04:05"), e.Service, e.Capability, e.Policy, e.Outcome)
-		fmt.Printf("  %18s%s %s · credential: %s\n", "", e.Method, e.Path, e.Credential)
+			e.When.Local().Format("Jan 02 15:04:05"), escapeControl(e.Service), escapeControl(e.Capability),
+			escapeControl(e.Policy), escapeControl(e.Outcome))
+		fmt.Printf("  %18s%s %s · credential: %s\n", "", escapeControl(e.Method), escapeControl(e.Path), escapeControl(e.Credential))
+		if e.Rule != "" {
+			fmt.Printf("  %18srule: %s\n", "", escapeControl(e.Rule))
+		}
 	}
 	fmt.Println()
 	fmt.Println("  no credential is recorded here — a fingerprint or the operation that replaced it")
@@ -154,4 +170,32 @@ func fingerprint(s string) string {
 	}
 	sum := sha256.Sum256([]byte(s))
 	return "sha256:" + hex.EncodeToString(sum[:])[:12]
+}
+
+// escapeControl makes request-derived text safe to print on a terminal: C0
+// controls and DEL become \xNN, C1 controls become \u00NN. A request path is
+// attacker-chosen, and its decoded form can carry an ESC or a newline.
+func escapeControl(s string) string {
+	clean := true
+	for _, r := range s {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		case r >= 0x80 && r <= 0x9f:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

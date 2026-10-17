@@ -134,6 +134,66 @@ rather than only a constant:
 A service we do not front directly is reachable as a fronted MCP server: the
 child gets a placeholder in its environment and nothing else.
 
+### A git forge, defined in configuration
+
+A self-hosted Forgejo or Gitea has a host no catalogue could name, so a forge is
+declared in `supertoolkit.yaml` instead of compiled in:
+
+```yaml
+services:
+  forge-main:
+    kind: forge
+    provider: forgejo            # forgejo | gitea | github | bitbucket
+    host: forge.example.com      # a bare hostname
+    scheme: bearer               # or `token` for Authorization: token <t>
+    env_var: FORGEJO_TOKEN
+    repositories: [acme/widgets] # owner/name, required
+    preset: issues               # read | issues | pull-requests | maintain | none
+```
+
+Then `stk connect forge-main` (token on stdin) and `stk verify forge-main`, which
+makes one read call as that credential and prints the login it acts as, or a
+reason it failed.
+
+**Presets are enforced.** The broker decides every request to a forge before it
+fetches the credential: a request no rule allows gets a `403` that names the
+rule, and nothing is sent to the provider. The preset's rules come first, then
+your own `rules:`; a matching `deny` always wins, and anything not allowed is
+denied.
+
+| preset | allows (cumulative) |
+|---|---|
+| `read` | GET on `/user` and the configured repositories |
+| `issues` | read, plus creating and editing issues, comments and issue labels |
+| `pull-requests` | issues, plus opening and editing pull requests, reviews and review requests |
+| `maintain` | pull-requests, plus merging pull requests, releases and repository labels |
+| `none` | nothing; write every rule yourself |
+
+No preset allows `DELETE`; `none` is empty, so a `DELETE` needs an explicit
+`allow` of your own. Bitbucket has no presets yet: use `preset: none`.
+
+```yaml
+    preset: read
+    rules:
+      - allow: "PATCH /repos/{owner}/{repo}/issues/*"
+        when: {state: absent}      # a JSON body must not set `state`
+      - deny: "POST /repos/{owner}/{repo}/issues/*/lock"
+```
+
+Paths are written relative to `api_prefix`. `{owner}` and `{repo}` must be used
+together and match the configured repositories. Paths containing `..`, `//` or
+an encoded slash are refused. GraphQL is denied by default (rule
+`builtin:graphql`), because one endpoint carries every operation; setting
+`allow_graphql: true` on the service stops that built-in deny. The endpoint is
+then still subject to the path rules (a `POST …/graphql` needs an `allow`
+rule; default deny applies), but the operation inside the request body is not
+inspected, so no rule can restrict which queries or mutations run; a body
+condition on a `/graphql` pattern is rejected when the config loads.
+`stk audit` shows the rule that denied a request. Design:
+[docs/forge-broker-design.md](docs/forge-broker-design.md).
+A credential can also arrive sealed, from a machine that has it:
+[docs/handover-v1.md](docs/handover-v1.md).
+
 ## Using it from an agent
 
 `stk mcp` speaks MCP on stdio with exactly four tools — categories, actions,

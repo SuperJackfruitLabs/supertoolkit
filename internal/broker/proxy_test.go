@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -12,12 +13,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"golang.org/x/net/http2"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/rules"
 )
 
 const theSecret = "ghp_the_real_credential"
@@ -30,6 +33,12 @@ type fixture struct {
 	clientCA   *tls.Config
 	provider   string // host:port of the local provider
 	tunnelHits *int64
+	// providerHits counts every request the provider received; secretCalls
+	// counts every call to the secret source.
+	providerHits *atomic.Int64
+	secretCalls  *atomic.Int64
+	// lastBody is the body of the provider's most recent catch-all request.
+	lastBody chan []byte
 }
 
 func newFixture(t *testing.T, cfgBody string) *fixture {
@@ -45,7 +54,17 @@ func newFixture(t *testing.T, cfgBody string) *fixture {
 		t.Fatal(err)
 	}
 
+	var providerHits, secretCalls atomic.Int64
+	lastBody := make(chan []byte, 16)
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		select {
+		case lastBody <- body:
+		default:
+		}
+		json.NewEncoder(w).Encode(map[string]string{"authorization": r.Header.Get("Authorization"), "path": r.URL.EscapedPath()})
+	})
 	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
 		authz := r.Header.Get("Authorization")
 		decoded := ""
@@ -78,7 +97,10 @@ func newFixture(t *testing.T, cfgBody string) *fixture {
 	})
 
 	provSrv := &http.Server{
-		Handler:   mux,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			providerHits.Add(1)
+			mux.ServeHTTP(w, r)
+		}),
 		TLSConfig: &tls.Config{Certificates: []tls.Certificate{*leaf}, NextProtos: []string{"h2", "http/1.1"}},
 	}
 	if err := http2.ConfigureServer(provSrv, &http2.Server{}); err != nil {
@@ -122,7 +144,7 @@ func newFixture(t *testing.T, cfgBody string) *fixture {
 	}
 	b, err := New(Options{
 		Config: cfg, CA: brokerCA,
-		Secrets:  func(string) (string, error) { return theSecret, nil },
+		Secrets:  func(string) (string, error) { secretCalls.Add(1); return theSecret, nil },
 		Upstream: upstream,
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			tunnelHits++
@@ -143,6 +165,7 @@ func newFixture(t *testing.T, cfgBody string) *fixture {
 	pu, _ := url.Parse("http://" + proxyLn.Addr().String())
 	return &fixture{
 		broker: b, proxyURL: pu, provider: provAddr, tunnelHits: &tunnelHits,
+		providerHits: &providerHits, secretCalls: &secretCalls, lastBody: lastBody,
 		clientCA: &tls.Config{RootCAs: brokerCA.Pool()},
 	}
 }
@@ -400,5 +423,264 @@ func TestUpgradeHeaderAloneIsNotAnUpgrade(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotImplemented {
 		t.Fatal("a request that is not an upgrade was refused as one")
+	}
+}
+
+// forgeAt is a forge service on the fixture's provider host. Provider github
+// has no API prefix, so paths are matched as sent.
+func forgeAt(extra string) string {
+	return `
+services:
+  forge-main:
+    kind: forge
+    provider: github
+    host: api.github.com
+    auth: token
+    scheme: bearer
+    env_var: FORGE_TOKEN
+    repositories: [acme/widgets]
+    preset: read
+` + extra
+}
+
+func (f *fixture) do(t *testing.T, forceH1 bool, method, path string, body io.Reader) (*http.Response, string) {
+	t.Helper()
+	req, _ := http.NewRequest(method, "https://api.github.com"+path, body)
+	req.Header.Set("Authorization", "Bearer "+Placeholder("forge-main"))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := f.client(forceH1).Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp, string(b)
+}
+
+func assertDenied(t *testing.T, f *fixture, resp *http.Response, body, ruleID string) {
+	t.Helper()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body %q", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "rule "+ruleID+" (") || !strings.Contains(body, "Nothing was sent.") {
+		t.Errorf("deny body = %q, want it to name rule %s", body, ruleID)
+	}
+	if n := f.providerHits.Load(); n != 0 {
+		t.Errorf("provider received %d requests, want 0", n)
+	}
+	if n := f.secretCalls.Load(); n != 0 {
+		t.Errorf("secret source called %d times, want 0", n)
+	}
+	if st := f.broker.Stats(); st.Denied != 1 || st.Swap != 0 {
+		t.Errorf("Stats() = %+v, want Denied 1 and no swap", st)
+	}
+	recs := f.broker.Audit()
+	if len(recs) != 1 || recs[0].Rule != ruleID || recs[0].Status != "403 denied: "+ruleID {
+		t.Errorf("audit = %+v, want one denied record for %s", recs, ruleID)
+	}
+}
+
+func TestDeniedRequestNeverReachesTheProvider(t *testing.T) {
+	f := newFixture(t, forgeAt(""))
+	resp, body := f.do(t, false, "DELETE", "/repos/acme/widgets", nil)
+	assertDenied(t, f, resp, body, "builtin:default-deny")
+}
+
+func TestDeniedRequestNeverFetchesTheSecret(t *testing.T) {
+	f := newFixture(t, forgeAt(`    rules:
+      - deny: "GET /repos/{owner}/{repo}/issues"
+`))
+	resp, body := f.do(t, true, "GET", "/repos/acme/widgets/issues", nil)
+	assertDenied(t, f, resp, body, "user#1")
+}
+
+func TestAllowedRequestStillGetsTheCredential(t *testing.T) {
+	f := newFixture(t, forgeAt(""))
+	resp, body := f.do(t, false, "GET", "/repos/acme/widgets/issues", nil)
+	if resp.StatusCode != 200 || !strings.Contains(body, "Bearer "+theSecret) {
+		t.Fatalf("allowed request: %d %q, want the credential injected", resp.StatusCode, body)
+	}
+	if f.broker.Stats().Denied != 0 || f.providerHits.Load() != 1 || f.secretCalls.Load() != 1 {
+		t.Errorf("Stats() = %+v hits %d secrets %d", f.broker.Stats(), f.providerHits.Load(), f.secretCalls.Load())
+	}
+}
+
+// A request outside the read preset is allowed for a built-in, which has no
+// rules: built-ins are untouched by enforcement.
+func TestBuiltinServiceIsUntouched(t *testing.T) {
+	f := newFixture(t, githubOnly)
+	req, _ := http.NewRequest("DELETE", "https://api.github.com/graphql", strings.NewReader("{}"))
+	req.Header.Set("Authorization", "Bearer "+Placeholder("github"))
+	resp, err := f.client(false).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(string(b), theSecret) {
+		t.Fatalf("built-in: %d %q", resp.StatusCode, b)
+	}
+	if st := f.broker.Stats(); st.Denied != 0 || st.Swap != 1 {
+		t.Errorf("Stats() = %+v", st)
+	}
+	if recs := f.broker.Audit(); len(recs) != 1 || recs[0].Rule != "" {
+		t.Errorf("audit = %+v", recs)
+	}
+}
+
+func TestGraphQLDeniedByDefault(t *testing.T) {
+	for _, p := range []string{"/graphql", "/GraphQL", "/graphql/", "/graphql/x", "/%67raphql", "/GRAPHQL/"} {
+		t.Run(p, func(t *testing.T) {
+			// An allow-everything rule must not reopen GraphQL.
+			f := newFixture(t, forgeAt(`    rules:
+      - allow: "POST /**"
+      - allow: "GET /**"
+`))
+			resp, body := f.do(t, false, "POST", p, strings.NewReader(`{"query":"{viewer{login}}"}`))
+			assertDenied(t, f, resp, body, "builtin:graphql")
+		})
+	}
+	// Dot segments are refused by the normaliser: still a deny, never a pass.
+	for _, p := range []string{"/./graphql", "/x/../graphql"} {
+		t.Run(p, func(t *testing.T) {
+			f := newFixture(t, forgeAt(`    rules:
+      - allow: "POST /**"
+`))
+			resp, body := f.do(t, false, "POST", p, strings.NewReader(`{}`))
+			assertDenied(t, f, resp, body, "builtin:bad-path")
+		})
+	}
+	t.Run("allow_graphql", func(t *testing.T) {
+		f := newFixture(t, forgeAt(`    allow_graphql: true
+    rules:
+      - allow: "POST /graphql"
+`))
+		resp, body := f.do(t, false, "POST", "/graphql", strings.NewReader(`{}`))
+		if resp.StatusCode != 200 || f.providerHits.Load() != 1 {
+			t.Fatalf("allow_graphql: %d %q", resp.StatusCode, body)
+		}
+	})
+}
+
+func TestDeniedOverHTTP2(t *testing.T) {
+	f := newFixture(t, forgeAt(""))
+	resp, body := f.do(t, false, "POST", "/repos/acme/widgets/issues", strings.NewReader(`{"title":"x"}`))
+	if resp.Proto != "HTTP/2.0" {
+		t.Fatalf("client leg spoke %q, want HTTP/2.0", resp.Proto)
+	}
+	assertDenied(t, f, resp, body, "builtin:default-deny")
+}
+
+// chunked hides its length, so the request carries no Content-Length.
+type chunked struct{ r io.Reader }
+
+func (c chunked) Read(p []byte) (int, error) { return c.r.Read(p) }
+
+func TestBodyIsForwardedIntactAfterEvaluation(t *testing.T) {
+	small := []byte(`{"title":"hello","body":"world"}`)
+	big := make([]byte, rules.MaxBody*3+17)
+	for i := range big {
+		big[i] = byte(i * 7)
+	}
+	for _, tc := range []struct {
+		name    string
+		forceH1 bool
+		body    io.Reader
+		want    []byte
+	}{
+		{"small-h2", false, bytes.NewReader(small), small},
+		{"small-h1", true, bytes.NewReader(small), small},
+		{"chunked-over-max-h2", false, chunked{bytes.NewReader(big)}, big},
+		{"chunked-over-max-h1", true, chunked{bytes.NewReader(big)}, big},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, forgeAt(`    rules:
+      - allow: "POST /repos/{owner}/{repo}/labels"
+`))
+			resp, body := f.do(t, tc.forceH1, "POST", "/repos/acme/widgets/labels", tc.body)
+			if resp.StatusCode != 200 {
+				t.Fatalf("status %d %q", resp.StatusCode, body)
+			}
+			got := <-f.lastBody
+			if !bytes.Equal(got, tc.want) {
+				t.Fatalf("provider got %d bytes, want %d identical bytes", len(got), len(tc.want))
+			}
+		})
+	}
+}
+
+func TestOversizeBodyFailsClosedWhenARuleNeedsIt(t *testing.T) {
+	f := newFixture(t, forgeAt(`    rules:
+      - allow: "PATCH /repos/{owner}/{repo}/issues/{n}"
+        when: {state: closed}
+`))
+	pad := strings.Repeat("x", rules.MaxBody)
+	resp, body := f.do(t, false, "PATCH", "/repos/acme/widgets/issues/1",
+		chunked{strings.NewReader(`{"state":"closed","pad":"` + pad + `"}`)})
+	assertDenied(t, f, resp, body, "builtin:default-deny")
+
+	// Control: the same rule allows the small body, so the deny above is the
+	// size and not the rule.
+	g := newFixture(t, forgeAt(`    rules:
+      - allow: "PATCH /repos/{owner}/{repo}/issues/{n}"
+        when: {state: closed}
+`))
+	resp, body = g.do(t, false, "PATCH", "/repos/acme/widgets/issues/1", strings.NewReader(`{"state":"closed"}`))
+	if resp.StatusCode != 200 {
+		t.Fatalf("control: %d %q", resp.StatusCode, body)
+	}
+}
+
+func TestGraphQLDeniedUnderAnAPIPrefix(t *testing.T) {
+	f := newFixture(t, `
+services:
+  forge-main:
+    kind: forge
+    provider: gitea
+    host: api.github.com
+    auth: token
+    scheme: bearer
+    env_var: FORGE_TOKEN
+    repositories: [acme/widgets]
+    preset: read
+    rules:
+      - allow: "POST /**"
+`)
+	resp, body := f.do(t, false, "POST", "/api/v1/graphql", strings.NewReader(`{}`))
+	assertDenied(t, f, resp, body, "builtin:graphql")
+}
+
+func TestMethodOverrideIsDeniedAtTheBroker(t *testing.T) {
+	f := newFixture(t, forgeAt(""))
+	req, _ := http.NewRequest("GET", "https://api.github.com/repos/acme/widgets/issues", nil)
+	req.Header.Set("Authorization", "Bearer "+Placeholder("forge-main"))
+	req.Header.Set("X-HTTP-Method-Override", "DELETE")
+	resp, err := f.client(false).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assertDenied(t, f, resp, string(b), "builtin:method-override")
+}
+
+// Exactly MaxBody bytes is not truncated: the body condition is evaluated and
+// holds, and the provider receives identical bytes.
+func TestBodyOfExactlyMaxBodyIsEvaluatedAndForwarded(t *testing.T) {
+	f := newFixture(t, forgeAt(`    rules:
+      - allow: "PATCH /repos/{owner}/{repo}/issues/{n}"
+        when: {state: closed}
+`))
+	head, tail := `{"state":"closed","pad":"`, `"}`
+	body := []byte(head + strings.Repeat("x", rules.MaxBody-len(head)-len(tail)) + tail)
+	if len(body) != rules.MaxBody {
+		t.Fatalf("fixture body is %d bytes", len(body))
+	}
+	resp, rb := f.do(t, true, "PATCH", "/repos/acme/widgets/issues/1", chunked{bytes.NewReader(body)})
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d %q", resp.StatusCode, rb)
+	}
+	if got := <-f.lastBody; !bytes.Equal(got, body) {
+		t.Fatalf("provider got %d bytes, want %d identical", len(got), len(body))
 	}
 }

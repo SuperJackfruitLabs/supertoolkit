@@ -43,9 +43,9 @@ func cmdRevoke(args []string) error {
 	if name == "" {
 		return fmt.Errorf("usage: stk revoke <service> [--local]   (known: %s)", knownServices())
 	}
-	entry, ok := catalog.Lookup(name)
-	if !ok {
-		return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())
+	entry, err := resolveEntry(name)
+	if err != nil {
+		return err
 	}
 
 	dir, err := home()
