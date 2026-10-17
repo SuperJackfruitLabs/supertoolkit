@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"reflect"
@@ -165,12 +166,89 @@ func TestProbeJSONShape(t *testing.T) {
 	if dec.More() {
 		t.Error("extra output after the JSON array")
 	}
-	// Empty list is [] not null.
+	// Empty list is [] not null, and proves nothing, so it exits non-zero.
 	withClients(t, fakeClients())
 	out.Reset()
-	runDoctor([]string{"--probe", "--json"}, &out)
+	if err := runDoctor([]string{"--probe", "--json"}, &out); err == nil {
+		t.Error("an empty client list exited zero")
+	}
 	if strings.TrimSpace(out.String()) != "[]" {
 		t.Errorf("empty = %q", out.String())
+	}
+}
+
+func TestProbeWithNothingExercisedIsNotSuccess(t *testing.T) {
+	const reassurance = "goes through the broker"
+	for name, rs := range map[string][]probeResult{
+		"all missing": {{"curl", "missing", "not installed here"}, {"node fetch", "missing", "x"}},
+		"empty":       {},
+		"only ca":     {{"curl", "refused-ca", "x"}},
+	} {
+		withClients(t, fakeClients(rs...))
+		var out bytes.Buffer
+		err := runDoctor([]string{"--probe"}, &out)
+		if err == nil || !strings.Contains(err.Error(), "no client was exercised; nothing is proven") {
+			t.Errorf("%s: err=%v", name, err)
+		}
+		if strings.Contains(out.String(), reassurance) || !strings.Contains(out.String(), "nothing is proven") {
+			t.Errorf("%s: wrong human text:\n%s", name, out.String())
+		}
+	}
+	withClients(t, fakeClients(probeResult{"curl", "honoured", "ok"}, probeResult{"node fetch", "missing", "x"}, probeResult{"go", "refused-ca", "x"}))
+	var out bytes.Buffer
+	if err := runDoctor([]string{"--probe"}, &out); err != nil {
+		t.Errorf("one honoured plus missing/refused-ca must pass: %v", err)
+	}
+}
+
+func TestClassifyKeyedDoesNotMistakePortDigits(t *testing.T) {
+	rig := &probeRig{keyed: true}
+	got := rig.classify("curl", "curl: (7) Failed to connect to 127.0.0.1 port 40712: Connection refused", errors.New("x"))
+	if got.detail == "proxy credential not honoured" {
+		t.Errorf("port digits taken for a 407: %+v", got)
+	}
+	got = rig.classify("curl", "<p>error 407 in body</p>\nBearer "+probeSecret+"\n", nil)
+	if got.state != "honoured" {
+		t.Errorf("honoured output demoted: %+v", got)
+	}
+	got = rig.classify("curl", "response 407 Proxy Authentication Required\nBearer "+probeSecret+"\n", nil)
+	if got.state != "honoured" {
+		t.Errorf("honoured output with 407 text demoted: %+v", got)
+	}
+	for _, o := range []string{"curl: (56) CONNECT tunnel failed, response 407",
+		"Proxy Authentication Required", "statusCode=407 tunneling: proxy authentication required"} {
+		if g := rig.classify("c", o, errors.New("x")); g.detail != "proxy credential not honoured" {
+			t.Errorf("%q -> %+v", o, g)
+		}
+	}
+}
+
+func TestProbeRedactsProxyKeyFromDetail(t *testing.T) {
+	var key string
+	withClients(t, func(r *probeRig) []probeResult {
+		key = r.key
+		return []probeResult{
+			{"leaky", "failed", "dial " + r.proxyURL + " failed"},
+			{"curl", "honoured", "ok"},
+		}
+	})
+	for _, args := range [][]string{{"--probe", "--with-proxy-key"}, {"--probe", "--with-proxy-key", "--json"}} {
+		var out bytes.Buffer
+		runDoctor(args, &out)
+		if key == "" || strings.Contains(out.String(), key) {
+			t.Errorf("%v: key %q leaked:\n%s", args, key, out.String())
+		}
+	}
+}
+
+func TestProbeRigFailureIsEmptyStdoutAndError(t *testing.T) {
+	old := newRigFn
+	newRigFn = func(string, bool) (*probeRig, error) { return nil, errors.New("rig boom") }
+	defer func() { newRigFn = old }()
+	var out bytes.Buffer
+	err := runDoctor([]string{"--probe", "--json"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "rig boom") || out.Len() != 0 {
+		t.Fatalf("err=%v out=%q", err, out.String())
 	}
 }
 

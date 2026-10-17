@@ -285,6 +285,12 @@ in the running service. A file that does not load keeps the old policy and
 reports why; a service removed from the file stops being brokered, and its
 stored credential is kept (`stk revoke` removes a credential).
 
+Policy is read per request, so a tunnel opened before a reload enforces the new
+rules on its next request (a request already in flight keeps the policy it
+started with). Which hosts are brokered is decided when a `CONNECT` is
+accepted: a request on an open tunnel whose service was removed, or whose host
+now belongs to another service, is refused with `403` rather than forwarded.
+
 ### `stk verify`
 
 `stk verify <service> [--expect-login <login>] [--json]` makes one read call as
@@ -331,8 +337,9 @@ claims no more than was checked:
 The rules, per path and per parent directory up to `/`: none is owned by an
 agent uid (an unknown owner counts against it); no secret-holding path (state
 directory, `*.cred`, `salt`, `machine.key`, `ca.key`, `handover.key`,
-`proxy.key`, `stk-passphrase.key`, `audit.log`, `approvals`) has any group or
-other permission bit, since agent groups are not known; no parent directory is
+`proxy.key`, `proxy.addr`, `stk-passphrase.key`, `audit.log`, `approvals`) has
+a group or other read or write bit (for a directory, any group or other bit),
+since agent groups are not known; no parent directory is
 group- or other-writable; no symlink leads outside the checked tree; a path that
 cannot be examined for a reason other than not existing is a reason. The socket
 may be group-accessible, and the policy file group-readable, by design. An agent
@@ -357,14 +364,26 @@ through it (a client not installed here is `missing`). Each reports one of
 `honoured`, `bypassed`, `refused-ca`, `missing` or `failed`.
 
 The exit status is non-zero when any client is `bypassed` (it never asked the
-broker) or `failed`. `refused-ca` (loud, safe) and `missing` do not fail it.
+broker) or `failed`, and also when no client was `honoured` (all `missing`, or
+only `refused-ca`): the error is "no client was exercised; nothing is proven".
+`refused-ca` (loud, safe) and `missing` do not fail it when at least one client
+was honoured.
 
 `--json` writes a JSON array to stdout and nothing else; the table goes to
-stderr:
+stderr. The exit status is the same as without `--json`:
 
 ```
-[{"client":"curl","outcome":"honoured","detail":"the provider received the substituted credential"}]
+[
+  {
+    "client": "curl",
+    "outcome": "honoured",
+    "detail": "the provider received the substituted credential"
+  }
+]
 ```
+
+If the probe rig cannot start, stdout is empty, the error is on stderr and the
+exit status is non-zero. The ephemeral proxy key is removed from every `detail`.
 
 `--with-proxy-key` runs the probe through a broker that requires a proxy key,
 sent in the proxy URL. A client that drops the URL's credentials gets a `407`

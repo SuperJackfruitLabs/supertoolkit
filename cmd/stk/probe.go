@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ func cmdProbe(out io.Writer, o doctorOpts) error {
 	if err != nil {
 		return err
 	}
-	rig, err := newProbeRigKeyed(dir, o.withProxyKey)
+	rig, err := newRigFn(dir, o.withProxyKey)
 	if err != nil {
 		return err
 	}
@@ -75,6 +76,13 @@ func cmdProbe(out io.Writer, o doctorOpts) error {
 	fmt.Fprintln(human)
 
 	results := probeClients(rig)
+	honoured := 0
+	for i := range results {
+		results[i].detail = rig.redact(results[i].detail)
+		if results[i].state == "honoured" {
+			honoured++
+		}
+	}
 
 	// worst: 0 clean, 1 a CA refusal (loud, safe), 2 a bypass, 3 a client that
 	// failed. 2 and 3 fail the exit status.
@@ -107,9 +115,15 @@ func cmdProbe(out io.Writer, o doctorOpts) error {
 		rig.b.Stats().Intercept, rig.b.Stats().Swap)
 	fmt.Fprintln(human)
 	switch worst {
-	case 0:
-		fmt.Fprintln(human, "  every client present here goes through the broker.")
-	case 1:
+	case 0, 1:
+		if honoured == 0 {
+			fmt.Fprintln(human, "  no client was exercised; nothing is proven.")
+			break
+		}
+		if worst == 0 {
+			fmt.Fprintln(human, "  every client present here goes through the broker.")
+			break
+		}
 		fmt.Fprintln(human, "  a client refused the broker's CA. That fails loudly, which is the safe class:")
 		fmt.Fprintln(human, "  the request does not happen rather than happening unbrokered. Trust the CA for")
 		fmt.Fprintln(human, "  that client, or run it where `stk run` can set its trust store.")
@@ -146,6 +160,10 @@ func cmdProbe(out io.Writer, o doctorOpts) error {
 	case 3:
 		return fmt.Errorf("probe: a client failed")
 	}
+	// A pass must be earned: with no client honoured, nothing was shown.
+	if honoured == 0 {
+		return fmt.Errorf("no client was exercised; nothing is proven")
+	}
 	return nil
 }
 
@@ -160,6 +178,7 @@ type probeRig struct {
 	// keyed is true when the broker under probe requires a proxy key; proxyURL
 	// then carries it as userinfo.
 	keyed bool
+	key   string
 }
 
 // newProbeRig stands up a broker and a local provider for probeHost. Nothing
@@ -168,6 +187,9 @@ type probeRig struct {
 var probeClients = func(rig *probeRig) []probeResult {
 	return []probeResult{rig.probeCurl(), rig.probePython(), rig.probeNode(), rig.probeGoDefault()}
 }
+
+// newRigFn is a seam so tests can make the rig fail to start.
+var newRigFn = newProbeRigKeyed
 
 func newProbeRig(home string) (*probeRig, error) { return newProbeRigKeyed(home, false) }
 
@@ -186,6 +208,7 @@ func newProbeRigKeyed(home string, keyed bool) (*probeRig, error) {
 			return nil, err
 		}
 		proxyKey = base64.RawURLEncoding.EncodeToString(kb)
+		r.key = proxyKey
 	}
 
 	// The provider: its certificate is minted by a CA the client never trusts,
@@ -351,16 +374,30 @@ func (r *probeRig) run(client string, env []string, name string, args ...string)
 	return r.classify(client, string(out), err)
 }
 
-// classify is the package classify plus the one verdict only a keyed broker
-// can produce: a 407 means the client dropped the proxy URL's userinfo.
-func (r *probeRig) classify(client, out string, err error) probeResult {
-	if r.keyed {
-		low := strings.ToLower(out)
-		if strings.Contains(low, "407") || strings.Contains(low, "proxy authentication required") {
-			return probeResult{client, "failed", "proxy credential not honoured"}
-		}
+// redact removes the ephemeral proxy key, and any URL carrying it, from text
+// that is about to be printed.
+func (r *probeRig) redact(s string) string {
+	if r.key == "" {
+		return s
 	}
-	return classify(client, out, err)
+	s = strings.ReplaceAll(s, r.proxyURL, "http://[redacted]@"+r.proxyLn.Addr().String())
+	return strings.ReplaceAll(s, r.key, "[redacted]")
+}
+
+// proxyAuthRequired matches a client's own report of a 407 from the proxy,
+// never bare digits (a port such as 40712 contains them).
+var proxyAuthRequired = regexp.MustCompile(`(?i)(\bresponse 407\b|\bstatuscode=407\b|\b407 proxy authentication required\b|proxy authentication required)`)
+
+// classify is the package classify plus the one verdict only a keyed broker
+// can produce: a 407 means the client dropped the proxy URL's userinfo. The
+// honoured case is decided first, so output that merely contains "407" cannot
+// demote it.
+func (r *probeRig) classify(client, out string, err error) probeResult {
+	got := classify(client, out, err)
+	if r.keyed && got.state != "honoured" && proxyAuthRequired.MatchString(out) {
+		return probeResult{client, "failed", "proxy credential not honoured"}
+	}
+	return got
 }
 
 func (r *probeRig) probeCurl() probeResult {
