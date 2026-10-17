@@ -10,6 +10,7 @@ import (
 	"mime"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -283,11 +284,22 @@ func (c Cond) eval(o *object) (bool, error) {
 	return false, nil
 }
 
-// foldKey folds an object key the way Go's encoding/json matches field names
-// (case-insensitively, including the Kelvin sign and long s), so a body cannot
-// dodge a condition with "State" or "STATE". Case variants of one key become
-// duplicates, which count as present.
-func foldKey(k string) string { return strings.ToLower(strings.ToUpper(k)) }
+// foldKey folds an object key exactly as Go's encoding/json matches field
+// names: each rune maps to the smallest rune of its unicode.SimpleFold orbit
+// (so "State", "STATE", Kelvin sign and long s fold, but U+0130 does not).
+// A broader fold would let the rule see a key the origin does not. Case
+// variants of one key become duplicates, which count as present.
+func foldKey(k string) string { return strings.Map(foldRune, k) }
+
+func foldRune(r rune) rune {
+	for {
+		r2 := unicode.SimpleFold(r)
+		if r2 <= r {
+			return r2
+		}
+		r = r2
+	}
+}
 
 // maxExponent bounds number exponents so a pathological literal cannot make
 // exact comparison expensive; beyond it the value is unevaluable.

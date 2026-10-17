@@ -400,3 +400,29 @@ func TestBodyConditionNumbersCompareByValue(t *testing.T) {
 		t.Errorf("string \"3\" equalled number 3")
 	}
 }
+
+func TestBodyKeyFoldMatchesEncodingJSON(t *testing.T) {
+	p := "/repos/acme/widgets/issues/7"
+	s := mustSet(t, []string{"acme/widgets"},
+		mustRule(t, "need-title", "PATCH /repos/{owner}/{repo}/issues/*", map[string]any{"title": "absent"}, false),
+		mustRule(t, "edit", "PATCH /repos/{owner}/{repo}/issues/*", nil, true))
+	// U+0130 is not folded by encoding/json: the origin sees no title.
+	if d := s.Evaluate("", jsonReq("PATCH", p, `{"tİtle":"x"}`)); d.Allowed || d.RuleID != "need-title" {
+		t.Errorf("tİtle must leave title absent: %+v", d)
+	}
+	for _, b := range []string{`{"title":"x"}`, `{"TITLE":"x"}`} {
+		if d := s.Evaluate("", jsonReq("PATCH", p, b)); !d.Allowed {
+			t.Errorf("%s: title present, want allow: %+v", b, d)
+		}
+	}
+	abs := mustSet(t, []string{"acme/widgets"},
+		mustRule(t, "e", "PATCH /repos/{owner}/{repo}/issues/*", map[string]any{"kind": "absent", "state": "absent"}, true))
+	for _, b := range []string{"{\"Kind\":1}", "{\"ſtate\":1}"} {
+		if d := abs.Evaluate("", jsonReq("PATCH", p, b)); d.Allowed {
+			t.Errorf("%s must fold to present", b)
+		}
+	}
+	if d := abs.Evaluate("", jsonReq("PATCH", p, `{"tİtle":"x"}`)); !d.Allowed {
+		t.Errorf("control: %+v", d)
+	}
+}
