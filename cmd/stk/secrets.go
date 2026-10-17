@@ -21,14 +21,34 @@ import (
 type acquirers struct {
 	githubApp *credential.Acquirer
 	oauth2    *credential.Acquirer
+	// forgeApp holds one acquirer per `kind: forge` service with auth: app.
+	// Each has its own App, installation, API base and repository list, so
+	// sharing a cache would hand one service's token to another.
+	forgeApp map[string]*credential.Acquirer
 }
 
 func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Client) *acquirers {
+	forgeApp := map[string]*credential.Acquirer{}
+	for _, name := range cfg.Services() {
+		svc, _ := cfg.Service(name)
+		e := svc.Entry()
+		if e.Forge == nil || e.Auth != catalog.AuthGitHubApp {
+			continue
+		}
+		names := append([]string(nil), e.Forge.RepositoryNames...)
+		forgeApp[name] = &credential.Acquirer{
+			Material: store.Material,
+			Shared:   store,
+			Exchange: credential.ExchangeGitHubApp(e.Forge.APIBase, client,
+				func(string) []string { return names }),
+		}
+	}
 	return &acquirers{
+		forgeApp: forgeApp,
 		githubApp: &credential.Acquirer{
 			Material: store.Material,
 			Shared:   store,
-			Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
+			Exchange: credential.ExchangeGitHubApp("https://api.github.com", client, nil),
 		},
 		oauth2: &credential.Acquirer{
 			Material: store.Material,
@@ -71,6 +91,14 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 			),
 		},
 	}
+}
+
+// app returns the acquirer for a service whose catalogue auth is a GitHub App.
+func (a *acquirers) app(service string) *credential.Acquirer {
+	if acq, ok := a.forgeApp[service]; ok {
+		return acq
+	}
+	return a.githubApp
 }
 
 // effectiveAuth is the operation a stored credential actually performs.
@@ -125,7 +153,7 @@ func secretSource(cfg *policy.Config, store *credential.Store, acqs *acquirers) 
 		}
 		switch svc.Entry().Auth {
 		case catalog.AuthGitHubApp:
-			return acqs.githubApp.Token(context.Background(), service)
+			return acqs.app(service).Token(context.Background(), service)
 		case catalog.AuthOAuth2:
 			return acqs.oauth2.Token(context.Background(), service)
 		case catalog.AuthSigV4:

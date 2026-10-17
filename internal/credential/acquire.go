@@ -188,7 +188,11 @@ func (a *Acquirer) Invalidate(service string) {
 // The private key never goes to GitHub; the JWT does, and the installation
 // token GitHub returns is valid for an hour. So the broker holds the only
 // long-lived thing and everything downstream of it expires.
-func ExchangeGitHubApp(apiBase string, client *http.Client) func(context.Context, string, Material) (string, time.Time, error) {
+//
+// repositories, when it names any for the service, restricts the installation
+// token to those repository names; nil or an empty list asks for the
+// installation's full reach, which is the built-in github-app's behaviour.
+func ExchangeGitHubApp(apiBase string, client *http.Client, repositories func(service string) []string) func(context.Context, string, Material) (string, time.Time, error) {
 	return func(ctx context.Context, service string, m Material) (string, time.Time, error) {
 		if err := m.Require(FieldAppID, FieldPrivateKey, FieldInstallationID); err != nil {
 			return "", time.Time{}, fmt.Errorf("github app: %w", err)
@@ -199,9 +203,24 @@ func ExchangeGitHubApp(apiBase string, client *http.Client) func(context.Context
 		}
 		u := strings.TrimSuffix(apiBase, "/") + "/app/installations/" +
 			url.PathEscape(m[FieldInstallationID]) + "/access_tokens"
-		req, err := http.NewRequestWithContext(ctx, "POST", u, nil)
+		var body io.Reader
+		var names []string
+		if repositories != nil {
+			names = repositories(service)
+		}
+		if len(names) > 0 {
+			b, err := json.Marshal(map[string][]string{"repositories": names})
+			if err != nil {
+				return "", time.Time{}, err
+			}
+			body = strings.NewReader(string(b))
+		}
+		req, err := http.NewRequestWithContext(ctx, "POST", u, body)
 		if err != nil {
 			return "", time.Time{}, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
 		}
 		req.Header.Set("Authorization", "Bearer "+jwt)
 		req.Header.Set("Accept", "application/vnd.github+json")
@@ -211,17 +230,17 @@ func ExchangeGitHubApp(apiBase string, client *http.Client) func(context.Context
 			return "", time.Time{}, fmt.Errorf("github app: exchanging the JWT: %w", err)
 		}
 		defer resp.Body.Close()
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		if resp.StatusCode/100 != 2 {
-			// The body is the provider's words, not ours, and carries no
-			// credential of ours.
-			return "", time.Time{}, fmt.Errorf("github app: the exchange returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+			// Only the status: a response body from a token endpoint may echo
+			// a token, and an error message travels to logs and terminals.
+			return "", time.Time{}, fmt.Errorf("github app: the exchange returned %s", resp.Status)
 		}
 		var out struct {
 			Token     string    `json:"token"`
 			ExpiresAt time.Time `json:"expires_at"`
 		}
-		if err := json.Unmarshal(body, &out); err != nil {
+		if err := json.Unmarshal(respBody, &out); err != nil {
 			return "", time.Time{}, fmt.Errorf("github app: could not read the exchange response: %w", err)
 		}
 		if out.Token == "" {

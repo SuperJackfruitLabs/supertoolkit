@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -139,7 +140,7 @@ func TestGitHubAppExchangeSendsAJWTAndNotTheKey(t *testing.T) {
 	defer srv.Close()
 
 	m := Material{FieldAppID: "123456", FieldPrivateKey: keyPEM, FieldInstallationID: "987"}
-	ex := ExchangeGitHubApp(srv.URL, srv.Client())
+	ex := ExchangeGitHubApp(srv.URL, srv.Client(), nil)
 	tok, exp, err := ex(context.Background(), "github-app", m)
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +161,7 @@ func TestGitHubAppExchangeSendsAJWTAndNotTheKey(t *testing.T) {
 }
 
 func TestGitHubAppExchangeRefusesIncompleteMaterial(t *testing.T) {
-	ex := ExchangeGitHubApp("https://example.invalid", http.DefaultClient)
+	ex := ExchangeGitHubApp("https://example.invalid", http.DefaultClient, nil)
 	_, _, err := ex(context.Background(), "github-app", Material{FieldAppID: "1"})
 	if err == nil {
 		t.Fatal("the exchange proceeded with incomplete material")
@@ -178,7 +179,7 @@ func TestGitHubAppExchangeErrorDoesNotLeakTheKey(t *testing.T) {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
 	}))
 	defer srv.Close()
-	ex := ExchangeGitHubApp(srv.URL, srv.Client())
+	ex := ExchangeGitHubApp(srv.URL, srv.Client(), nil)
 	_, _, err := ex(context.Background(), "github-app",
 		Material{FieldAppID: "1", FieldPrivateKey: keyPEM, FieldInstallationID: "9"})
 	if err == nil {
@@ -281,5 +282,91 @@ func TestNonRotatingProviderWritesNothing(t *testing.T) {
 	}
 	if writes != 0 {
 		t.Errorf("wrote %d times for a provider that did not rotate", writes)
+	}
+}
+
+// appServer is a fake GitHub that records the installation-token request body.
+func appServer(t *testing.T, body *string, status int, reply string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/app/installations/987/access_tokens" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		b, _ := io.ReadAll(r.Body)
+		*body = string(b)
+		w.WriteHeader(status)
+		io.WriteString(w, reply)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+const okReply = `{"token":"ghs_scoped","expires_at":"2099-01-01T00:00:00Z"}`
+
+func TestExchangeRequestsOnlyConfiguredRepositories(t *testing.T) {
+	keyPEM, _ := testKeyPEM(t, false)
+	var body string
+	srv := appServer(t, &body, 201, okReply)
+	var asked string
+	ex := ExchangeGitHubApp(srv.URL, srv.Client(), func(service string) []string {
+		asked = service
+		return []string{"a", "b"}
+	})
+	tok, _, err := ex(context.Background(), "gh-app",
+		Material{FieldAppID: "1", FieldPrivateKey: keyPEM, FieldInstallationID: "987"})
+	if err != nil || tok != "ghs_scoped" {
+		t.Fatalf("exchange = %q, %v", tok, err)
+	}
+	if asked != "gh-app" {
+		t.Errorf("repositories asked for %q, want gh-app", asked)
+	}
+	var got struct {
+		Repositories []string `json:"repositories"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("body %q is not JSON: %v", body, err)
+	}
+	if strings.Join(got.Repositories, ",") != "a,b" {
+		t.Fatalf("body = %q, want repositories [a b]", body)
+	}
+}
+
+func TestBuiltinGitHubAppBodyUnchanged(t *testing.T) {
+	keyPEM, _ := testKeyPEM(t, false)
+	for name, repos := range map[string]func(string) []string{
+		"nil func":   nil,
+		"empty list": func(string) []string { return nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := "unset"
+			srv := appServer(t, &body, 201, okReply)
+			ex := ExchangeGitHubApp(srv.URL, srv.Client(), repos)
+			if _, _, err := ex(context.Background(), "github-app",
+				Material{FieldAppID: "1", FieldPrivateKey: keyPEM, FieldInstallationID: "987"}); err != nil {
+				t.Fatal(err)
+			}
+			if body != "" {
+				t.Fatalf("body = %q, want none", body)
+			}
+		})
+	}
+}
+
+func TestAppExchangeErrorNeverEchoesBody(t *testing.T) {
+	keyPEM, _ := testKeyPEM(t, false)
+	var body string
+	const echoed = "ghs_echoed_secret_value"
+	srv := appServer(t, &body, 422, `{"message":"bad","token":"`+echoed+`"}`)
+	ex := ExchangeGitHubApp(srv.URL, srv.Client(), func(string) []string { return []string{"a"} })
+	_, _, err := ex(context.Background(), "gh-app",
+		Material{FieldAppID: "1", FieldPrivateKey: keyPEM, FieldInstallationID: "987"})
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if strings.Contains(err.Error(), echoed) || strings.Contains(err.Error(), "PRIVATE KEY") {
+		t.Fatalf("error echoed the response body: %v", err)
+	}
+	if !strings.Contains(err.Error(), "422") {
+		t.Errorf("error %v does not name the status", err)
 	}
 }

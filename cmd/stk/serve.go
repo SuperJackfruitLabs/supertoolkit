@@ -165,7 +165,7 @@ func authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Req
 	case catalog.AuthGitHubApp:
 		// The private key stays in the broker; a short-lived installation token
 		// goes out, and twenty concurrent callers cause one exchange.
-		tok, err := acqs.githubApp.Token(ctx, name)
+		tok, err := acqs.app(name).Token(ctx, name)
 		if err != nil {
 			return err
 		}
