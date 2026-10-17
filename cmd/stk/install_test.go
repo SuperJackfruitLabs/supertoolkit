@@ -33,11 +33,11 @@ func TestInstallFlags(t *testing.T) {
 	}
 }
 
-func TestInstallCommandDryRunAndPlatform(t *testing.T) {
+func TestInstallCommandDryRunWritesNothingAndIsLinuxOnly(t *testing.T) {
 	root := t.TempDir()
 	r := &nopRunner{}
 	var out bytes.Buffer
-	if err := runInstall([]string{"--user", "stk", "--dry-run"}, "linux", root, r, &out); err != nil {
+	if err := runInstall([]string{"--user", "stk", "--agent-uid", "1000", "--dry-run"}, "linux", root, r, &out); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "ExecStart=") || r.calls != 0 {
@@ -46,7 +46,7 @@ func TestInstallCommandDryRunAndPlatform(t *testing.T) {
 	if ents, _ := os.ReadDir(root); len(ents) != 0 {
 		t.Fatal("dry run wrote files")
 	}
-	err := runInstall([]string{"--user", "stk", "--dry-run"}, "darwin", root, r, &out)
+	err := runInstall([]string{"--user", "stk", "--agent-uid", "1000", "--dry-run"}, "darwin", root, r, &out)
 	if err == nil || err.Error() != "install is Linux/systemd only" {
 		t.Fatalf("non-linux: %v", err)
 	}

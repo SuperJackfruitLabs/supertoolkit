@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
 )
 
 // recorder stands in for the host. It never runs anything; it remembers what
@@ -16,10 +18,22 @@ type recorder struct {
 	calls  []string
 	users  map[string]bool
 	groups map[string]bool
+	owners map[string]string // path -> "user:group"; unknown paths are root:root
 }
 
 func newRecorder() *recorder {
-	return &recorder{users: map[string]bool{}, groups: map[string]bool{}}
+	r := &recorder{users: map[string]bool{}, groups: map[string]bool{}, owners: map[string]string{}}
+	OwnerOf = r.ownerOf
+	return r
+}
+
+func (r *recorder) ownerOf(path string) (string, string, error) {
+	o, ok := r.owners[path]
+	if !ok {
+		o = "root:root"
+	}
+	u, g, _ := strings.Cut(o, ":")
+	return u, g, nil
 }
 
 func (r *recorder) Run(name string, args ...string) error {
@@ -35,6 +49,8 @@ func (r *recorder) Run(name string, args ...string) error {
 		}
 	case name == "useradd":
 		r.users[args[len(args)-1]] = true
+	case name == "chown" && len(args) == 2:
+		r.owners[args[1]] = args[0]
 	case name == "groupadd":
 		r.groups[args[len(args)-1]] = true
 	}
@@ -64,7 +80,8 @@ func asRoot(t *testing.T, euid int) {
 	t.Helper()
 	old := Geteuid
 	Geteuid = func() int { return euid }
-	t.Cleanup(func() { Geteuid = old })
+	oldOwner := OwnerOf
+	t.Cleanup(func() { Geteuid = old; OwnerOf = oldOwner })
 }
 
 func plan() Plan {
@@ -119,7 +136,7 @@ func TestInstallCreatesUserDirsAndUnit(t *testing.T) {
 	}
 	for _, c := range []string{"chown stk:stk " + filepath.Join(root, "var/lib/stk"),
 		"chown stk:stk " + filepath.Join(root, "run/stk"),
-		"chown stk:stk " + filepath.Join(root, "var/lib/stk/passphrase.cred")} {
+		"chown stk:stk " + filepath.Join(root, "var/lib/stk/stk-passphrase.key")} {
 		if !r.saw(c) {
 			t.Errorf("missing %q in %v", c, r.calls)
 		}
@@ -135,7 +152,7 @@ func TestInstallCreatesUserDirsAndUnit(t *testing.T) {
 		"User=stk\n", "Group=stk\n", "NoNewPrivileges=yes\n", "PrivateTmp=yes\n",
 		"ProtectSystem=strict\n", "ProtectHome=yes\n",
 		"ReadWritePaths=/var/lib/stk /run/stk\n", "UMask=0077\n",
-		"LoadCredential=stk-passphrase:/var/lib/stk/passphrase.cred\n",
+		"LoadCredential=stk-passphrase:/var/lib/stk/stk-passphrase.key\n",
 		"Environment=STK_HOME=/var/lib/stk STK_CONFIG=/etc/stk/supertoolkit.yaml STK_SOCKET=/run/stk/stk.sock\n",
 		"ExecStart=/usr/local/bin/stk serve --proxy-listen 127.0.0.1:8899 --socket-mode 0600 --allow-uid 1001 --allow-uid 1000\n",
 	} {
@@ -182,7 +199,7 @@ func TestInstallNeverOverwritesAnExistingStore(t *testing.T) {
 	state := filepath.Join(root, "var/lib/stk")
 	os.MkdirAll(state, 0o700)
 	files := map[string]string{
-		"salt": "SALTSALT", "github.cred": "sealed", "passphrase.cred": "existing-pass",
+		"salt": "SALTSALT", "github.cred": "sealed", "stk-passphrase.key": "existing-pass",
 		"handover.key": "hk", "proxy.key": "pk", "machine.key": "mk",
 	}
 	for n, v := range files {
@@ -211,8 +228,8 @@ func TestInstallRefusesAStoreWithoutItsPassphrase(t *testing.T) {
 	if _, err := Run(context.Background(), plan(), root, newRecorder()); err == nil {
 		t.Fatal("installed a passphrase over an existing store")
 	}
-	if _, err := os.Stat(filepath.Join(state, "passphrase.cred")); !os.IsNotExist(err) {
-		t.Fatal("passphrase.cred was written")
+	if _, err := os.Stat(filepath.Join(state, "stk-passphrase.key")); !os.IsNotExist(err) {
+		t.Fatal("stk-passphrase.key was written")
 	}
 }
 
@@ -231,7 +248,7 @@ func TestInstallRefusesNonRoot(t *testing.T) {
 	}
 }
 
-func TestDryRunChangesNothing(t *testing.T) {
+func TestDryRunOutputShowsUnitAndNoPassphraseVariable(t *testing.T) {
 	asRoot(t, 1000) // dry-run needs no root
 	out := DryRun(plan())
 	if !strings.Contains(out, Unit(plan())) || !strings.Contains(out, "stk") {
@@ -299,7 +316,7 @@ func TestPassphraseFile0400(t *testing.T) {
 	if _, err := Run(context.Background(), plan(), root, newRecorder()); err != nil {
 		t.Fatal(err)
 	}
-	pf := filepath.Join(root, "var/lib/stk/passphrase.cred")
+	pf := filepath.Join(root, "var/lib/stk/stk-passphrase.key")
 	if got := mode(t, pf); got != 0o400 {
 		t.Errorf("passphrase file %o, want 0400", got)
 	}
@@ -316,14 +333,14 @@ func TestUnitHasNoPassphraseInEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pass, err := os.ReadFile(filepath.Join(root, "var/lib/stk/passphrase.cred"))
+	pass, err := os.ReadFile(filepath.Join(root, "var/lib/stk/stk-passphrase.key"))
 	if err != nil || len(pass) == 0 {
 		t.Fatal("no passphrase generated", err)
 	}
 	secret := strings.TrimSpace(string(pass))
 	haystacks := map[string]string{"unit": Unit(plan()), "report": rep.String(), "dry-run": DryRun(plan())}
 	filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
-		if err == nil && !fi.IsDir() && !strings.HasSuffix(p, "passphrase.cred") {
+		if err == nil && !fi.IsDir() && !strings.HasSuffix(p, "stk-passphrase.key") {
 			b, _ := os.ReadFile(p)
 			haystacks[p] = string(b)
 		}
@@ -344,5 +361,134 @@ func TestUnitAllowUIDOrder(t *testing.T) {
 	p.AgentUIDs = []int{7, 3, 5}
 	if !strings.Contains(Unit(p), " --allow-uid 7 --allow-uid 3 --allow-uid 5\n") {
 		t.Errorf("unit:\n%s", Unit(p))
+	}
+}
+
+// I1: the passphrase file sits outside the store's <service>.cred namespace,
+// so storing a credential for a service named "passphrase" cannot replace it.
+func TestStoreServiceNamedPassphraseDoesNotTouchTheKey(t *testing.T) {
+	asRoot(t, 0)
+	root := t.TempDir()
+	if _, err := Run(context.Background(), plan(), root, newRecorder()); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, "var/lib/stk")
+	key := filepath.Join(state, PassphraseFile)
+	before, _ := os.ReadFile(key)
+	st, err := credential.OpenStore(state, "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, svc := range []string{"passphrase", "stk-passphrase", "stk-passphrase.key"} {
+		if err := st.Put(svc, "s3cret"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, err := os.ReadFile(key)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("store write touched %s: %v", PassphraseFile, err)
+	}
+}
+
+// I2: with no --group the service user still reads the config (0640 root:<user>),
+// and wrong ownership is corrected even when the mode was already right.
+func TestConfigReadableByServiceUser(t *testing.T) {
+	asRoot(t, 0)
+	root := t.TempDir()
+	cfg := filepath.Join(root, "etc/stk/supertoolkit.yaml")
+	os.MkdirAll(filepath.Dir(cfg), 0o750)
+	os.WriteFile(cfg, []byte("workspace: x\n"), 0o640) // right mode, root:root
+	r := newRecorder()
+	rep, err := Run(context.Background(), plan(), root, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(t, cfg); got != 0o640 {
+		t.Errorf("config %o, want 0640", got)
+	}
+	if !r.saw("chown root:stk " + cfg) {
+		t.Errorf("config not chowned root:stk: %v", r.calls)
+	}
+	if !strings.Contains(fmt.Sprint(rep.Changed), cfg) {
+		t.Errorf("config not reported changed: %+v", rep)
+	}
+	r.calls = nil
+	if _, err := Run(context.Background(), plan(), root, r); err != nil {
+		t.Fatal(err)
+	}
+	if r.count("chown") != 0 {
+		t.Errorf("second run chowned: %v", r.calls)
+	}
+}
+
+// I4: an existing root-owned state dir with the right mode is handed to the
+// service user; once right, it is left alone.
+func TestExistingRootOwnedStateDirIsChowned(t *testing.T) {
+	asRoot(t, 0)
+	root := t.TempDir()
+	state := filepath.Join(root, "var/lib/stk")
+	os.MkdirAll(state, 0o700)
+	r := newRecorder()
+	rep, err := Run(context.Background(), plan(), root, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.saw("chown stk:stk " + state) {
+		t.Errorf("state dir not chowned: %v", r.calls)
+	}
+	if !strings.Contains(fmt.Sprint(rep.Changed), state) || strings.Contains(fmt.Sprint(rep.Unchanged), state) {
+		t.Errorf("state dir not reported changed: %+v", rep)
+	}
+	r.calls = nil
+	if _, err := Run(context.Background(), plan(), root, r); err != nil {
+		t.Fatal(err)
+	}
+	if r.count("chown") != 0 {
+		t.Errorf("second run chowned: %v", r.calls)
+	}
+}
+
+// I3 + M2.
+func TestValidateRefusesUnsafePlans(t *testing.T) {
+	p := plan()
+	p.AgentUIDs = nil
+	err := p.Validate()
+	if err == nil || err.Error() != "stk install needs at least one --agent-uid: without it the socket allowlist is empty and any member of the group would be served" {
+		t.Errorf("empty allowlist: %v", err)
+	}
+	p.Group = "agents"
+	if p.Validate() == nil {
+		t.Error("group with empty allowlist accepted")
+	}
+	for _, rd := range []string{"/var/run/stk", "/run/stk/sub", "/run/", "/tmp/stk"} {
+		p := plan()
+		p.RuntimeDir = rd
+		if p.Validate() == nil {
+			t.Errorf("runtime dir %q accepted", rd)
+		}
+	}
+	asRoot(t, 0)
+	p = plan()
+	p.AgentUIDs = nil
+	r := newRecorder()
+	if _, err := Run(context.Background(), p, t.TempDir(), r); err == nil || len(r.calls) != 0 {
+		t.Errorf("Run with empty allowlist: %v %v", err, r.calls)
+	}
+}
+
+func TestReportTellsOperatorToAddAgentsToGroup(t *testing.T) {
+	asRoot(t, 0)
+	p := plan()
+	p.Group = "agents"
+	r := newRecorder()
+	rep, err := Run(context.Background(), p, t.TempDir(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rep.String(), "add each agent user to group agents") {
+		t.Errorf("report:\n%s", rep.String())
+	}
+	if r.count("usermod") != 0 {
+		t.Error("install ran usermod")
 	}
 }

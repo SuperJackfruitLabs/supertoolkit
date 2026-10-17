@@ -67,3 +67,16 @@ func TestCredentialStoreKeyMissingNamedFileFailsClosed(t *testing.T) {
 		t.Fatal("a missing STK_PASSPHRASE_FILE was ignored")
 	}
 }
+
+func TestCredentialStoreKeyBlankFileFailsClosed(t *testing.T) {
+	t.Setenv("STK_PASSPHRASE", "")
+	t.Setenv("CREDENTIALS_DIRECTORY", "")
+	for _, body := range []string{"\n", "  \t\n", ""} {
+		f := filepath.Join(t.TempDir(), "pf")
+		os.WriteFile(f, []byte(body), 0o400)
+		t.Setenv("STK_PASSPHRASE_FILE", f)
+		if _, _, err := StoreKey(t.TempDir()); err == nil {
+			t.Errorf("passphrase file %q was accepted", body)
+		}
+	}
+}

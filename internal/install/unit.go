@@ -60,7 +60,7 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=%[3]s %[4]s
 UMask=0077
-%[7]sLoadCredential=stk-passphrase:%[3]s/passphrase.cred
+%[7]sLoadCredential=stk-passphrase:%[3]s/stk-passphrase.key
 Environment=STK_HOME=%[3]s STK_CONFIG=%[5]s STK_SOCKET=%[4]s/stk.sock
 ExecStart=%[6]s
 Restart=on-failure

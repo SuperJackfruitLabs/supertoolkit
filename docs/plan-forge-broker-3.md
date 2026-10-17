@@ -89,7 +89,7 @@
 **Interfaces:**
 - Produces:
   - `install.Plan{User, Group string; StateDir, RuntimeDir, ConfigPath string; AgentUIDs []int; Binary string}` and `install.Run(ctx, p Plan, root string, r Runner) (Report, error)`; `Runner` is `interface{ Run(name string, args ...string) error }` (production: `exec`; tests: a recorder). `root` prefixes every path (production `/`).
-  - `install.Unit(p Plan) string` renders the systemd unit: `User=<User>`, `NoNewPrivileges=yes`, `LoadCredential=stk-passphrase:<StateDir>/passphrase.cred`, `ExecStart=<Binary> serve --proxy-listen 127.0.0.1:<port> --allow-uid …`, `ProtectSystem=strict`, `ReadWritePaths=<StateDir> <RuntimeDir>`, `UMask=0077`. No `Environment=STK_PASSPHRASE`.
+  - `install.Unit(p Plan) string` renders the systemd unit: `User=<User>`, `NoNewPrivileges=yes`, `LoadCredential=stk-passphrase:<StateDir>/stk-passphrase.key`, `ExecStart=<Binary> serve --proxy-listen 127.0.0.1:<port> --allow-uid …`, `ProtectSystem=strict`, `ReadWritePaths=<StateDir> <RuntimeDir>`, `UMask=0077`. No `Environment=STK_PASSPHRASE`.
   - `stk install --user stk [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]… [--dry-run]`. Non-root without `--dry-run` is an error. `--dry-run` prints the plan and the unit and changes nothing.
   - `Report` lists what was created/changed/left alone, never a secret.
 - Consumes: nothing else; the passphrase file is generated here (32 random bytes, `0400`, owned by the service user) only if absent.

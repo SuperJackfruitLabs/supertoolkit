@@ -88,8 +88,8 @@ func passphraseFile() (string, bool, error) {
 		return "", false, fmt.Errorf("reading the passphrase file: %w", err)
 	}
 	k := strings.TrimSuffix(string(b), "\n")
-	if k == "" {
-		return "", false, fmt.Errorf("the passphrase file %s is empty", path)
+	if strings.TrimSpace(k) == "" {
+		return "", false, fmt.Errorf("the passphrase file %s is blank", path)
 	}
 	return k, true, nil
 }
