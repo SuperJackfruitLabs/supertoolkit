@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/broker"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/ledger"
@@ -31,20 +32,32 @@ func (o observer) Observe(r broker.Record) {
 	e := ledger.Entry{
 		When: r.When.UTC(), Service: r.Service, Host: r.Host,
 		Method: r.Method, Path: r.Path, Outcome: r.Status, Caller: o.caller,
+		Rule: r.Rule,
 	}
+	// A denied request never fetched a credential, so it must not carry a
+	// credential fingerprint; the rule that refused it is the evidence.
+	denied := r.Rule != "" && strings.HasPrefix(r.Status, "403 denied")
 	if svc, ok := o.cfg.Service(r.Service); ok {
-		if c, known := svc.Entry().CapabilityFor(r.Method, r.Path); known {
+		if denied {
+			e.Capability, e.Policy = "(denied)", "deny"
+			e.Credential = svc.Entry().Auth.String()
+		} else if c, known := svc.Entry().CapabilityFor(r.Method, r.Path); known {
 			e.Capability = c.Name
 			e.Policy = svc.Policy(c.Name).String()
 		}
 		// What was sent, described without being it. A substituted token is
 		// identified by fingerprint; a signed request carries no token at all,
 		// so naming the operation is the honest answer.
-		if r.Injected != "" {
-			e.Credential = r.AuthzFP
-		} else {
-			e.Credential = svc.Entry().Auth.String()
+		if !denied {
+			if r.Injected != "" {
+				e.Credential = r.AuthzFP
+			} else {
+				e.Credential = svc.Entry().Auth.String()
+			}
 		}
+	}
+	if denied {
+		e.Capability, e.Policy = "(denied)", "deny"
 	}
 	if e.Capability == "" {
 		// A request the catalogue never named. Recording it matters more than
@@ -115,6 +128,9 @@ func cmdAudit(args []string) error {
 		fmt.Printf("  %s  %-10s %-24s %-8s %s\n",
 			e.When.Local().Format("Jan 02 15:04:05"), e.Service, e.Capability, e.Policy, e.Outcome)
 		fmt.Printf("  %18s%s %s · credential: %s\n", "", e.Method, e.Path, e.Credential)
+		if e.Rule != "" {
+			fmt.Printf("  %18srule: %s\n", "", e.Rule)
+		}
 	}
 	fmt.Println()
 	fmt.Println("  no credential is recorded here — a fingerprint or the operation that replaced it")
