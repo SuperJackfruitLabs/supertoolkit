@@ -163,6 +163,8 @@ type Config struct {
 	// servers are MCP servers we did not write, fronted as categories.
 	servers map[string]*Server
 	notify  Notify
+	// agentUIDs are the uids the agents run as (`agent_uids:`).
+	agentUIDs []int
 }
 
 // Notify returns the configured notification routes.
@@ -226,9 +228,10 @@ type file struct {
 		Rules        []yaml.Node       `yaml:"rules"`
 		AllowGraphQL *bool             `yaml:"allow_graphql"`
 	} `yaml:"services"`
-	Profiles map[string]map[string][]string `yaml:"profiles"`
-	Servers  map[string]serverFile          `yaml:"servers"`
-	Notify   notifyFile                     `yaml:"notify"`
+	Profiles  map[string]map[string][]string `yaml:"profiles"`
+	Servers   map[string]serverFile          `yaml:"servers"`
+	Notify    notifyFile                     `yaml:"notify"`
+	AgentUIDs []int                          `yaml:"agent_uids"`
 }
 
 // ruleFile is one `rules:` item: exactly one of allow or deny.
@@ -376,6 +379,12 @@ func Load(path string) (*Config, error) {
 		servers:   map[string]*Server{},
 		notify:    Notify{Webhook: f.Notify.Webhook, File: f.Notify.File},
 	}
+	for _, u := range f.AgentUIDs {
+		if u < 0 {
+			return nil, fmt.Errorf("%s: agent_uids: %d is not a uid", path, u)
+		}
+	}
+	cfg.agentUIDs = f.AgentUIDs
 	for name, sf := range f.Services {
 		var entry *catalog.Entry
 		switch sf.Kind {
@@ -465,3 +474,8 @@ func Load(path string) (*Config, error) {
 	}
 	return cfg, nil
 }
+
+// AgentUIDs returns the OS uids agents run as, from the top-level
+// `agent_uids:` key. `stk doctor` checks that none of them can reach the
+// store; with none configured it states that it does not know.
+func (c *Config) AgentUIDs() []int { return append([]int(nil), c.agentUIDs...) }

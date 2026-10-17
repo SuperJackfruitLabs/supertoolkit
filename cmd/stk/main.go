@@ -46,6 +46,7 @@ func usage() {
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
   stk doctor --probe          prove each client here actually goes through the broker
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
 The agent never holds a credential. Known services: `)
@@ -91,7 +92,7 @@ func main() {
 		if len(os.Args) > 2 && os.Args[2] == "--probe" {
 			err = cmdProbe()
 		} else {
-			err = cmdDoctor()
+			err = cmdDoctor(os.Args[2:])
 		}
 	case "version", "--version", "-v":
 		fmt.Println("stk", version)
