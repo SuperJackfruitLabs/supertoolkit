@@ -47,6 +47,8 @@ func usage() {
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
   stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 

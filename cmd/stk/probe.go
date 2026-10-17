@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -46,28 +50,40 @@ func (p probeResult) ok() bool { return p.state == "honoured" }
 // broker that cannot detect its own bypass is a broker you cannot trust, so
 // this drives a real request through a real broker with each client on this
 // machine and reports which ones actually went through it.
-func cmdProbe() error {
+func cmdProbe(out io.Writer, o doctorOpts) error {
 	dir, err := home()
 	if err != nil {
 		return err
 	}
-	rig, err := newProbeRig(dir)
+	rig, err := newProbeRigKeyed(dir, o.withProxyKey)
 	if err != nil {
 		return err
 	}
 	defer rig.close()
 
-	fmt.Printf("\n  probing the brokered path with a local stand-in for %s\n", probeHost)
-	fmt.Printf("  the host is in .invalid and can never resolve, so a DNS failure proves a bypass\n\n")
-
-	results := []probeResult{
-		rig.probeCurl(),
-		rig.probePython(),
-		rig.probeNode(),
-		rig.probeGoDefault(),
+	// With --json stdout carries exactly one JSON document; the human text
+	// goes to stderr.
+	human := out
+	if o.json {
+		human = os.Stderr
 	}
+	fmt.Fprintf(human, "\n  probing the brokered path with a local stand-in for %s\n", probeHost)
+	fmt.Fprintf(human, "  the host is in .invalid and can never resolve, so a DNS failure proves a bypass\n")
+	if rig.keyed {
+		fmt.Fprintf(human, "  the broker under probe requires a proxy key, sent in the proxy URL\n")
+	}
+	fmt.Fprintln(human)
 
+	results := probeClients(rig)
+
+	// worst: 0 clean, 1 a CA refusal (loud, safe), 2 a bypass, 3 a client that
+	// failed. 2 and 3 fail the exit status.
 	worst := 0
+	bump := func(n int) {
+		if n > worst {
+			worst = n
+		}
+	}
 	for _, r := range results {
 		mark := "✗"
 		switch r.state {
@@ -77,31 +93,58 @@ func cmdProbe() error {
 			mark = "–"
 		case "bypassed":
 			mark = "!"
-			worst = 2
+			bump(2)
 		case "refused-ca":
-			if worst < 1 {
-				worst = 1
-			}
+			bump(1)
+		default:
+			bump(3)
 		}
-		fmt.Printf("  %s %-18s %-11s %s\n", mark, r.client, r.state, r.detail)
+		fmt.Fprintf(human, "  %s %-18s %-11s %s\n", mark, r.client, r.state, r.detail)
 	}
 
-	fmt.Println()
-	fmt.Printf("  the broker saw %d request(s) and substituted %d credential(s)\n",
+	fmt.Fprintln(human)
+	fmt.Fprintf(human, "  the broker saw %d request(s) and substituted %d credential(s)\n",
 		rig.b.Stats().Intercept, rig.b.Stats().Swap)
-	fmt.Println()
+	fmt.Fprintln(human)
 	switch worst {
 	case 0:
-		fmt.Println("  every client present here goes through the broker.")
+		fmt.Fprintln(human, "  every client present here goes through the broker.")
 	case 1:
-		fmt.Println("  a client refused the broker's CA. That fails loudly, which is the safe class:")
-		fmt.Println("  the request does not happen rather than happening unbrokered. Trust the CA for")
-		fmt.Println("  that client, or run it where `stk run` can set its trust store.")
+		fmt.Fprintln(human, "  a client refused the broker's CA. That fails loudly, which is the safe class:")
+		fmt.Fprintln(human, "  the request does not happen rather than happening unbrokered. Trust the CA for")
+		fmt.Fprintln(human, "  that client, or run it where `stk run` can set its trust store.")
 	case 2:
-		fmt.Println("  ! a client reached past the broker. This is the one failure mode that is silent:")
-		fmt.Println("  such a client sends the placeholder to the provider and gets a plausible 401,")
-		fmt.Println("  which looks like a credential problem rather than a routing one.")
-		fmt.Println("  Do not broker that client. See docs/limitations.md.")
+		fmt.Fprintln(human, "  ! a client reached past the broker. This is the one failure mode that is silent:")
+		fmt.Fprintln(human, "  such a client sends the placeholder to the provider and gets a plausible 401,")
+		fmt.Fprintln(human, "  which looks like a credential problem rather than a routing one.")
+		fmt.Fprintln(human, "  Do not broker that client. See docs/limitations.md.")
+	case 3:
+		fmt.Fprintln(human, "  a client failed in a way that is neither a bypass nor a CA refusal; see the detail above.")
+	}
+
+	if o.json {
+		type row struct {
+			Client  string `json:"client"`
+			Outcome string `json:"outcome"`
+			Detail  string `json:"detail"`
+		}
+		rows := make([]row, 0, len(results))
+		for _, r := range results {
+			rows = append(rows, row{r.client, r.state, r.detail})
+		}
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(rows); err != nil {
+			return err
+		}
+	}
+	// Exit status: bypassed and failed fail the command. refused-ca (loud, safe)
+	// and missing (client not installed here) do not.
+	switch worst {
+	case 2:
+		return fmt.Errorf("probe: a client bypassed the broker")
+	case 3:
+		return fmt.Errorf("probe: a client failed")
 	}
 	return nil
 }
@@ -114,17 +157,36 @@ type probeRig struct {
 	provLn   net.Listener
 	proxyLn  net.Listener
 	dir      string
+	// keyed is true when the broker under probe requires a proxy key; proxyURL
+	// then carries it as userinfo.
+	keyed bool
 }
 
 // newProbeRig stands up a broker and a local provider for probeHost. Nothing
 // here touches the real config or the real store: a probe must not depend on
 // any service being connected, and must never put a real credential at risk.
-func newProbeRig(home string) (*probeRig, error) {
+var probeClients = func(rig *probeRig) []probeResult {
+	return []probeResult{rig.probeCurl(), rig.probePython(), rig.probeNode(), rig.probeGoDefault()}
+}
+
+func newProbeRig(home string) (*probeRig, error) { return newProbeRigKeyed(home, false) }
+
+// newProbeRigKeyed optionally starts the broker with a proxy key, as a station
+// service does, so the probe also proves each client sends proxy credentials.
+func newProbeRigKeyed(home string, keyed bool) (*probeRig, error) {
 	dir, err := os.MkdirTemp("", "stk-probe-")
 	if err != nil {
 		return nil, err
 	}
-	r := &probeRig{dir: dir}
+	r := &probeRig{dir: dir, keyed: keyed}
+	var proxyKey string
+	if keyed {
+		kb := make([]byte, 32)
+		if _, err := rand.Read(kb); err != nil {
+			return nil, err
+		}
+		proxyKey = base64.RawURLEncoding.EncodeToString(kb)
+	}
 
 	// The provider: its certificate is minted by a CA the client never trusts,
 	// so a client that reaches it directly also fails — only the broker's
@@ -171,7 +233,7 @@ func newProbeRig(home string) (*probeRig, error) {
 		return nil, err
 	}
 	r.b, err = broker.New(broker.Options{
-		Config: cfg, CA: ca,
+		Config: cfg, CA: ca, ProxyKey: proxyKey,
 		// The probe host is not in the catalogue, deliberately: a name that can
 		// never resolve is what makes a bypass provable rather than guessed at.
 		Intercept: []string{probeHost},
@@ -197,6 +259,9 @@ func newProbeRig(home string) (*probeRig, error) {
 	}
 	go r.b.Serve(r.proxyLn)
 	r.proxyURL = "http://" + r.proxyLn.Addr().String()
+	if keyed {
+		r.proxyURL = broker.ProxyURL(r.proxyLn.Addr().String(), proxyKey)
+	}
 	return r, nil
 }
 
@@ -283,7 +348,19 @@ func (r *probeRig) run(client string, env []string, name string, args ...string)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
-	return classify(client, string(out), err)
+	return r.classify(client, string(out), err)
+}
+
+// classify is the package classify plus the one verdict only a keyed broker
+// can produce: a 407 means the client dropped the proxy URL's userinfo.
+func (r *probeRig) classify(client, out string, err error) probeResult {
+	if r.keyed {
+		low := strings.ToLower(out)
+		if strings.Contains(low, "407") || strings.Contains(low, "proxy authentication required") {
+			return probeResult{client, "failed", "proxy credential not honoured"}
+		}
+	}
+	return classify(client, out, err)
 }
 
 func (r *probeRig) probeCurl() probeResult {
@@ -345,5 +422,5 @@ func main(){
 	cmd.Dir = path
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
-	return classify("go net/http", string(out), err)
+	return r.classify("go net/http", string(out), err)
 }

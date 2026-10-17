@@ -227,7 +227,7 @@ func TestDoctorTextNamesTheACLLimitation(t *testing.T) {
 }
 
 func TestDoctorProbeRoutesInAnyOrder(t *testing.T) {
-	for _, args := range [][]string{{"--probe"}, {"--json", "--probe"}, {"--probe", "--json"}} {
+	for _, args := range [][]string{{"--probe"}, {"--json", "--probe"}, {"--probe", "--json"}, {"--with-proxy-key", "--probe"}} {
 		o, err := parseDoctorArgs(args)
 		if err != nil || !o.probe {
 			t.Errorf("%v: %+v %v", args, o, err)
@@ -239,13 +239,5 @@ func TestSecretPathsUseExactConfigPath(t *testing.T) {
 	got := secretPaths([]string{"/s", "/s/stk.yml", "/etc/supertoolkit.yaml", "/run/stk.sock"}, "/etc/supertoolkit.yaml", "/run/stk.sock")
 	if !reflect.DeepEqual(got, []string{"/s", "/s/stk.yml"}) {
 		t.Fatalf("got %v", got)
-	}
-}
-
-func TestDoctorProbeWithJSONIsRefused(t *testing.T) {
-	var out bytes.Buffer
-	err := runDoctor([]string{"--probe", "--json"}, &out)
-	if err == nil || !strings.Contains(err.Error(), "--probe has no JSON output") || out.Len() != 0 {
-		t.Fatalf("err=%v out=%q", err, out.String())
 	}
 }

@@ -38,7 +38,8 @@ client that ignores the proxy must resolve it itself and cannot. A DNS failure
 is therefore **proof** of a bypass, not a guess.
 
 **Run the probe before trusting a new client.** A client it reports as
-`bypassed` must not be brokered.
+`bypassed` must not be brokered. The command exits non-zero on `bypassed` or
+`failed`, and `--json` gives a machine-readable list.
 
 ### The safe class, by contrast
 
@@ -152,6 +153,11 @@ kernel keyring — which is a platform integration rather than a fix, and is not
 done.
 
 ## Operational limits
+
+- **`stk run`'s per-session loopback proxy is not authenticated.** Only the
+  fixed proxy of `stk serve --proxy-listen` requires a proxy key. Any local
+  process that finds a `stk run` session's port can use the routes that session
+  allows, though it still receives no credential.
 
 - **The audit ledger rotates at 8 MB, keeping one generation.** An unbounded
   audit log on a small VPS is an outage. If you need more history, ship

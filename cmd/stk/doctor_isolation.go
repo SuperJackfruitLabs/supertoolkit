@@ -28,9 +28,11 @@ var (
 )
 
 type doctorOpts struct {
-	json      bool
-	probe     bool
-	agentUIDs []int
+	json  bool
+	probe bool
+	// withProxyKey runs the probe through a broker that requires a proxy key.
+	withProxyKey bool
+	agentUIDs    []int
 	// asUIDProbe is the hidden child mode of the root access attempt: try to
 	// open each path and print the ones that opened.
 	asUIDProbe []string
@@ -45,6 +47,8 @@ func parseDoctorArgs(args []string) (doctorOpts, error) {
 			o.json = true
 		case a == "--probe":
 			o.probe = true
+		case a == "--with-proxy-key":
+			o.withProxyKey = true
 		case a == "--as-uid-probe":
 			o.asUIDProbe = append([]string{}, args[i+1:]...)
 			return o, nil
@@ -63,7 +67,7 @@ func parseDoctorArgs(args []string) (doctorOpts, error) {
 			}
 			o.agentUIDs = append(o.agentUIDs, n)
 		default:
-			return o, fmt.Errorf("stk doctor: unknown argument %q (want --probe, --json, --agent-uid <uid>)", a)
+			return o, fmt.Errorf("stk doctor: unknown argument %q (want --probe, --with-proxy-key, --json, --agent-uid <uid>)", a)
 		}
 	}
 	return o, nil
@@ -221,10 +225,7 @@ func runDoctor(args []string, out io.Writer) error {
 		return nil
 	}
 	if o.probe {
-		if o.json {
-			return fmt.Errorf("stk doctor --probe has no JSON output; run it without --json")
-		}
-		return cmdProbe()
+		return cmdProbe(out, o)
 	}
 	checks := doctorCheckFn()
 	if probe := doctorProbe(); probe.label != "" {
