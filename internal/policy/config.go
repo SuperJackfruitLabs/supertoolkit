@@ -299,13 +299,6 @@ func Load(path string) (*Config, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", path, err)
 			}
-			// The proxy maps a host to one service, so two forge services on one
-			// host would have the second silently win.
-			for other, o := range cfg.services {
-				if o.entry.Forge != nil && o.entry.Host == entry.Host {
-					return nil, fmt.Errorf("%s: forge services %q and %q both use host %s: one service per host", path, other, name, entry.Host)
-				}
-			}
 		default:
 			return nil, fmt.Errorf("%s: service %q: unknown kind %q: want forge, or leave kind out for a built-in", path, name, sf.Kind)
 		}
@@ -327,6 +320,20 @@ func Load(path string) (*Config, error) {
 			svc.explicit[cap] = a
 		}
 		cfg.services[name] = svc
+	}
+
+	// The proxy maps a host to one service, so two services on one host would
+	// have one silently win. Checked across every service, built-in or forge,
+	// and after the whole file is read so the order they are written in cannot
+	// hide it.
+	owner := map[string]string{}
+	for _, name := range cfg.Services() {
+		for _, h := range cfg.services[name].entry.Hosts() {
+			if other, taken := owner[h]; taken {
+				return nil, fmt.Errorf("%s: services %q and %q both use host %s: one service per host", path, other, name, h)
+			}
+			owner[h] = name
+		}
 	}
 
 	if err := cfg.loadServers(path, f.Servers); err != nil {

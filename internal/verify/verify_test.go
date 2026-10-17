@@ -84,7 +84,8 @@ func TestVerifyReasons(t *testing.T) {
 	}{
 		{"401", status(401, "no"), ReasonUnauthorized},
 		{"403", status(403, "no"), ReasonForbidden},
-		{"500", status(500, "boom"), ReasonUnexpected},
+		{"500", status(500, "boom"), ReasonServerError},
+		{"404", status(404, "gone"), ReasonUnexpected},
 		{"html", status(200, "<html>login</html>"), ReasonUnexpected},
 		{"json without a login", status(200, `{"id":3}`), ReasonUnexpected},
 	}
@@ -127,8 +128,8 @@ func TestVerifyDoesNotFollowRedirects(t *testing.T) {
 		http.Redirect(w, r, other.URL+"/api/v1/user", http.StatusFound)
 	})
 	res := run(t, s, forgeEntry(t, "bearer"), "")
-	if res.OK || res.Reason != ReasonUnexpected {
-		t.Errorf("Result = %+v, want unexpected-response", res)
+	if res.OK || res.Reason != ReasonRedirect {
+		t.Errorf("Result = %+v, want redirect", res)
 	}
 	if atomic.LoadInt32(&hits) != 0 {
 		t.Error("the redirect target received a request: the Authorization header would have leaked")

@@ -25,6 +25,8 @@ const (
 	ReasonForbidden     = "forbidden"
 	ReasonUnreachable   = "unreachable"
 	ReasonUnexpected    = "unexpected-response"
+	ReasonServerError   = "server-error"
+	ReasonRedirect      = "redirect"
 	ReasonWrongIdentity = "wrong-identity"
 	ReasonUnsupported   = "unsupported"
 )
@@ -91,6 +93,10 @@ func Run(ctx context.Context, in Input) Result {
 		return Result{Reason: ReasonUnauthorized}
 	case resp.StatusCode == http.StatusForbidden:
 		return Result{Reason: ReasonForbidden}
+	case resp.StatusCode >= 500:
+		return Result{Reason: ReasonServerError}
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		return Result{Reason: ReasonRedirect}
 	case resp.StatusCode != http.StatusOK:
 		return Result{Reason: ReasonUnexpected}
 	}

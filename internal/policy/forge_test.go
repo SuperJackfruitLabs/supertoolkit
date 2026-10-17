@@ -78,3 +78,21 @@ func TestForgeEntriesAreCopies(t *testing.T) {
 		t.Error("two loads shared one Entry")
 	}
 }
+
+// The proxy maps a host to one service. A forge on a built-in's host would have
+// one of the two silently win, so it is refused whichever order they load in.
+func TestLoadRejectsAForgeOnABuiltinsHost(t *testing.T) {
+	_, err := Load(write(t, `
+services:
+  github:
+    scopes: []
+  gh-enterprise-clone:
+    kind: forge
+    provider: github
+    host: api.github.com
+    repositories: [o/r]
+`))
+	if err == nil || !strings.Contains(err.Error(), "api.github.com") {
+		t.Errorf("error = %v, want a rejection naming the shared host", err)
+	}
+}

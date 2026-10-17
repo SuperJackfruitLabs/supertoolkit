@@ -102,3 +102,17 @@ func TestSealFromStdinRejectsAnEmptyCredential(t *testing.T) {
 		t.Error("sealed an empty credential")
 	}
 }
+
+func TestHandoverWithOnlyAFlagIsUsageNotAPanic(t *testing.T) {
+	forgeEnv(t)
+	for _, args := range [][]string{{"--json"}, {}} {
+		err := cmdHandover(args)
+		if err == nil || !strings.Contains(err.Error(), "usage") {
+			t.Errorf("cmdHandover(%v) = %v, want a usage error", args, err)
+		}
+	}
+	// A stray flag in the subcommand position is refused, never a panic.
+	if err := cmdHandover([]string{"--stdin"}); err == nil {
+		t.Error("cmdHandover(--stdin) succeeded")
+	}
+}

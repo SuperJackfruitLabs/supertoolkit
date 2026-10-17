@@ -195,6 +195,7 @@ func sinks(out io.Writer, n policy.Notify) []notify.Sink {
 
 // cmdHandover is the last resort, and says so.
 func cmdHandover(args []string) error {
+	asJSON := hasFlag(&args, "--json")
 	if len(args) == 0 {
 		return fmt.Errorf("usage: stk handover key | stk handover open <service>")
 	}
@@ -202,7 +203,6 @@ func cmdHandover(args []string) error {
 	if err != nil {
 		return err
 	}
-	asJSON := hasFlag(&args, "--json")
 
 	// Sealing runs on the machine that has the credential, which need not run a
 	// broker, so it must not create a broker key as a side effect.
