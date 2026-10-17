@@ -114,3 +114,34 @@ func TestInjectRefusesMalformedBasic(t *testing.T) {
 		t.Fatal("Inject() claimed success on an undecodable Basic header")
 	}
 }
+
+func TestInjectSchemeHeader(t *testing.T) {
+	r := req(t, "https://forge.example/api/v1/user")
+	r.Header.Set("Authorization", "token "+ph)
+	where, ok := Inject(r, ph, secret, catalog.SchemeHeader, "token")
+	if !ok || where == "" {
+		t.Fatalf("Inject() = %q, %v, want a substitution", where, ok)
+	}
+	if got := r.Header.Get("Authorization"); got != "token "+secret {
+		t.Errorf("Authorization = %q, want %q", got, "token "+secret)
+	}
+}
+
+func TestInjectSchemeHeaderLeavesAnUnclaimedRequestAlone(t *testing.T) {
+	r := req(t, "https://forge.example/api/v1/user")
+	r.Header.Set("Authorization", "token something-else")
+	if _, ok := Inject(r, ph, secret, catalog.SchemeHeader, "token"); ok {
+		t.Error("substituted without the placeholder")
+	}
+	if got := r.Header.Get("Authorization"); got != "token something-else" {
+		t.Errorf("Authorization changed to %q", got)
+	}
+}
+
+func TestInjectSchemeHeaderNeedsAScheme(t *testing.T) {
+	r := req(t, "https://forge.example/api/v1/user")
+	r.Header.Set("Authorization", "token "+ph)
+	if _, ok := Inject(r, ph, secret, catalog.SchemeHeader, ""); ok {
+		t.Error("substituted with no scheme word to write")
+	}
+}

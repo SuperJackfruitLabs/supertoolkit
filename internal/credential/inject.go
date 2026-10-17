@@ -54,6 +54,16 @@ func Inject(r *http.Request, placeholder, secret string, p catalog.Placement, fi
 		r.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+secret)))
 		return "authorization: basic (decoded, replaced, re-encoded)", true
 
+	case catalog.SchemeHeader:
+		if field == "" {
+			return "", false
+		}
+		if !strings.Contains(r.Header.Get("Authorization"), placeholder) {
+			return "", false
+		}
+		r.Header.Set("Authorization", field+" "+secret)
+		return "authorization: " + field, true
+
 	case catalog.APIKeyHeader:
 		if field == "" {
 			return "", false

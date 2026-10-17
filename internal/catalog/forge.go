@@ -71,10 +71,11 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 	default:
 		return nil, fmt.Errorf("forge %q: unknown auth %q: want token", s.Name, s.Auth)
 	}
+	placement, field := BearerHeader, ""
 	switch s.Scheme {
 	case "", "bearer":
 	case "token":
-		return nil, fmt.Errorf("forge %q: scheme token is not supported yet", s.Name)
+		placement, field = SchemeHeader, "token"
 	default:
 		return nil, fmt.Errorf("forge %q: unknown scheme %q: want bearer or token", s.Name, s.Scheme)
 	}
@@ -102,7 +103,8 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 		Name:      s.Name,
 		Host:      s.Host,
 		EnvVar:    s.EnvVar,
-		Placement: BearerHeader,
+		Placement: placement,
+		Field:     field,
 		Auth:      AuthToken,
 		RevokeAt:  "https://" + s.Host + "/user/settings/applications",
 		Forge: &ForgeInfo{

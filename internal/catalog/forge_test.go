@@ -85,3 +85,15 @@ func TestBuiltinEntriesHaveNoForgeInfo(t *testing.T) {
 		t.Error("built-in github must not carry forge info")
 	}
 }
+
+func TestNewForgeEntryTokenScheme(t *testing.T) {
+	s := forgejoSpec()
+	s.Scheme = "token"
+	e, err := NewForgeEntry(s)
+	if err != nil {
+		t.Fatalf("NewForgeEntry() error = %v", err)
+	}
+	if e.Placement != SchemeHeader || e.Field != "token" {
+		t.Errorf("Placement/Field = %v/%q, want SchemeHeader/token", e.Placement, e.Field)
+	}
+}

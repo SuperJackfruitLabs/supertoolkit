@@ -41,6 +41,10 @@ const (
 	APIKeyHeader
 	// QueryParam is a named query parameter carrying the token verbatim.
 	QueryParam
+	// SchemeHeader is `Authorization: <scheme> <token>` for a scheme other than
+	// Bearer. Entry.Field carries the scheme word. Forgejo and Gitea document
+	// `token` as theirs.
+	SchemeHeader
 )
 
 // Auth says which credential operation a service needs. It is what the broker
