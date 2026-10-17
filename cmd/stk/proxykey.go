@@ -115,9 +115,14 @@ func writeAtomic0600(path string, data []byte) error {
 	return nil
 }
 
-// writeProxyAddr records where the fixed proxy listens, for `stk env`.
+// writeProxyAddr records where the fixed proxy listens, and which process owns
+// it, for `stk env`. Two lines: the address, then the pid.
 func writeProxyAddr(dir, addr string) error {
-	return writeAtomic0600(filepath.Join(dir, proxyAddrFile), []byte(addr+"\n"))
+	return writeProxyAddrPID(dir, addr, os.Getpid())
+}
+
+func writeProxyAddrPID(dir, addr string, pid int) error {
+	return writeAtomic0600(filepath.Join(dir, proxyAddrFile), []byte(fmt.Sprintf("%s\n%d\n", addr, pid)))
 }
 
 func removeProxyAddr(dir string) { os.Remove(filepath.Join(dir, proxyAddrFile)) }
@@ -143,6 +148,9 @@ func parseProxyListen(a string) (netip.AddrPort, error) {
 	p, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("--proxy-listen %q: %q is not a port number", a, port)
+	}
+	if p == 0 {
+		return netip.AddrPort{}, fmt.Errorf("--proxy-listen %q: port 0 picks a random port; a fixed proxy needs a fixed one", a)
 	}
 	return netip.AddrPortFrom(ip, uint16(p)), nil
 }

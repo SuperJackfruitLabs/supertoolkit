@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -36,12 +35,12 @@ func envRig(t *testing.T, config string) (dir string) {
 	if err := store.Put("github", envSecret); err != nil {
 		t.Fatal(err)
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	key, err := loadOrCreateProxyKey(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { ln.Close() })
-	if err := writeProxyAddr(dir, ln.Addr().String()); err != nil {
+	sess := liveBroker(t, dir, key)
+	if err := writeProxyAddr(dir, sess.addr); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -79,7 +78,7 @@ func TestEnvJSONHasProxyURLWithUserinfoAndNoServiceSecret(t *testing.T) {
 		t.Fatalf("proxy_url userinfo = %q:%q, want stk:<proxy.key>", u.User.Username(), pw)
 	}
 	addr, _ := os.ReadFile(filepath.Join(dir, "proxy.addr"))
-	if u.Host != strings.TrimSpace(string(addr)) {
+	if u.Host != strings.Fields(string(addr))[0] {
 		t.Fatalf("proxy_url host %q != proxy.addr %q", u.Host, addr)
 	}
 	if got.CAPath == "" || got.Env["SSL_CERT_FILE"] != got.CAPath {
@@ -95,8 +94,22 @@ func TestEnvJSONHasProxyURLWithUserinfoAndNoServiceSecret(t *testing.T) {
 			t.Errorf("env[%s] = %q, want %q", k, got.Env[k], want)
 		}
 	}
-	if len(got.Env) > 14 {
-		t.Errorf("env has %d entries; it must carry only the broker variables, not the parent environment", len(got.Env))
+	cfg, _, _, err := loadForRun()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := map[string]bool{}
+	for _, kv := range childEnvFrom(nil, cfg, "", "") {
+		k, _, _ := strings.Cut(kv, "=")
+		wantKeys[k] = true
+	}
+	if len(got.Env) != len(wantKeys) {
+		t.Errorf("env has %d entries, want exactly %d", len(got.Env), len(wantKeys))
+	}
+	for k := range got.Env {
+		if !wantKeys[k] {
+			t.Errorf("unexpected variable %s in env", k)
+		}
 	}
 }
 

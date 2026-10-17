@@ -56,7 +56,7 @@ func TestProxyKeyRefusesWideMode(t *testing.T) {
 }
 
 func TestServeProxyListenRejectsNonLoopback(t *testing.T) {
-	for _, a := range []string{"0.0.0.0:8080", "192.168.1.5:8080", "10.0.0.1:1", "[::]:8080", "example.com:8080", ":8080", "8.8.8.8:53", "127.0.0.1", "127.0.0.1:notaport"} {
+	for _, a := range []string{"0.0.0.0:8080", "192.168.1.5:8080", "10.0.0.1:1", "[::]:8080", "example.com:8080", ":8080", "8.8.8.8:53", "127.0.0.1", "127.0.0.1:notaport", "127.0.0.1:0"} {
 		if _, err := parseProxyListen(a); err == nil {
 			t.Errorf("parseProxyListen(%q) accepted, want an error", a)
 		}
