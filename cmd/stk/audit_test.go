@@ -183,3 +183,64 @@ func TestOldLedgerLinesWithoutRuleStillRead(t *testing.T) {
 		t.Fatalf("es=%+v err=%v", es, err)
 	}
 }
+
+const evilPath = "/repos/o/r/\x1b[2Jevil\nfake-line\u009b"
+
+func TestObserveStoresNoControlBytesInPath(t *testing.T) {
+	obs, dir := auditRig(t)
+	rec := deniedRecord("user#1")
+	rec.Path = evilPath
+	obs.Observe(rec)
+	led, _ := ledger.Open(dir)
+	raw, err := os.ReadFile(led.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(string(raw), "\x1b\u009b") || strings.Count(string(raw), "\n") != 1 {
+		t.Errorf("ledger holds raw control bytes: %q", raw)
+	}
+	if es := readAll(t, dir); len(es) != 1 || !strings.Contains(es[0].Path, `\x1b[2Jevil\x0afake-line`) {
+		t.Errorf("path = %+v", es)
+	}
+}
+
+func TestAuditTextEscapesControlCharsInEveryField(t *testing.T) {
+	_, dir := auditRig(t)
+	led, _ := ledger.Open(dir)
+	bad := "a\x1b[2Jb\nc"
+	if err := led.Append(ledger.Entry{When: time.Now(), Service: "github", Host: bad,
+		Method: bad, Path: bad, Outcome: bad, Rule: bad, Capability: "x", Policy: "deny"}); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, func() {
+		if err := cmdAudit(nil); err != nil {
+			t.Error(err)
+		}
+	})
+	if strings.ContainsRune(out, 0x1b) || strings.Contains(out, "\nc") {
+		t.Errorf("raw control bytes reached the terminal: %q", out)
+	}
+	if strings.Count(out, `\x1b[2J`) < 4 {
+		t.Errorf("fields not escaped: %q", out)
+	}
+}
+
+func TestAuditJSONStaysValidWithEscapedPath(t *testing.T) {
+	obs, _ := auditRig(t)
+	rec := deniedRecord("user#1")
+	rec.Path = evilPath
+	obs.Observe(rec)
+	out := captureStdout(t, func() { _ = cmdAudit([]string{"--json"}) })
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil || len(got) != 1 {
+		t.Fatalf("%v: %s", err, out)
+	}
+}
+
+func TestEscapeControlLeavesNormalPathsAlone(t *testing.T) {
+	for _, s := range []string{"/repos/o/r/issues?x=1", "/café/ü", ""} {
+		if got := escapeControl(s); got != s {
+			t.Errorf("escapeControl(%q) = %q", s, got)
+		}
+	}
+}
