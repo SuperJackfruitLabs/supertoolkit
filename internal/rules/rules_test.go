@@ -332,3 +332,71 @@ func TestParseRuleRejects(t *testing.T) {
 		t.Errorf("NewSet accepted an unknown op")
 	}
 }
+
+func TestBodyConditionKeysCaseInsensitive(t *testing.T) {
+	p := "/repos/acme/widgets/issues/7"
+	abs := mustSet(t, []string{"acme/widgets"},
+		mustRule(t, "edit", "PATCH /repos/{owner}/{repo}/issues/*", map[string]any{"state": "absent"}, true))
+	for _, b := range []string{`{"State":"closed"}`, `{"STATE":"closed"}`, `{"ſtate":"closed"}`, `{"state":"open","STATE":"closed"}`} {
+		if d := abs.Evaluate("", jsonReq("PATCH", p, b)); d.Allowed {
+			t.Errorf("absent dodged by %s", b)
+		}
+	}
+	deny := mustSet(t, []string{"acme/widgets"},
+		mustRule(t, "no-close", "PATCH /repos/{owner}/{repo}/issues/*", map[string]any{"state": "closed"}, false),
+		mustRule(t, "edit", "PATCH /repos/{owner}/{repo}/issues/*", nil, true))
+	for _, b := range []string{`{"State":"closed"}`, `{"STATE":"closed"}`, `{"state":"open","STATE":"closed"}`} {
+		if d := deny.Evaluate("", jsonReq("PATCH", p, b)); d.Allowed || d.RuleID != "no-close" {
+			t.Errorf("deny missed %s: %+v", b, d)
+		}
+	}
+	if d := deny.Evaluate("", jsonReq("PATCH", p, `{"State":"open"}`)); !d.Allowed {
+		t.Errorf("control: %+v", d)
+	}
+	eq := mustSet(t, []string{"acme/widgets"},
+		mustRule(t, "close", "PATCH /repos/{owner}/{repo}/issues/*", map[string]any{"State": "closed"}, true),
+		mustRule(t, "nested", "POST /repos/{owner}/{repo}/x", map[string]any{"a.b": "absent"}, true))
+	if d := eq.Evaluate("", jsonReq("PATCH", p, `{"STATE":"closed"}`)); !d.Allowed {
+		t.Errorf("equals with folded key: %+v", d)
+	}
+	for _, b := range []string{`{"A":{"B":1}}`, `{"a":{"B":1}}`, `{"a":{},"A":{"b":1}}`} {
+		if d := eq.Evaluate("", jsonReq("POST", "/repos/acme/widgets/x", b)); d.Allowed {
+			t.Errorf("nested absent dodged by %s", b)
+		}
+	}
+	if d := eq.Evaluate("", jsonReq("POST", "/repos/acme/widgets/x", `{"a":{"c":1}}`)); !d.Allowed {
+		t.Errorf("nested control: %+v", d)
+	}
+}
+
+func TestBodyConditionNumbersCompareByValue(t *testing.T) {
+	s := mustSet(t, []string{"acme/widgets"},
+		mustRule(t, "no-three", "POST /repos/{owner}/{repo}/x", map[string]any{"n": 3}, false),
+		mustRule(t, "x", "POST /repos/{owner}/{repo}/x", nil, true),
+		mustRule(t, "three", "POST /repos/{owner}/{repo}/y", map[string]any{"n": 3.0}, true))
+	x, y := "/repos/acme/widgets/x", "/repos/acme/widgets/y"
+	for _, n := range []string{"3", "3.0", "3e0", "30e-1", "0.3E1", "3.000"} {
+		if d := s.Evaluate("", jsonReq("POST", x, `{"n":`+n+`}`)); d.Allowed {
+			t.Errorf("deny dodged by %s", n)
+		}
+		if d := s.Evaluate("", jsonReq("POST", y, `{"n":`+n+`}`)); !d.Allowed {
+			t.Errorf("allow refused %s: %+v", n, d)
+		}
+	}
+	for _, b := range []string{`{"n":4}`, `{"n":"3"}`, `{"n":2.9999}`} {
+		if d := s.Evaluate("", jsonReq("POST", x, b)); !d.Allowed {
+			t.Errorf("%s wrongly denied: %+v", b, d)
+		}
+		if d := s.Evaluate("", jsonReq("POST", y, b)); d.Allowed {
+			t.Errorf("%s wrongly allowed", b)
+		}
+	}
+	// A pathological exponent is unevaluable: deny matched, allow refused.
+	if d := s.Evaluate("", jsonReq("POST", x, `{"n":1e999999999}`)); d.Allowed {
+		t.Errorf("huge exponent allowed past deny")
+	}
+	sv := mustSet(t, []string{"acme/widgets"}, mustRule(t, "s", "POST /repos/{owner}/{repo}/y", map[string]any{"n": "3"}, true))
+	if d := sv.Evaluate("", jsonReq("POST", y, `{"n":3}`)); d.Allowed {
+		t.Errorf("string \"3\" equalled number 3")
+	}
+}

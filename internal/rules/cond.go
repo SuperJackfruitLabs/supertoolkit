@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"mime"
 	"strconv"
 	"strings"
@@ -192,6 +193,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 				if err != nil {
 					return nil, err
 				}
+				k = foldKey(k)
 				if _, seen := o.m[k]; seen {
 					o.dup[k] = true
 				}
@@ -225,7 +227,7 @@ func decodeValue(dec *json.Decoder) (any, error) {
 // level is present but its value is ambiguous (dup=true). Walking through a
 // non-object is unevaluable.
 func (o *object) lookup(key string) (v any, found, dup bool, err error) {
-	parts := strings.Split(key, ".")
+	parts := strings.Split(foldKey(key), ".")
 	cur := o
 	for i, p := range parts {
 		val, ok := cur.m[p]
@@ -270,11 +272,62 @@ func (c Cond) eval(o *object) (bool, error) {
 		return false, nil
 	}
 	for _, want := range c.Values {
-		if enc == want {
+		eq, err := scalarEqual(enc, want)
+		if err != nil {
+			return false, err
+		}
+		if eq {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+// foldKey folds an object key the way Go's encoding/json matches field names
+// (case-insensitively, including the Kelvin sign and long s), so a body cannot
+// dodge a condition with "State" or "STATE". Case variants of one key become
+// duplicates, which count as present.
+func foldKey(k string) string { return strings.ToLower(strings.ToUpper(k)) }
+
+// maxExponent bounds number exponents so a pathological literal cannot make
+// exact comparison expensive; beyond it the value is unevaluable.
+const maxExponent = 400
+
+// scalarEqual compares two JSON-encoded scalars. Numbers compare by exact
+// value (3 == 3.0 == 30e-1); a string never equals a number.
+func scalarEqual(a, b string) (bool, error) {
+	ra, aNum, err := jsonNumber(a)
+	if err != nil {
+		return false, err
+	}
+	rb, bNum, err := jsonNumber(b)
+	if err != nil {
+		return false, err
+	}
+	if aNum && bNum {
+		return ra.Cmp(rb) == 0, nil
+	}
+	if aNum || bNum {
+		return false, nil
+	}
+	return a == b, nil
+}
+
+func jsonNumber(s string) (*big.Rat, bool, error) {
+	if s == "" || !(s[0] == '-' || (s[0] >= '0' && s[0] <= '9')) {
+		return nil, false, nil
+	}
+	if i := strings.IndexAny(s, "eE"); i >= 0 {
+		e, err := strconv.Atoi(strings.TrimPrefix(s[i+1:], "+"))
+		if err != nil || e > maxExponent || e < -maxExponent {
+			return nil, true, errUnevaluable
+		}
+	}
+	r, ok := new(big.Rat).SetString(s)
+	if !ok {
+		return nil, true, errUnevaluable
+	}
+	return r, true, nil
 }
 
 func encodeScalar(v any) (string, bool) {
