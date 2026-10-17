@@ -233,3 +233,31 @@ func TestRecordCarriesTheServiceLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestReloadHostReassignedToAnotherServiceIsRefusedOnAnOpenTunnel(t *testing.T) {
+	f := newFixture(t, setA)
+	c := f.client(false)
+	if st, _ := doOn(t, c, "GET", "/repos/acme/widgets/issues"); st != 200 {
+		t.Fatalf("before: %d", st)
+	}
+	hits, secrets, refused := f.providerHits.Load(), f.secretCalls.Load(), f.broker.Stats().Refused
+	// The same host now belongs to a different service with its own credential.
+	if err := f.broker.Reload(loadCfg(t, strings.Replace(setA, "forge-main:", "forge-b:", 1))); err != nil {
+		t.Fatal(err)
+	}
+	st, body := doOn(t, c, "GET", "/repos/acme/widgets/issues")
+	if st != http.StatusForbidden || !strings.Contains(body, "no longer brokered") {
+		t.Fatalf("after reassignment: %d %q, want 403", st, body)
+	}
+	if f.providerHits.Load() != hits || f.secretCalls.Load() != secrets {
+		t.Fatalf("provider +%d, secret source +%d, want 0 and 0",
+			f.providerHits.Load()-hits, f.secretCalls.Load()-secrets)
+	}
+	if got := f.broker.Stats().Refused; got != refused+1 {
+		t.Fatalf("Refused %d -> %d, want +1", refused, got)
+	}
+	recs := f.broker.Audit()
+	if last := recs[len(recs)-1]; last.Service != "forge-main" || last.Status != "403 service no longer brokered" {
+		t.Fatalf("last record = %+v", last)
+	}
+}

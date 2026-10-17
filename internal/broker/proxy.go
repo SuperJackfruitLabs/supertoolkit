@@ -470,6 +470,15 @@ See docs/limitations.md.
 		}
 	}
 
+	// The secret source reads the caller's shared policy holder, not this
+	// request's snapshot: in `stk serve` a reload stores the broker snapshot
+	// and then the holder, so a request in flight across a reload can see one
+	// policy here and another in the source. The rules above were already
+	// decided from this request's snapshot, so a request those rules deny never
+	// reaches this line. The only effect of the window is that the source may
+	// not know svc.Name (just added, or just removed) or may hold its new
+	// acquirer: the result is "no credential" (502) or a provider error, never
+	// a credential for a request the new rules deny.
 	secret, err := b.src(svc.Name)
 	if err != nil {
 		rec.Status = "no credential: " + err.Error()

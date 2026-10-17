@@ -393,6 +393,12 @@ func cmdServe(args []string) error {
 		}
 		opts.Listen = ap.String()
 	}
+	// SIGHUP's default action kills the process, so it is caught before any
+	// startup work: a reload signal sent while serve is still starting is
+	// held (one is enough) and applied once the loop below runs.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
 	cfg, store, dir, err := loadForRun()
 	if err != nil {
 		return err
@@ -451,8 +457,7 @@ func cmdServe(args []string) error {
 	go func() { errc <- d.Serve() }()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(sig)
 	for {
 		select {
 		case err := <-errc:
