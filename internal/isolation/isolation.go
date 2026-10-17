@@ -11,7 +11,11 @@
 //
 // Mode bits are not the whole story: an ACL can grant the agent read access
 // to a 0600 file. On Linux the production ACL reader (HasACL) looks for the
-// POSIX ACL xattrs and any ACL on a checked path is a reason. On macOS and
+// POSIX ACL xattrs and any ACL on a checked path or parent directory is a
+// reason. Only ENODATA (or an empty read) means "no ACL"; ENOTSUP/EOPNOTSUPP
+// (NFSv4, FUSE, some overlays, which may enforce ACLs of their own) and any
+// other error are reasons, so a state dir on a filesystem without POSIX ACL
+// support is never reported separate-user. That is intended. On macOS and
 // other Unixes ACLs cannot be read without cgo, so the verdict there always
 // carries the reason "ACLs are not examined on <GOOS>" and is never
 // separate-user on mode bits alone.

@@ -41,8 +41,9 @@ const maxLinks = 8
 //	    owned by an agent uid. The policy file likewise may be group-readable
 //	    (install makes it 0640) but must not be group/other-writable.
 //
-//	(g) ACLs: on linux every listed path with a POSIX ACL, or whose ACL
-//	    cannot be read, is a reason; on any other GOOS ACLs are not examined
+//	(g) ACLs: on linux every listed path and every parent directory with a
+//	    POSIX ACL, or whose ACL cannot be read or ruled out (see classifyACL
+//	    for the errno table; ENOTSUP is a reason), is a reason; on any other GOOS ACLs are not examined
 //	    and that itself is a reason.
 //	(h) an agent uid of 0 is root, which reaches everything: a reason.
 //
@@ -201,6 +202,10 @@ func (c *checker) acl(p string) {
 		return
 	}
 	has, err := c.opts.ACL(p)
+	if errors.Is(err, errNoPOSIXACL) {
+		c.add("%s: %v", p, errNoPOSIXACL)
+		return
+	}
 	if err != nil {
 		c.add("cannot read the ACL of %s (%v) — unknown is not safe", p, err)
 		return
@@ -238,7 +243,43 @@ func (c *checker) parent(d string, depth int) {
 		}
 		return
 	}
+	// (g) for parents: an ACL such as u:agent:rwx on a parent permits the
+	// same component swap the write-bit rule exists to catch.
+	c.acl(d)
 	if fi.Mode().Perm()&0o022 != 0 {
 		c.add("%s is writable by group or other (mode %o)", d, fi.Mode().Perm())
 	}
+}
+
+// errNoPOSIXACL marks a filesystem that will not say whether a POSIX ACL
+// exists (ENOTSUP/EOPNOTSUPP: NFSv4, FUSE, some overlays). Those may still
+// enforce ACLs of their own, so it is a reason, never "none".
+var errNoPOSIXACL = errors.New("filesystem does not report POSIX ACLs; ACLs cannot be ruled out")
+
+// classifyACL turns getxattr results for the two POSIX ACL attributes into a
+// verdict. Per attribute:
+//
+//	success, size > 0     -> ACL present
+//	success, size 0       -> none
+//	ENODATA               -> none
+//	ENOTSUP / EOPNOTSUPP  -> errNoPOSIXACL (a reason: fail closed)
+//	anything else (EACCES, EIO, ...) -> that error (a reason)
+//
+// Consequence: a state dir on a filesystem without POSIX ACL support can
+// never be reported separate-user. That is intended.
+func classifyACL(get func(attr string) (int, error)) (bool, error) {
+	for _, attr := range []string{"system.posix_acl_access", "system.posix_acl_default"} {
+		n, err := get(attr)
+		switch {
+		case err == nil && n > 0:
+			return true, nil
+		case err == nil, errors.Is(err, syscall.ENODATA):
+			continue
+		case errors.Is(err, syscall.ENOTSUP), errors.Is(err, syscall.EOPNOTSUPP):
+			return false, errNoPOSIXACL
+		default:
+			return false, err
+		}
+	}
+	return false, nil
 }

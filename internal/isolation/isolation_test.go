@@ -260,3 +260,49 @@ func TestACLUnexaminedOnDarwinIsNeverSeparate(t *testing.T) {
 	r := CheckWith(paths, []int{agent}, inspector(tree()), Options{GOOS: "darwin"})
 	wantSame(t, r, "ACLs are not examined on darwin; mode bits alone cannot prove isolation")
 }
+
+func TestParentDirACLIsSameUser(t *testing.T) {
+	opts := Options{GOOS: "linux", ACL: func(p string) (bool, error) { return p == "/var/lib", nil }}
+	wantSame(t, CheckWith(paths, []int{agent}, inspector(tree()), opts), "/var/lib has an ACL")
+
+	opts.ACL = func(p string) (bool, error) {
+		if p == "/var" {
+			return false, syscall.EIO
+		}
+		return false, nil
+	}
+	wantSame(t, CheckWith(paths, []int{agent}, inspector(tree()), opts), "/var")
+}
+
+func TestACLErrnoClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		get     func(attr string) (int, error)
+		has     bool
+		wantErr string
+	}{
+		{"ENODATA is none", func(string) (int, error) { return 0, syscall.ENODATA }, false, ""},
+		{"empty read is none", func(string) (int, error) { return 0, nil }, false, ""},
+		{"present", func(a string) (int, error) {
+			if a == "system.posix_acl_default" {
+				return 28, nil
+			}
+			return 0, syscall.ENODATA
+		}, true, ""},
+		{"ENOTSUP is a reason", func(string) (int, error) { return 0, syscall.ENOTSUP }, false, "does not report POSIX ACLs"},
+		{"EOPNOTSUPP is a reason", func(string) (int, error) { return 0, syscall.EOPNOTSUPP }, false, "does not report POSIX ACLs"},
+		{"EACCES is a reason", func(string) (int, error) { return 0, syscall.EACCES }, false, "permission"},
+		{"EIO is a reason", func(string) (int, error) { return 0, syscall.EIO }, false, "input/output"},
+	} {
+		has, err := classifyACL(tc.get)
+		if has != tc.has || (tc.wantErr == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tc.wantErr)) {
+			t.Errorf("%s: has=%v err=%v", tc.name, has, err)
+		}
+	}
+	// The reason Check records for an unsupported filesystem names the path.
+	opts := Options{GOOS: "linux", ACL: func(p string) (bool, error) {
+		return classifyACL(func(string) (int, error) { return 0, syscall.ENOTSUP })
+	}}
+	wantSame(t, CheckWith(paths, []int{agent}, inspector(tree()), opts),
+		"/var/lib/stk/salt: filesystem does not report POSIX ACLs; ACLs cannot be ruled out")
+}

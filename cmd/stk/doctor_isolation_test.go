@@ -241,3 +241,11 @@ func TestSecretPathsUseExactConfigPath(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestDoctorProbeWithJSONIsRefused(t *testing.T) {
+	var out bytes.Buffer
+	err := runDoctor([]string{"--probe", "--json"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "--probe has no JSON output") || out.Len() != 0 {
+		t.Fatalf("err=%v out=%q", err, out.String())
+	}
+}
