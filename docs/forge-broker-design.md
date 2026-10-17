@@ -1,7 +1,7 @@
 # Forge broker — design
 
 **Date:** 2026-10-17
-**Status:** slice 1 implemented (forge service, verify, atomic replace, sealing from stdin; see `docs/plan-forge-broker-1.md`). Request rules, the fixed listener, the OS-user install and the rest are not yet built.
+**Status:** slice 1 implemented (forge service, verify, atomic replace, sealing from stdin; see `docs/plan-forge-broker-1.md`). Slice 2 (request rules: presets enforced, operator `rules:`, body conditions, GraphQL denied by default, rule ids in the audit ledger) is implemented. Not yet built: the fixed authenticated listener and `stk env`, `stk install` and isolation reporting, `auth: app` verify, `stk reload` and audit labels, harness probes, CA name constraints, Bitbucket presets.
 **Companion:** agentpod `docs/superpowers/specs/2026-10-17-forge-api-access-design.md`
 (issue #725). That document says *what the fleet needs and why*; this one says
 what stk must become to provide it.
