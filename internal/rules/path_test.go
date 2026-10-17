@@ -35,6 +35,12 @@ func TestNormalizePathRefuses(t *testing.T) {
 		{"DEL raw", "/repos/o\x7fr", "control-byte"},
 		{"empty path", "", "empty-segment"},
 		{"no leading slash", "repos/o/r", "empty-segment"},
+		{"double-encoded dot-dot", "/repos/%252e%252e/x", "double-encoding"},
+		{"double-encoded slash", "/repos/o%252fr", "double-encoding"},
+		{"double-encoded backslash", "/repos/o%255cr", "double-encoding"},
+		{"overlong dot", "/repos/%c0%ae%c0%ae/x", "bad-encoding"},
+		{"invalid utf8 ff", "/repos/o%ffr", "bad-encoding"},
+		{"C1 control NEL", "/repos/o%c2%85r", "control-byte"},
 		{"bad percent", "/repos/o%zz/r", "bad-encoding"},
 		{"truncated percent", "/repos/o%2", "bad-encoding"},
 	}

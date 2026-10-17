@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 )
 
 // Refusal reasons, named inside the error text returned by NormalizePath.
@@ -18,6 +19,7 @@ const (
 	reasonBackslash        = "backslash"
 	reasonPathParameter    = "path-parameter"
 	reasonBadEncoding      = "bad-encoding"
+	reasonDoubleEncoding   = "double-encoding"
 )
 
 func refuse(reason, detail string) error {
@@ -28,6 +30,8 @@ func refuse(reason, detail string) error {
 // decoded path, or an error naming why it was refused. Each segment is
 // decoded exactly once. A trailing slash is preserved so that pattern
 // matching can distinguish "/a" from "/a/".
+// The return value is for matching only and must never be forwarded upstream;
+// forward the original escaped path.
 func NormalizePath(escaped string) (string, error) {
 	if escaped == "" || escaped[0] != '/' {
 		return "", refuse(reasonEmptySegment, "path must start with /")
@@ -61,6 +65,12 @@ func NormalizePath(escaped string) (string, error) {
 		if err != nil {
 			return "", refuse(reasonBadEncoding, "invalid percent-encoding")
 		}
+		if !utf8.ValidString(dec) {
+			return "", refuse(reasonBadEncoding, "invalid UTF-8 after decoding")
+		}
+		if strings.ContainsRune(dec, '%') {
+			return "", refuse(reasonDoubleEncoding, "% remains after decoding")
+		}
 		if dec == "." || dec == ".." {
 			if dec != raw {
 				return "", refuse(reasonEncodedSeparator, "encoded dot-segment")
@@ -69,7 +79,7 @@ func NormalizePath(escaped string) (string, error) {
 		}
 		// Decoded checks: %00, %0a, %3b and friends.
 		switch {
-		case hasControl(dec):
+		case hasControl(dec) || hasC1(dec):
 			return "", refuse(reasonControlByte, "encoded control byte in segment")
 		case strings.ContainsRune(dec, '\\'):
 			return "", refuse(reasonBackslash, "encoded backslash in segment")
@@ -81,6 +91,15 @@ func NormalizePath(escaped string) (string, error) {
 		out[i] = dec
 	}
 	return "/" + strings.Join(out, "/"), nil
+}
+
+func hasC1(s string) bool {
+	for _, r := range s {
+		if r >= 0x80 && r <= 0x9f {
+			return true
+		}
+	}
+	return false
 }
 
 func hasControl(s string) bool {
