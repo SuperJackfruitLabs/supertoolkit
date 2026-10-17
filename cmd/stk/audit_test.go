@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,21 +100,74 @@ func TestAuditTextShowsTheRuleForDeniedRows(t *testing.T) {
 }
 
 func TestAuditNeverContainsTheSecretOnADeniedRequest(t *testing.T) {
-	const secret = "ghp_real_secret_value"
-	obs, dir := auditRig(t)
-	r := deniedRecord("builtin:outside-prefix")
-	// The placeholder travelled; the secret was never fetched.
-	r.Path = "/repos/o/r?t=" + broker.Placeholder("github")
-	obs.Observe(r)
-	raw, err := os.ReadFile(dir + "/audit.log")
+	const secret = "forge_denied_real_secret_9f8e7d"
+	rig(t, "workspace: test\n")
+	dir, _ := home()
+	cfgPath := filepath.Join(dir, "forge.yaml")
+	yaml := "workspace: test\nservices:\n  forge-main:\n    kind: forge\n    provider: forgejo\n" +
+		"    host: forge.example.test\n    scheme: bearer\n    env_var: FORGEJO_TOKEN\n" +
+		"    repositories: [o/r]\n    preset: read\n"
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := policy.Load(cfgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), secret) {
-		t.Fatal("ledger contains the secret")
+	obs, err := newObserver(cfg, dir, "test")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if e := readAll(t, dir)[0]; e.Credential != "" && strings.HasPrefix(e.Credential, "sha256:") {
-		t.Errorf("credential = %q", e.Credential)
+	var fetched atomic.Int64
+	ca, err := broker.NewCA("denied test CA", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := broker.New(broker.Options{
+		Config: cfg, CA: ca, Observer: obs,
+		Secrets: func(string) (string, error) { fetched.Add(1); return secret, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go b.Serve(ln)
+	defer ln.Close()
+	proxy, _ := url.Parse("http://" + ln.Addr().String())
+	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
+		Proxy:           http.ProxyURL(proxy),
+		TLSClientConfig: &tls.Config{RootCAs: ca.Pool()},
+	}}
+	req, _ := http.NewRequest("DELETE", "https://forge.example.test/api/v1/repos/o/r", nil)
+	req.Header.Set("Authorization", "Bearer "+broker.Placeholder("forge-main"))
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+	if n := fetched.Load(); n != 0 {
+		t.Fatalf("the secret source was called %d time(s) for a denied request", n)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "audit.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) || strings.Contains(string(raw), "sha256:") {
+		t.Fatalf("ledger holds a secret or credential fingerprint:\n%s", raw)
+	}
+	es := readAll(t, dir)
+	if len(es) != 1 {
+		t.Fatalf("entries = %d, want 1", len(es))
+	}
+	if e := es[0]; e.Rule == "" || e.Capability != "(denied)" || e.Policy != "deny" || e.Outcome != "403 denied: "+e.Rule {
+		t.Errorf("entry = %+v", e)
 	}
 }
 

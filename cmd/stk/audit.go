@@ -39,7 +39,6 @@ func (o observer) Observe(r broker.Record) {
 	denied := r.Rule != "" && strings.HasPrefix(r.Status, "403 denied")
 	if svc, ok := o.cfg.Service(r.Service); ok {
 		if denied {
-			e.Capability, e.Policy = "(denied)", "deny"
 			e.Credential = svc.Entry().Auth.String()
 		} else if c, known := svc.Entry().CapabilityFor(r.Method, r.Path); known {
 			e.Capability = c.Name
