@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"syscall"
 )
 
@@ -39,17 +40,42 @@ const maxLinks = 8
 //	    --socket-mode 0660`), so it is exempt from (b), but it must not be
 //	    owned by an agent uid. The policy file likewise may be group-readable
 //	    (install makes it 0640) but must not be group/other-writable.
+//
+//	(g) ACLs: on linux every listed path with a POSIX ACL, or whose ACL
+//	    cannot be read, is a reason; on any other GOOS ACLs are not examined
+//	    and that itself is a reason.
+//	(h) an agent uid of 0 is root, which reaches everything: a reason.
+//
+// Check uses this host's GOOS and ACL reader and no config path; CheckWith
+// takes them explicitly.
 func Check(paths []string, agentUIDs []int, inspect func(path string) (fs.FileInfo, error)) Report {
+	return CheckWith(paths, agentUIDs, inspect, Options{GOOS: runtime.GOOS, ACL: HasACL})
+}
+
+// CheckWith is Check with the config path, GOOS and ACL reader explicit.
+func CheckWith(paths []string, agentUIDs []int, inspect func(path string) (fs.FileInfo, error), o Options) Report {
 	if len(agentUIDs) == 0 {
 		return NoAgents()
 	}
-	c := &checker{inspect: inspect, roots: roots(paths), agents: map[int]bool{}, seenDir: map[string]bool{}}
+	c := &checker{inspect: inspect, opts: o, roots: roots(paths), agents: map[int]bool{}, seenDir: map[string]bool{}}
 	for _, u := range agentUIDs {
 		c.agents[u] = true
+		if u == 0 {
+			c.add("agent uid 0 is root; isolation is impossible")
+		}
+	}
+	if o.GOOS != "linux" {
+		c.add("ACLs are not examined on %s; mode bits alone cannot prove isolation", o.GOOS)
+	} else if o.ACL == nil {
+		c.add("ACLs are not examined (no ACL reader); mode bits alone cannot prove isolation")
+	}
+	cfg := ""
+	if o.ConfigPath != "" {
+		cfg = filepath.Clean(o.ConfigPath)
 	}
 	for _, p := range paths {
 		p = filepath.Clean(p)
-		c.leaf(p, isConfig(p), 0)
+		c.leaf(p, cfg != "" && p == cfg, 0)
 		c.parents(p)
 	}
 	if c.present == 0 {
@@ -63,6 +89,7 @@ func Check(paths []string, agentUIDs []int, inspect func(path string) (fs.FileIn
 }
 
 type checker struct {
+	opts    Options
 	inspect func(string) (fs.FileInfo, error)
 	roots   []string
 	agents  map[int]bool
@@ -140,6 +167,7 @@ func (c *checker) leaf(p string, config bool, depth int) {
 		c.present++
 	}
 	c.owner(p, fi)
+	c.acl(p)
 	mode := fi.Mode()
 	switch {
 	case mode&fs.ModeSymlink != 0:
@@ -153,11 +181,32 @@ func (c *checker) leaf(p string, config bool, depth int) {
 		if mode.Perm()&0o022 != 0 {
 			c.add("%s is writable by group or other (mode %o)", p, mode.Perm())
 		}
+	case mode.IsDir():
+		// (b) for a secret-holding directory: any group/other bit, even
+		// traverse-only 0711, lets another user reach entries by name.
+		if mode.Perm()&0o077 != 0 {
+			c.add("%s grants group or other access (mode %o)", p, mode.Perm())
+		}
 	default:
 		// (b)
 		if mode.Perm()&0o066 != 0 {
 			c.add("%s grants group or other access (mode %o)", p, mode.Perm())
 		}
+	}
+}
+
+// acl applies (g) on linux.
+func (c *checker) acl(p string) {
+	if c.opts.GOOS != "linux" || c.opts.ACL == nil {
+		return
+	}
+	has, err := c.opts.ACL(p)
+	if err != nil {
+		c.add("cannot read the ACL of %s (%v) — unknown is not safe", p, err)
+		return
+	}
+	if has {
+		c.add("%s has an ACL, which may grant an agent access its mode bits do not show", p)
 	}
 }
 

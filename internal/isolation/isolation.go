@@ -9,6 +9,13 @@
 // owner, nothing present at all) is a reason for same-user. Unknown is not
 // safe.
 //
+// Mode bits are not the whole story: an ACL can grant the agent read access
+// to a 0600 file. On Linux the production ACL reader (HasACL) looks for the
+// POSIX ACL xattrs and any ACL on a checked path is a reason. On macOS and
+// other Unixes ACLs cannot be read without cgo, so the verdict there always
+// carries the reason "ACLs are not examined on <GOOS>" and is never
+// separate-user on mode bits alone.
+//
 // Check is pure with respect to the host: everything it learns comes through
 // the injected inspector. The root-only access attempt (re-executing stk as
 // each agent uid and trying to open the files) lives in the caller and is
@@ -28,8 +35,12 @@ const (
 	SameUser     = "same-user"
 	Unknown      = "unknown"
 
+	// MethodModeBits: owner, mode bits and (on Linux only) POSIX ACLs were
+	// inspected. Elsewhere ACLs were not, and the reasons say so.
 	MethodModeBits = "mode-bits"
-	MethodAccess   = "mode-bits+access"
+	// MethodAccess: as MethodModeBits, plus a real open() attempted as each
+	// agent uid (root only). The attempt catches what ACLs grant too.
+	MethodAccess = "mode-bits+access"
 )
 
 // Report is the verdict, shaped for `stk doctor --json`.
@@ -87,15 +98,6 @@ func Lstat(path string) (fs.FileInfo, error) {
 	return li, nil
 }
 
-// isConfig reports whether p is the policy file. The policy holds no secret,
-// and `stk install` deliberately makes it 0640 root:<group>, so it is checked
-// for tampering (owner, write bits) but not for read bits. Recognised by
-// extension; a policy file with any other name is treated as secret-holding,
-// which errs toward same-user.
-func isConfig(p string) bool {
-	return strings.HasSuffix(p, ".yaml") || strings.HasSuffix(p, ".yml")
-}
-
 // roots is the checked tree: a path that is an ancestor of another listed path
 // is a root itself; otherwise the path's directory is.
 func roots(paths []string) []string {
@@ -121,4 +123,19 @@ func inTree(target string, roots []string) bool {
 		}
 	}
 	return false
+}
+
+// Options carries what the verdict depends on beyond the paths.
+type Options struct {
+	// ConfigPath is the policy file, compared exactly against the listed
+	// paths. It holds no secret and `stk install` makes it 0640
+	// root:<group>, so it is exempt from the read-bit rule but not from the
+	// owner and write rules. Nothing else is exempt, whatever its name.
+	ConfigPath string
+	// GOOS decides whether ACLs can be examined. Only on linux is there an
+	// ACL reader without cgo; anywhere else an unexamined ACL is a reason.
+	GOOS string
+	// ACL reports whether a path carries an ACL. Nil means ACLs cannot be
+	// examined, which is a reason.
+	ACL func(path string) (bool, error)
 }

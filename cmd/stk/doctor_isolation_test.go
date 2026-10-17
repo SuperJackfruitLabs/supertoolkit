@@ -141,23 +141,103 @@ func TestRootAccessAttemptForcesSameUser(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("the access attempt needs root to switch uid")
 	}
-	dir := t.TempDir()
+	// t.TempDir's parents may be 0700 root, which uid 65534 cannot traverse
+	// to exec the binary. Build where every component is 0755.
+	dir, err := os.MkdirTemp("/tmp", "stk-access-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for d := dir; d != "/"; d = filepath.Dir(d) {
+		fi, err := os.Stat(d)
+		if err != nil || fi.Mode().Perm()&0o005 != 0o005 {
+			t.Fatalf("%s is not traversable by others (%v)", d, err)
+		}
+	}
 	exe := filepath.Join(dir, "stk")
 	if out, err := exec.Command("go", "build", "-o", exe, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	os.Chmod(dir, 0o755)
+	os.Chmod(exe, 0o755)
 	open := filepath.Join(dir, "salt")
 	os.WriteFile(open, []byte("x"), 0o644)
 	closed := filepath.Join(dir, "gh.cred")
 	os.WriteFile(closed, []byte("x"), 0o600)
 	const nobody = 65534
+
+	// The child must have run: an exec failure would also be a reason, and
+	// must not be mistaken for a detection.
+	opened, err := uidOpener(exe)(nobody, []string{open, closed})
+	if err != nil {
+		t.Fatalf("access attempt could not run as uid %d: %v", nobody, err)
+	}
+	if len(opened) != 1 || opened[0] != open {
+		t.Fatalf("opened = %v, want exactly %s", opened, open)
+	}
 	reasons := accessAttempt([]string{open, closed}, []int{nobody}, uidOpener(exe))
-	if len(reasons) != 1 || !strings.Contains(reasons[0], open) {
-		t.Fatalf("reasons = %v, want exactly %s", reasons, open)
+	if len(reasons) != 1 || !strings.Contains(reasons[0], "opened "+open) {
+		t.Fatalf("reasons = %v", reasons)
 	}
 	r := isolation.WithAccess(isolation.Report{Level: isolation.SeparateUser, Method: isolation.MethodModeBits}, reasons)
 	if r.Level != isolation.SameUser || r.Method != isolation.MethodAccess {
 		t.Fatalf("got %+v", r)
+	}
+}
+
+func TestDoctorTextFooterFollowsIsolationLevel(t *testing.T) {
+	noProbe(t)
+	oldC, oldI := doctorCheckFn, doctorIsolation
+	t.Cleanup(func() { doctorCheckFn, doctorIsolation = oldC, oldI })
+	doctorCheckFn = func() []check { return []check{{ok: true, label: "all good"}} }
+	for _, tc := range []struct {
+		rep        isolation.Report
+		want, deny string
+	}{
+		{isolation.Report{Level: isolation.SeparateUser, Method: isolation.MethodModeBits}, "the agent cannot reach a credential.", "not proven"},
+		{isolation.Report{Level: isolation.SameUser, Method: isolation.MethodModeBits, Reasons: []string{"a", "b"}}, "isolation is not proven: 2 reason(s)", "cannot reach a credential"},
+		{isolation.NoAgents(), "isolation is not proven: 1 reason(s)", "cannot reach a credential"},
+	} {
+		doctorIsolation = func([]int) isolation.Report { return tc.rep }
+		var out bytes.Buffer
+		if err := runDoctor(nil, &out); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), tc.want) || strings.Contains(out.String(), tc.deny) {
+			t.Errorf("%s: output\n%s", tc.rep.Level, out.String())
+		}
+	}
+}
+
+func TestDoctorTextNamesTheACLLimitation(t *testing.T) {
+	noProbe(t)
+	oldC, oldI := doctorCheckFn, doctorIsolation
+	t.Cleanup(func() { doctorCheckFn, doctorIsolation = oldC, oldI })
+	doctorCheckFn = func() []check { return []check{{ok: true, label: "all good"}} }
+	doctorIsolation = func([]int) isolation.Report {
+		return isolation.Report{Level: isolation.SeparateUser, Method: isolation.MethodModeBits}
+	}
+	var out bytes.Buffer
+	runDoctor(nil, &out)
+	if !strings.Contains(out.String(), "ACL") {
+		t.Fatalf("text output does not state the ACL limitation:\n%s", out.String())
+	}
+}
+
+func TestDoctorProbeRoutesInAnyOrder(t *testing.T) {
+	for _, args := range [][]string{{"--probe"}, {"--json", "--probe"}, {"--probe", "--json"}} {
+		o, err := parseDoctorArgs(args)
+		if err != nil || !o.probe {
+			t.Errorf("%v: %+v %v", args, o, err)
+		}
+	}
+}
+
+func TestSecretPathsUseExactConfigPath(t *testing.T) {
+	got := secretPaths([]string{"/s", "/s/stk.yml", "/etc/supertoolkit.yaml", "/run/stk.sock"}, "/etc/supertoolkit.yaml", "/run/stk.sock")
+	if !reflect.DeepEqual(got, []string{"/s", "/s/stk.yml"}) {
+		t.Fatalf("got %v", got)
 	}
 }

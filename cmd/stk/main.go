@@ -89,11 +89,7 @@ func main() {
 	case "ui":
 		err = cmdUI(os.Args[2:])
 	case "doctor":
-		if len(os.Args) > 2 && os.Args[2] == "--probe" {
-			err = cmdProbe()
-		} else {
-			err = cmdDoctor(os.Args[2:])
-		}
+		err = cmdDoctor(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("stk", version)
 	case "help", "--help", "-h":

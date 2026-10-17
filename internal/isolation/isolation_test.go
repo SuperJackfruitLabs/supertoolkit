@@ -3,7 +3,6 @@
 package isolation
 
 import (
-	"errors"
 	"io/fs"
 	"os"
 	"strings"
@@ -72,9 +71,12 @@ func inspector(m map[string]fakeInfo) func(string) (fs.FileInfo, error) {
 	}
 }
 
+// linux is the options for a host where ACLs are examined and none exist.
+var linux = Options{GOOS: "linux", ACL: func(string) (bool, error) { return false, nil }}
+
 func run(t *testing.T, m map[string]fakeInfo) Report {
 	t.Helper()
-	return Check(paths, []int{agent}, inspector(m))
+	return CheckWith(paths, []int{agent}, inspector(m), linux)
 }
 
 func wantSame(t *testing.T, r Report, mention string) {
@@ -144,12 +146,12 @@ func TestSymlinkOutOfTreeIsSameUser(t *testing.T) {
 func TestUnknownPathReportsReasonNotSeparate(t *testing.T) {
 	m := tree()
 	insp := inspector(m)
-	r := Check(paths, []int{agent}, func(p string) (fs.FileInfo, error) {
+	r := CheckWith(paths, []int{agent}, func(p string) (fs.FileInfo, error) {
 		if p == "/var/lib/stk/gh.cred" {
 			return nil, &fs.PathError{Op: "lstat", Path: p, Err: os.ErrPermission}
 		}
 		return insp(p)
-	})
+	}, linux)
 	wantSame(t, r, "/var/lib/stk/gh.cred")
 
 	// An owner the checker cannot read is unknown too, and unknown is not safe.
@@ -157,14 +159,14 @@ func TestUnknownPathReportsReasonNotSeparate(t *testing.T) {
 	wantSame(t, run(t, m), "owner")
 
 	// Nothing present at all proves nothing.
-	r = Check(paths, []int{agent}, func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist })
+	r = CheckWith(paths, []int{agent}, func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist }, linux)
 	if r.Level == "separate-user" {
 		t.Fatalf("nothing exists, yet %+v", r)
 	}
 }
 
 func TestNoAgentUIDsMeansUnknownNotSeparate(t *testing.T) {
-	r := Check(paths, nil, inspector(tree()))
+	r := CheckWith(paths, nil, inspector(tree()), linux)
 	if r.Level != "unknown" || len(r.Reasons) != 1 || r.Reasons[0] != "no agent uids configured" {
 		t.Fatalf("got %+v", r)
 	}
@@ -183,11 +185,13 @@ func TestConfigMayBeGroupReadableButNotWritable(t *testing.T) {
 	m["/etc/stk"] = fakeInfo{mode: fs.ModeDir | 0o750, uid: 0}
 	m["/etc/stk/supertoolkit.yaml"] = fakeInfo{mode: 0o640, uid: 0}
 	ps := append([]string{"/etc/stk/supertoolkit.yaml"}, paths...)
-	if r := Check(ps, []int{agent}, inspector(m)); r.Level != "separate-user" {
+	opts := linux
+	opts.ConfigPath = "/etc/stk/supertoolkit.yaml"
+	if r := CheckWith(ps, []int{agent}, inspector(m), opts); r.Level != "separate-user" {
 		t.Fatalf("0640 config: %+v", r)
 	}
 	m["/etc/stk/supertoolkit.yaml"] = fakeInfo{mode: 0o660, uid: 0}
-	r := Check(ps, []int{agent}, inspector(m))
+	r := CheckWith(ps, []int{agent}, inspector(m), opts)
 	wantSame(t, r, "supertoolkit.yaml")
 }
 
@@ -202,4 +206,57 @@ func TestAccessReasonsForceSameUser(t *testing.T) {
 	}
 }
 
-var _ = errors.New
+func TestSecretDirNamedLikeConfigIsNotExempt(t *testing.T) {
+	m := tree()
+	m["/var/lib/stk.yml"] = fakeInfo{mode: fs.ModeDir | 0o750, uid: svc}
+	opts := linux
+	opts.ConfigPath = "/etc/stk/supertoolkit.yaml"
+	r := CheckWith(append([]string{"/var/lib/stk.yml"}, paths...), []int{agent}, inspector(m), opts)
+	wantSame(t, r, "/var/lib/stk.yml")
+}
+
+func TestGroupTraverseOnSecretDirIsSameUser(t *testing.T) {
+	m := tree()
+	m["/var/lib/stk/approvals"] = fakeInfo{mode: fs.ModeDir | 0o711, uid: svc}
+	wantSame(t, run(t, m), "/var/lib/stk/approvals")
+}
+
+func TestAgentUIDZeroIsRoot(t *testing.T) {
+	r := CheckWith(paths, []int{0}, inspector(tree()), linux)
+	wantSame(t, r, "agent uid 0 is root; isolation is impossible")
+}
+
+func TestStickyWorldWritableParentIsSameUser(t *testing.T) {
+	m := tree()
+	m["/var"] = fakeInfo{mode: fs.ModeDir | fs.ModeSticky | 0o777, uid: 0}
+	wantSame(t, run(t, m), "/var ")
+}
+
+func TestWorldSocketOwnedByServiceIsAllowed(t *testing.T) {
+	m := tree()
+	m["/run/stk/stk.sock"] = fakeInfo{mode: fs.ModeSocket | 0o666, uid: svc}
+	if r := run(t, m); r.Level != "separate-user" {
+		t.Fatalf("got %+v", r)
+	}
+}
+
+func TestACLOnLinuxIsSameUser(t *testing.T) {
+	opts := Options{GOOS: "linux", ACL: func(p string) (bool, error) { return p == "/var/lib/stk/salt", nil }}
+	wantSame(t, CheckWith(paths, []int{agent}, inspector(tree()), opts), "ACL")
+
+	opts.ACL = func(p string) (bool, error) {
+		if p == "/var/lib/stk/gh.cred" {
+			return false, os.ErrPermission
+		}
+		return false, nil
+	}
+	wantSame(t, CheckWith(paths, []int{agent}, inspector(tree()), opts), "/var/lib/stk/gh.cred")
+
+	// No way to read ACLs on Linux is not a pass either.
+	wantSame(t, CheckWith(paths, []int{agent}, inspector(tree()), Options{GOOS: "linux"}), "ACLs are not examined")
+}
+
+func TestACLUnexaminedOnDarwinIsNeverSeparate(t *testing.T) {
+	r := CheckWith(paths, []int{agent}, inspector(tree()), Options{GOOS: "darwin"})
+	wantSame(t, r, "ACLs are not examined on darwin; mode bits alone cannot prove isolation")
+}

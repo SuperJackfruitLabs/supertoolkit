@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,8 +21,15 @@ import (
 // network.
 var doctorProbe = probeCurl
 
+// Seams for tests of the rendering.
+var (
+	doctorCheckFn   = doctorChecks
+	doctorIsolation = isolationReport
+)
+
 type doctorOpts struct {
 	json      bool
+	probe     bool
 	agentUIDs []int
 	// asUIDProbe is the hidden child mode of the root access attempt: try to
 	// open each path and print the ones that opened.
@@ -35,6 +43,8 @@ func parseDoctorArgs(args []string) (doctorOpts, error) {
 		switch {
 		case a == "--json":
 			o.json = true
+		case a == "--probe":
+			o.probe = true
 		case a == "--as-uid-probe":
 			o.asUIDProbe = append([]string{}, args[i+1:]...)
 			return o, nil
@@ -73,10 +83,7 @@ func isolationPaths(dir, cfgPath, sock string) []string {
 		out = append(out, filepath.Join(dir, name))
 	}
 	if cfgPath != "" {
-		if abs, err := filepath.Abs(cfgPath); err == nil {
-			cfgPath = abs
-		}
-		out = append(out, cfgPath)
+		out = append(out, absPath(cfgPath))
 	}
 	return append(out, sock)
 }
@@ -84,17 +91,27 @@ func isolationPaths(dir, cfgPath, sock string) []string {
 // secretPaths are the ones the access attempt tries to open: everything but
 // the policy file (group-readable by design) and the socket.
 func secretPaths(paths []string, cfgPath, sock string) []string {
+	cfgPath = absPath(cfgPath)
 	var out []string
 	for _, p := range paths {
-		if p == sock || strings.HasSuffix(p, ".yaml") || strings.HasSuffix(p, ".yml") {
-			continue
-		}
-		if abs, _ := filepath.Abs(cfgPath); p == abs {
+		if p == sock || p == cfgPath {
 			continue
 		}
 		out = append(out, p)
 	}
 	return out
+}
+
+// absPath is how isolationPaths records the config path, so comparisons
+// against it are exact.
+func absPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
 }
 
 // accessAttempt runs the opener as each agent uid. A path that opened is a
@@ -149,7 +166,8 @@ func isolationReport(uids []int) isolation.Report {
 	}
 	cfgPath, sock := configPath(), socketPath(dir)
 	paths := isolationPaths(dir, cfgPath, sock)
-	r := isolation.Check(paths, uids, isolation.Lstat)
+	r := isolation.CheckWith(paths, uids, isolation.Lstat,
+		isolation.Options{ConfigPath: absPath(cfgPath), GOOS: runtime.GOOS, ACL: isolation.HasACL})
 	// Mode bits are what the kernel will enforce, but an actual attempt is
 	// stronger evidence. Only root can switch to an agent's uid, so the
 	// attempt is skipped otherwise and Method says which ran.
@@ -202,11 +220,17 @@ func runDoctor(args []string, out io.Writer) error {
 		uidProbeChild(o.asUIDProbe, out)
 		return nil
 	}
-	checks := doctorChecks()
+	if o.probe {
+		if o.json {
+			return fmt.Errorf("stk doctor --probe has no JSON output; run it without --json")
+		}
+		return cmdProbe()
+	}
+	checks := doctorCheckFn()
 	if probe := doctorProbe(); probe.label != "" {
 		checks = append(checks, probe)
 	}
-	iso := isolationReport(agentUIDsFor(o))
+	iso := doctorIsolation(agentUIDsFor(o))
 	bad := 0
 	for _, c := range checks {
 		if !c.ok && !c.warn {
@@ -246,13 +270,23 @@ func runDoctor(args []string, out io.Writer) error {
 		}
 		fmt.Fprintln(out, check{ok: iso.Level == isolation.SeparateUser, warn: iso.Level != isolation.SeparateUser,
 			label: "isolation", note: note})
+		fmt.Fprintln(out, "    ACLs are examined only on Linux; elsewhere they are a reason, and an ACL can grant access mode bits do not show.")
 		fmt.Fprintln(out)
 	}
 	if bad > 0 {
 		return fmt.Errorf("%d check(s) failed", bad)
 	}
 	if !o.json {
-		fmt.Fprintln(out, "  the agent cannot reach a credential.")
+		fmt.Fprintln(out, doctorFooter(iso))
 	}
 	return nil
+}
+
+// doctorFooter claims the credential is out of reach only when isolation was
+// actually shown; otherwise it says what is missing.
+func doctorFooter(iso isolation.Report) string {
+	if iso.Level == isolation.SeparateUser {
+		return "  the agent cannot reach a credential."
+	}
+	return fmt.Sprintf("  isolation is not proven: %d reason(s) above (level %s).", len(iso.Reasons), iso.Level)
 }
