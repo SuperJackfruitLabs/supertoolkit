@@ -57,6 +57,9 @@ type Server struct {
 	h    Handler
 	ln   net.Listener
 
+	allow []int
+	peer  func(net.Conn) (int, error)
+
 	mu     sync.Mutex
 	closed bool
 }
@@ -67,6 +70,22 @@ type Server struct {
 // failure, because the alternative is a daemon that will not start after a
 // crash and an operator who has to know to delete a file.
 func Listen(sock string, h Handler) (*Server, error) {
+	return ListenWith(sock, h, Options{})
+}
+
+// Options tune the control plane.
+type Options struct {
+	// AllowUIDs, when non-empty, restricts callers to these kernel-reported
+	// uids. A connection from any other uid is closed before a request is read.
+	// Empty keeps the socket's own 0600 mode as the only gate.
+	AllowUIDs []int
+	// PeerUID reads the caller's uid. Nil means the kernel's answer; tests
+	// inject a fake.
+	PeerUID func(net.Conn) (int, error)
+}
+
+// ListenWith is Listen with options.
+func ListenWith(sock string, h Handler, opts Options) (*Server, error) {
 	if err := os.MkdirAll(filepath.Dir(sock), 0o700); err != nil {
 		return nil, err
 	}
@@ -88,7 +107,11 @@ func Listen(sock string, h Handler) (*Server, error) {
 		ln.Close()
 		return nil, fmt.Errorf("securing %s: %w", sock, err)
 	}
-	return &Server{sock: sock, h: h, ln: ln}, nil
+	peer := opts.PeerUID
+	if peer == nil {
+		peer = PeerUID
+	}
+	return &Server{sock: sock, h: h, ln: ln, allow: append([]int(nil), opts.AllowUIDs...), peer: peer}, nil
 }
 
 // Addr is the socket path.
@@ -123,8 +146,14 @@ func (s *Server) Close() error {
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
-	uid, err := PeerUID(conn)
-	if err != nil {
+	uid, err := s.peer(conn)
+	if len(s.allow) > 0 {
+		// Fail closed: an unreadable uid is not on the list. The refusal is
+		// only a closed connection, so it tells the caller nothing.
+		if err != nil || !s.allowed(uid) {
+			return
+		}
+	} else if err != nil {
 		uid = -1
 	}
 	dec := json.NewDecoder(bufio.NewReader(conn))
@@ -139,6 +168,15 @@ func (s *Server) handle(conn net.Conn) {
 			return
 		}
 	}
+}
+
+func (s *Server) allowed(uid int) bool {
+	for _, a := range s.allow {
+		if a == uid {
+			return true
+		}
+	}
+	return false
 }
 
 // Client is a connection to the daemon.

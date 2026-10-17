@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -136,7 +137,11 @@ func newService(cfg *policy.Config, store *credential.Store, dir, caller string)
 			if rec.AuthzFP != "(absent)" {
 				rec.Injected = "Authorization header"
 			}
-			obs.Observe(rec)
+			o := obs
+			if c, ok := ctx.Value(callerKey{}).(string); ok {
+				o.caller = c
+			}
+			o.Observe(rec)
 			return resp, err
 		},
 	}, nil
@@ -229,7 +234,7 @@ func (s *service) handle(uid int, r daemon.Request) daemon.Response {
 			Who   string `json:"who"`
 		}
 		json.Unmarshal(r.Params, &p)
-		e, err := s.decideAndPerform(p.ID, p.Allow, p.Who)
+		e, err := s.decideAndPerformCtx(withCallerUID(context.Background(), uid), p.ID, p.Allow, p.Who)
 		if err != nil && e == nil {
 			return daemon.Response{Error: err.Error()}
 		}
@@ -252,28 +257,73 @@ func (s *service) handle(uid int, r daemon.Request) daemon.Response {
 			return daemon.Response{Error: fmt.Sprintf(
 				"could not read the parameters: %v — `args` must be a JSON *string*, not an object", err)}
 		}
-		result := srv.CallTool(context.Background(), r.Method, args)
+		result := srv.CallTool(withCallerUID(context.Background(), uid), r.Method, args)
 		out, _ := json.Marshal(result)
 		return daemon.Response{Result: out}
 	}
 }
 
-func cmdServe(args []string) error {
-	var listen string
+// callerKey carries the per-request caller through to the audit observer.
+type callerKey struct{}
+
+// withCallerUID attributes effects performed under ctx to a kernel-reported
+// uid, which is the only identity on the control socket that is not a claim.
+func withCallerUID(ctx context.Context, uid int) context.Context {
+	return context.WithValue(ctx, callerKey{}, fmt.Sprintf("uid:%d", uid))
+}
+
+type serveArgs struct {
+	listen    string
+	allowUIDs []int
+}
+
+const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]..."
+
+func parseServeArgs(args []string) (serveArgs, error) {
+	var o serveArgs
+	addUID := func(v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return fmt.Errorf("--allow-uid wants a non-negative integer, got %q", v)
+		}
+		o.allowUIDs = append(o.allowUIDs, n)
+		return nil
+	}
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "--proxy-listen":
 			if i+1 >= len(args) {
-				return fmt.Errorf("--proxy-listen needs a loopback host:port")
+				return o, fmt.Errorf("--proxy-listen needs a loopback host:port")
 			}
 			i++
-			listen = args[i]
+			o.listen = args[i]
 		case strings.HasPrefix(a, "--proxy-listen="):
-			listen = strings.TrimPrefix(a, "--proxy-listen=")
+			o.listen = strings.TrimPrefix(a, "--proxy-listen=")
+		case a == "--allow-uid":
+			if i+1 >= len(args) {
+				return o, fmt.Errorf("--allow-uid needs a uid")
+			}
+			i++
+			if err := addUID(args[i]); err != nil {
+				return o, err
+			}
+		case strings.HasPrefix(a, "--allow-uid="):
+			if err := addUID(strings.TrimPrefix(a, "--allow-uid=")); err != nil {
+				return o, err
+			}
 		default:
-			return fmt.Errorf("serve: unknown argument %q (usage: stk serve [--proxy-listen <loopback host:port>])", a)
+			return o, fmt.Errorf("serve: unknown argument %q (%s)", a, serveUsage)
 		}
 	}
+	return o, nil
+}
+
+func cmdServe(args []string) error {
+	sa, err := parseServeArgs(args)
+	if err != nil {
+		return err
+	}
+	listen := sa.listen
 	var opts brokerOpts
 	if listen != "" {
 		ap, err := parseProxyListen(listen)
@@ -313,13 +363,16 @@ func cmdServe(args []string) error {
 	svc.childEnvFor = sess.childEnvFor
 
 	sock := socketPath(dir)
-	d, err := daemon.Listen(sock, svc.handle)
+	d, err := daemon.ListenWith(sock, svc.handle, daemon.Options{AllowUIDs: sa.allowUIDs})
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 
 	fmt.Printf("  listening on %s (0600, uid %d only)\n", sock, os.Getuid())
+	if len(sa.allowUIDs) > 0 {
+		fmt.Printf("  callers limited to uid(s) %v\n", sa.allowUIDs)
+	}
 	fmt.Printf("  workspace %q · %d service(s) · %d profile(s)\n", cfg.Workspace, len(cfg.Services()), len(cfg.Profiles()))
 	if listen != "" {
 		fmt.Printf("  proxy on %s (key required; `stk env` prints the settings)\n", sess.addr)
@@ -379,7 +432,13 @@ func (s *service) performApproved(ctx context.Context, e *approval.Effect) (stri
 // decideAndPerform is the one place a decision is acted on, so the daemon and
 // the web UI cannot drift about what approving means.
 func (s *service) decideAndPerform(id string, allow bool, who string) (*approval.Effect, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	return s.decideAndPerformCtx(context.Background(), id, allow, who)
+}
+
+// decideAndPerformCtx is decideAndPerform with the caller's context, so the
+// effect's audit row names who asked.
+func (s *service) decideAndPerformCtx(parent context.Context, id string, allow bool, who string) (*approval.Effect, error) {
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 	// The outcome is recorded whether it succeeded or not: "approved, and it
 	// failed" is a true record, and the previous behaviour — approved with no
