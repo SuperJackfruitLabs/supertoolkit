@@ -120,3 +120,15 @@ func TestEnvDoesNotMintAKeyWhenTheFileIsMissing(t *testing.T) {
 		t.Fatal("env created a proxy.key the running broker does not know")
 	}
 }
+
+func TestEnvRejectsAnAddressOnlyProxyAddrFile(t *testing.T) {
+	dir, key := listenerRig(t)
+	sess := liveBroker(t, dir, key)
+	// The pre-pid format: a genuine, live broker, but no owner recorded.
+	os.WriteFile(filepath.Join(dir, "proxy.addr"), []byte(sess.addr+"\n"), 0o600)
+	var out, errb bytes.Buffer
+	err := runEnv(&out, &errb, []string{"--json"})
+	if err == nil || !strings.Contains(err.Error(), "not a running stk proxy") || out.Len() != 0 {
+		t.Fatalf("err = %v, out %q; want a refusal and no output", err, out.String())
+	}
+}

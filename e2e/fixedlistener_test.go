@@ -5,8 +5,11 @@ package e2e
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -81,7 +84,39 @@ func TestCurlThroughFixedListenerWithKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { proxyLn.Close() })
-	if err := os.WriteFile(filepath.Join(stateDir, "proxy.addr"), []byte(proxyLn.Addr().String()+"\n"), 0o600); err != nil {
+	// `stk env` only reads the key and verifies the listener, so the key file
+	// and CA exist, and the broker is serving, before it runs.
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatal(err)
+	}
+	proxyKey := base64.RawURLEncoding.EncodeToString(raw)
+	if err := os.WriteFile(filepath.Join(stateDir, "proxy.key"), []byte(proxyKey), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ca, err := broker.LoadOrCreateCA(stateDir, "supertoolkit local CA", 365*24*time.Hour) // the lifetime stk uses, or env would renew it
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := broker.New(broker.Options{
+		Config: cfg, CA: ca, Secrets: store.Get, ProxyKey: proxyKey,
+		Upstream: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: provCA.Pool()},
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if strings.HasPrefix(addr, "forge.example.test:") {
+					addr = provLn.Addr().String()
+				}
+				return (&net.Dialer{}).DialContext(ctx, network, addr)
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go b.Serve(proxyLn)
+	// proxy.addr in the format serve writes: address, then a live pid.
+	addrLine := fmt.Sprintf("%s\n%d\n", proxyLn.Addr().String(), os.Getpid())
+	if err := os.WriteFile(filepath.Join(stateDir, "proxy.addr"), []byte(addrLine), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,32 +137,6 @@ func TestCurlThroughFixedListenerWithKey(t *testing.T) {
 	if strings.Contains(string(out), forgeSecret) {
 		t.Fatal("stk env printed the service credential")
 	}
-	keyBytes, err := os.ReadFile(filepath.Join(stateDir, "proxy.key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// The broker uses the CA `stk env` created and the key it generated.
-	ca, err := broker.LoadOrCreateCA(stateDir, "supertoolkit local CA", time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := broker.New(broker.Options{
-		Config: cfg, CA: ca, Secrets: store.Get, ProxyKey: strings.TrimSpace(string(keyBytes)),
-		Upstream: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: provCA.Pool()},
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				if strings.HasPrefix(addr, "forge.example.test:") {
-					addr = provLn.Addr().String()
-				}
-				return (&net.Dialer{}).DialContext(ctx, network, addr)
-			},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	go b.Serve(proxyLn)
 
 	curl := func(env []string) string {
 		cmd := exec.Command("curl", "-s", "-m", "20", "-o", "/dev/null", "-w", "%{http_code}",
