@@ -1,9 +1,11 @@
 package credential
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -185,5 +187,100 @@ func TestGetUnknownServiceIsAnError(t *testing.T) {
 	s, _ := OpenStore(t.TempDir(), "p")
 	if _, err := s.Get("never-stored"); err == nil {
 		t.Fatal("Get() on an unknown service returned no error")
+	}
+}
+
+// A proxy reads the credential on every request while an operator may be
+// replacing it. A replace that truncates the file first lets a reader see an
+// empty or half-written file, which surfaces as a decrypt failure and a failed
+// call that was perfectly authorised.
+func TestPutIsAtomicUnderConcurrentReads(t *testing.T) {
+	s, err := OpenStore(t.TempDir(), "passphrase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	if err := s.Put("forge", a); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	errs := make(chan error, 8)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				got, err := s.Get("forge")
+				if err != nil {
+					errs <- err
+					return
+				}
+				if got != a && got != b {
+					errs <- fmt.Errorf("Get() = %q, want one of the two stored values", got)
+					return
+				}
+			}
+		}()
+	}
+	for i := 0; i < 200; i++ {
+		v := a
+		if i%2 == 0 {
+			v = b
+		}
+		if err := s.Put("forge", v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(stop)
+	wg.Wait()
+	select {
+	case err := <-errs:
+		t.Fatalf("a concurrent reader saw a torn credential: %v", err)
+	default:
+	}
+}
+
+func TestPutLeavesNoTempFilesOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	s, err := OpenStore(dir, "passphrase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0o700)
+	if err := s.Put("forge", tok); err == nil {
+		t.Skip("directory permissions are not enforced here (running as root?)")
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("left %s behind after a failed Put", e.Name())
+		}
+	}
+}
+
+func TestPutKeepsMode0600(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := OpenStore(dir, "passphrase")
+	if err := s.Put("forge", tok); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put("forge", tok+"2"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(s.path("forge"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
 	}
 }
