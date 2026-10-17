@@ -30,6 +30,8 @@ func usage() {
   stk serve                   run the broker daemon on a Unix socket
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
   stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
   stk revoke <service> [--local]
                               withdraw a credential, here and at the provider
   stk audit [--limit n] [--json]
@@ -67,6 +69,8 @@ func main() {
 		err = cmdServe()
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
+	case "verify":
+		err = cmdVerify(os.Args[2:])
 	case "revoke", "forget":
 		err = cmdRevoke(os.Args[2:])
 	case "audit":
