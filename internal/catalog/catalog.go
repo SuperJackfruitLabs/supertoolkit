@@ -250,6 +250,9 @@ type Entry struct {
 	Region       string
 	AWSService   string
 	Capabilities []Capability
+	// Forge is set only for a service defined in configuration with
+	// `kind: forge`. Built-ins leave it nil.
+	Forge *ForgeInfo
 }
 
 // builtin is deliberately short. Breadth is not the product: there are hundreds

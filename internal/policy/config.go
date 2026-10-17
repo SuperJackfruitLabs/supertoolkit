@@ -190,6 +190,16 @@ func (c *Config) InterceptHosts() map[string]bool {
 type file struct {
 	Workspace string `yaml:"workspace"`
 	Services  map[string]struct {
+		// Kind is empty for a built-in service and "forge" for one defined here.
+		Kind         string            `yaml:"kind"`
+		Provider     string            `yaml:"provider"`
+		Host         string            `yaml:"host"`
+		APIPrefix    string            `yaml:"api_prefix"`
+		Auth         string            `yaml:"auth"`
+		Scheme       string            `yaml:"scheme"`
+		EnvVar       string            `yaml:"env_var"`
+		Repositories []string          `yaml:"repositories"`
+		Preset       string            `yaml:"preset"`
 		Scopes       []string          `yaml:"scopes"`
 		Capabilities map[string]string `yaml:"capabilities"`
 		Device       deviceOverride    `yaml:"device"`
@@ -271,9 +281,33 @@ func Load(path string) (*Config, error) {
 		notify:    Notify{Webhook: f.Notify.Webhook, File: f.Notify.File},
 	}
 	for name, sf := range f.Services {
-		entry, ok := catalog.Lookup(name)
-		if !ok {
-			return nil, fmt.Errorf("%s: unknown service %q: known services are %v", path, name, catalog.Names())
+		var entry *catalog.Entry
+		switch sf.Kind {
+		case "":
+			var ok bool
+			entry, ok = catalog.Lookup(name)
+			if !ok {
+				return nil, fmt.Errorf("%s: unknown service %q: known services are %v (a git forge is defined with `kind: forge`)", path, name, catalog.Names())
+			}
+		case "forge":
+			var err error
+			entry, err = catalog.NewForgeEntry(catalog.ForgeSpec{
+				Name: name, Provider: sf.Provider, Host: sf.Host, APIPrefix: sf.APIPrefix,
+				Auth: sf.Auth, Scheme: sf.Scheme, EnvVar: sf.EnvVar,
+				Repositories: sf.Repositories, Preset: sf.Preset,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+			// The proxy maps a host to one service, so two forge services on one
+			// host would have the second silently win.
+			for other, o := range cfg.services {
+				if o.entry.Forge != nil && o.entry.Host == entry.Host {
+					return nil, fmt.Errorf("%s: forge services %q and %q both use host %s: one service per host", path, other, name, entry.Host)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("%s: service %q: unknown kind %q: want forge, or leave kind out for a built-in", path, name, sf.Kind)
 		}
 		svc := &Service{
 			Name: name, Scopes: sf.Scopes, explicit: map[string]Action{}, entry: entry,
