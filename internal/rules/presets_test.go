@@ -2,7 +2,6 @@ package rules
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
