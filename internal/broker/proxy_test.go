@@ -483,7 +483,7 @@ func assertDenied(t *testing.T, f *fixture, resp *http.Response, body, ruleID st
 func TestDeniedRequestNeverReachesTheProvider(t *testing.T) {
 	f := newFixture(t, forgeAt(""))
 	resp, body := f.do(t, false, "DELETE", "/repos/acme/widgets", nil)
-	assertDenied(t, f, resp, body, "")
+	assertDenied(t, f, resp, body, "builtin:default-deny")
 }
 
 func TestDeniedRequestNeverFetchesTheSecret(t *testing.T) {
@@ -547,7 +547,7 @@ func TestGraphQLDeniedByDefault(t *testing.T) {
       - allow: "POST /**"
 `))
 			resp, body := f.do(t, false, "POST", p, strings.NewReader(`{}`))
-			assertDenied(t, f, resp, body, "")
+			assertDenied(t, f, resp, body, "builtin:bad-path")
 		})
 	}
 	t.Run("allow_graphql", func(t *testing.T) {
@@ -568,7 +568,7 @@ func TestDeniedOverHTTP2(t *testing.T) {
 	if resp.Proto != "HTTP/2.0" {
 		t.Fatalf("client leg spoke %q, want HTTP/2.0", resp.Proto)
 	}
-	assertDenied(t, f, resp, body, "")
+	assertDenied(t, f, resp, body, "builtin:default-deny")
 }
 
 // chunked hides its length, so the request carries no Content-Length.
@@ -617,7 +617,7 @@ func TestOversizeBodyFailsClosedWhenARuleNeedsIt(t *testing.T) {
 	pad := strings.Repeat("x", rules.MaxBody)
 	resp, body := f.do(t, false, "PATCH", "/repos/acme/widgets/issues/1",
 		chunked{strings.NewReader(`{"state":"closed","pad":"` + pad + `"}`)})
-	assertDenied(t, f, resp, body, "")
+	assertDenied(t, f, resp, body, "builtin:default-deny")
 
 	// Control: the same rule allows the small body, so the deny above is the
 	// size and not the rule.
@@ -628,5 +628,59 @@ func TestOversizeBodyFailsClosedWhenARuleNeedsIt(t *testing.T) {
 	resp, body = g.do(t, false, "PATCH", "/repos/acme/widgets/issues/1", strings.NewReader(`{"state":"closed"}`))
 	if resp.StatusCode != 200 {
 		t.Fatalf("control: %d %q", resp.StatusCode, body)
+	}
+}
+
+func TestGraphQLDeniedUnderAnAPIPrefix(t *testing.T) {
+	f := newFixture(t, `
+services:
+  forge-main:
+    kind: forge
+    provider: gitea
+    host: api.github.com
+    auth: token
+    scheme: bearer
+    env_var: FORGE_TOKEN
+    repositories: [acme/widgets]
+    preset: read
+    rules:
+      - allow: "POST /**"
+`)
+	resp, body := f.do(t, false, "POST", "/api/v1/graphql", strings.NewReader(`{}`))
+	assertDenied(t, f, resp, body, "builtin:graphql")
+}
+
+func TestMethodOverrideIsDeniedAtTheBroker(t *testing.T) {
+	f := newFixture(t, forgeAt(""))
+	req, _ := http.NewRequest("GET", "https://api.github.com/repos/acme/widgets/issues", nil)
+	req.Header.Set("Authorization", "Bearer "+Placeholder("forge-main"))
+	req.Header.Set("X-HTTP-Method-Override", "DELETE")
+	resp, err := f.client(false).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assertDenied(t, f, resp, string(b), "builtin:method-override")
+}
+
+// Exactly MaxBody bytes is not truncated: the body condition is evaluated and
+// holds, and the provider receives identical bytes.
+func TestBodyOfExactlyMaxBodyIsEvaluatedAndForwarded(t *testing.T) {
+	f := newFixture(t, forgeAt(`    rules:
+      - allow: "PATCH /repos/{owner}/{repo}/issues/{n}"
+        when: {state: closed}
+`))
+	head, tail := `{"state":"closed","pad":"`, `"}`
+	body := []byte(head + strings.Repeat("x", rules.MaxBody-len(head)-len(tail)) + tail)
+	if len(body) != rules.MaxBody {
+		t.Fatalf("fixture body is %d bytes", len(body))
+	}
+	resp, rb := f.do(t, true, "PATCH", "/repos/acme/widgets/issues/1", chunked{bytes.NewReader(body)})
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d %q", resp.StatusCode, rb)
+	}
+	if got := <-f.lastBody; !bytes.Equal(got, body) {
+		t.Fatalf("provider got %d bytes, want %d identical", len(got), len(body))
 	}
 }

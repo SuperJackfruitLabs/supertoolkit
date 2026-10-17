@@ -81,7 +81,7 @@ func TestDenyIsCaseInsensitiveAndSlashTolerant(t *testing.T) {
 func TestDefaultDeny(t *testing.T) {
 	s := mustSet(t, []string{"acme/widgets"}, mustRule(t, "read", "GET /repos/{owner}/{repo}", nil, true))
 	d := s.Evaluate("", req("POST", "/repos/acme/widgets"))
-	if d.Allowed || d.Reason != "no-rule" || d.RuleID != "" {
+	if d.Allowed || d.Reason != "no-rule" || d.RuleID != "builtin:default-deny" {
 		t.Fatalf("want no-rule deny, got %+v", d)
 	}
 	empty := mustSet(t, nil)
@@ -424,5 +424,42 @@ func TestBodyKeyFoldMatchesEncodingJSON(t *testing.T) {
 	}
 	if d := abs.Evaluate("", jsonReq("PATCH", p, `{"tİtle":"x"}`)); !d.Allowed {
 		t.Errorf("control: %+v", d)
+	}
+}
+
+// A denial always names a rule: the audit ledger is keyed on it.
+func TestStructuralDenialsCarryBuiltinIDs(t *testing.T) {
+	s := mustSet(t, []string{"acme/widgets"}, mustRule(t, "read", "GET /repos/{owner}/{repo}", nil, true))
+	ov := req("GET", "/api/v1/repos/acme/widgets")
+	ov.Header.Set("X-HTTP-Method-Override", "DELETE")
+	var nilSet *Set
+	for _, tc := range []struct {
+		name string
+		got  Decision
+		want string
+	}{
+		{"default", s.Evaluate("/api/v1", req("POST", "/api/v1/repos/acme/widgets")), "builtin:default-deny"},
+		{"outside", s.Evaluate("/api/v1", req("GET", "/login")), "builtin:outside-prefix"},
+		{"override", s.Evaluate("/api/v1", ov), "builtin:method-override"},
+		{"bad-path", s.Evaluate("/api/v1", req("GET", "/api/v1/./x")), "builtin:bad-path"},
+		{"nil-set", nilSet.Evaluate("", req("GET", "/")), "builtin:no-rule-set"},
+	} {
+		if tc.got.Allowed || tc.got.RuleID != tc.want {
+			t.Errorf("%s: got %+v, want deny with %s", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestStripPrefixIsExported(t *testing.T) {
+	for _, tc := range []struct {
+		prefix, path, want string
+		ok                 bool
+	}{
+		{"", "/x", "/x", true}, {"/api/v1/", "/api/v1", "/", true},
+		{"/api/v1", "/api/v1/graphql", "/graphql", true}, {"/api/v1", "/api/v10", "", false},
+	} {
+		if got, ok := StripPrefix(tc.prefix, tc.path); got != tc.want || ok != tc.ok {
+			t.Errorf("StripPrefix(%q,%q) = %q,%v", tc.prefix, tc.path, got, ok)
+		}
 	}
 }

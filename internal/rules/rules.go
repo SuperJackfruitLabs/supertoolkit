@@ -18,6 +18,16 @@ const (
 	ReasonNoRuleSet      = "no-rule-set"
 )
 
+// Built-in rule ids for denials no named rule decided. A denial always
+// carries a rule id, so the audit record can always name one.
+const (
+	IDDefaultDeny    = "builtin:default-deny"
+	IDOutsidePrefix  = "builtin:outside-prefix"
+	IDMethodOverride = "builtin:method-override"
+	IDBadPath        = "builtin:bad-path"
+	IDNoRuleSet      = "builtin:no-rule-set"
+)
+
 var knownMethods = map[string]bool{
 	http.MethodGet: true, http.MethodHead: true, http.MethodPost: true,
 	http.MethodPut: true, http.MethodPatch: true, http.MethodDelete: true,
@@ -158,22 +168,22 @@ func NewSet(repos []string, rs []Rule) (*Set, error) {
 // normalised one. Any error is a deny.
 func (s *Set) Evaluate(prefix string, r Request) Decision {
 	if s == nil {
-		return Decision{Reason: ReasonNoRuleSet}
+		return Decision{RuleID: IDNoRuleSet, Reason: ReasonNoRuleSet}
 	}
 	for k := range r.Header {
 		for _, h := range overrideHeaders {
 			if strings.EqualFold(k, h) {
-				return Decision{Reason: ReasonMethodOverride}
+				return Decision{RuleID: IDMethodOverride, Reason: ReasonMethodOverride}
 			}
 		}
 	}
 	full, err := NormalizePath(r.EscapedPath)
 	if err != nil {
-		return Decision{Reason: ReasonBadPath}
+		return Decision{RuleID: IDBadPath, Reason: ReasonBadPath}
 	}
-	path, ok := stripPrefix(prefix, full)
+	path, ok := StripPrefix(prefix, full)
 	if !ok {
-		return Decision{Reason: ReasonOutsidePrefix}
+		return Decision{RuleID: IDOutsidePrefix, Reason: ReasonOutsidePrefix}
 	}
 
 	// Deny: method and literals case-insensitive, one trailing slash
@@ -224,7 +234,7 @@ func (s *Set) Evaluate(prefix string, r Request) Decision {
 		}
 		return Decision{Allowed: true, RuleID: a.ID, Reason: ReasonAllowed}
 	}
-	return Decision{Reason: ReasonNoRule}
+	return Decision{RuleID: IDDefaultDeny, Reason: ReasonNoRule}
 }
 
 // bound reports whether {owner}/{repo} captures name a granted repository,
@@ -253,7 +263,9 @@ func (s *Set) bound(vars map[string]string) bool {
 	return true
 }
 
-func stripPrefix(prefix, path string) (string, bool) {
+// StripPrefix removes the API prefix from a normalised path. ok is false when
+// the path lies outside the prefix.
+func StripPrefix(prefix, path string) (string, bool) {
 	prefix = strings.TrimRight(prefix, "/")
 	if prefix == "" {
 		return path, true

@@ -433,12 +433,12 @@ func (b *Broker) decide(r *http.Request, set *rules.Set, svc *policy.Service) (i
 	escaped := r.URL.EscapedPath()
 	full, err := rules.NormalizePath(escaped)
 	if err != nil {
-		return "", rules.ReasonBadPath, false
+		return rules.IDBadPath, rules.ReasonBadPath, false
 	}
 	// GraphQL is one endpoint carrying every operation, so path rules cannot
 	// govern it. No allow rule reopens it; only allow_graphql does.
 	if !svc.AllowGraphQL() {
-		if p, in := underPrefix(svc.APIPrefix(), full); in {
+		if p, in := rules.StripPrefix(svc.APIPrefix(), full); in {
 			lp := strings.ToLower(p)
 			if lp == "/graphql" || strings.HasPrefix(lp, "/graphql/") {
 				return GraphQLRuleID, "graphql", false
@@ -454,7 +454,7 @@ func (b *Broker) decide(r *http.Request, set *rules.Set, svc *policy.Service) (i
 		// Restore the body exactly: the bytes read, then the rest unread.
 		r.Body = readCloser{io.MultiReader(bytes.NewReader(buf), r.Body), r.Body}
 		if err != nil {
-			return "", "body unreadable", false
+			return rules.IDDefaultDeny, "body unreadable", false
 		}
 		if len(buf) > rules.MaxBody {
 			buf, req.BodyTruncated = buf[:rules.MaxBody], true
@@ -466,21 +466,6 @@ func (b *Broker) decide(r *http.Request, set *rules.Set, svc *policy.Service) (i
 		return d.RuleID, d.Reason, false
 	}
 	return d.RuleID, d.Reason, true
-}
-
-// underPrefix strips the API prefix from a normalised path, mirroring the
-// rule set's own stripping.
-func underPrefix(prefix, path string) (string, bool) {
-	prefix = strings.TrimRight(prefix, "/")
-	switch {
-	case prefix == "":
-		return path, true
-	case path == prefix:
-		return "/", true
-	case strings.HasPrefix(path, prefix+"/"):
-		return path[len(prefix):], true
-	}
-	return "", false
 }
 
 func carriesBody(method string) bool {
