@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -21,8 +22,9 @@ import (
 // policy for. The translation needs the catalogue, which lives here and not in
 // the broker, so this is where the two meet.
 type observer struct {
-	cfg *policy.Config
-	led *ledger.Ledger
+	// live is read per record, so a reload reaches the audit too.
+	live *liveConfig
+	led  *ledger.Ledger
 	// caller identifies this process in the ledger: a profile for an MCP
 	// server, `run` for a brokered child.
 	caller string
@@ -37,7 +39,15 @@ func (o observer) Observe(r broker.Record) {
 	// A denied request never fetched a credential, so it must not carry a
 	// credential fingerprint; the rule that refused it is the evidence.
 	denied := r.Rule != "" && strings.HasPrefix(r.Status, "403 denied")
-	if svc, ok := o.cfg.Service(r.Service); ok {
+	if r.Labels != nil {
+		// Labels from the broker's snapshot: the policy that decided this
+		// request, not whatever is current when the row is written.
+		e.Labels = r.Labels
+	}
+	if svc, ok := o.live.config().Service(r.Service); ok {
+		if e.Labels == nil {
+			e.Labels = svc.Labels()
+		}
 		if denied {
 			e.Credential = svc.Entry().Auth.String()
 		} else if c, known := svc.Entry().CapabilityFor(r.Method, r.Path); known {
@@ -73,11 +83,16 @@ func (o observer) Observe(r broker.Record) {
 
 // newObserver wires a broker to the durable ledger.
 func newObserver(cfg *policy.Config, dir, caller string) (observer, error) {
+	return newObserverLive(staticLive(cfg), dir, caller)
+}
+
+// newObserverLive is newObserver over a reloadable policy.
+func newObserverLive(live *liveConfig, dir, caller string) (observer, error) {
 	led, err := ledger.Open(dir)
 	if err != nil {
 		return observer{}, err
 	}
-	return observer{cfg: cfg, led: led, caller: caller}, nil
+	return observer{live: live, led: led, caller: caller}, nil
 }
 
 func cmdAudit(args []string) error {
@@ -130,6 +145,9 @@ func cmdAudit(args []string) error {
 		fmt.Printf("  %18s%s %s · credential: %s\n", "", escapeControl(e.Method), escapeControl(e.Path), escapeControl(e.Credential))
 		if e.Rule != "" {
 			fmt.Printf("  %18srule: %s\n", "", escapeControl(e.Rule))
+		}
+		if len(e.Labels) > 0 {
+			fmt.Printf("  %18slabels: %s\n", "", formatLabels(e.Labels))
 		}
 	}
 	fmt.Println()
@@ -198,4 +216,20 @@ func escapeControl(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// formatLabels prints labels as sorted key=value pairs. Labels are set by the
+// operator and validated at load, but a ledger line is just a file: escape
+// them on print like every other field.
+func formatLabels(l map[string]string) string {
+	keys := make([]string, 0, len(l))
+	for k := range l {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, escapeControl(k)+"="+escapeControl(l[k]))
+	}
+	return strings.Join(parts, " ")
 }

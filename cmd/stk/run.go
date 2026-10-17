@@ -33,6 +33,8 @@ type brokerOpts struct {
 	Listen string
 	// Key, when set, is demanded of every proxy client.
 	Key string
+	// Live, when set, is the shared policy holder (stk serve).
+	Live *liveConfig
 }
 
 // startBroker brings up a broker on a loopback port.
@@ -58,16 +60,23 @@ func startBrokerWith(cfg *policy.Config, store *credential.Store, dir string, o 
 	}
 	// Every brokered effect is recorded durably, so `stk audit` and the web UI
 	// can answer what happened after this process is gone.
-	obs, err := newObserver(cfg, dir, "run")
+	live := o.Live
+	if live == nil {
+		live = newLive(cfg, store, &http.Client{Timeout: 60 * time.Second})
+	}
+	obs, err := newObserverLive(live, dir, "run")
 	if err != nil {
 		return nil, err
 	}
-	acqs := newAcquirers(cfg, store, &http.Client{Timeout: 60 * time.Second})
 	b, err := broker.New(broker.Options{
 		Config: cfg, CA: ca,
 		// The only inbound path for a secret, and the one place every scheme
-		// is dispatched: two of them acquire a short-lived token first.
-		Secrets:  secretSource(cfg, store, acqs),
+		// is dispatched: two of them acquire a short-lived token first. It
+		// reads the policy in force per call, so a reload reaches it.
+		Secrets: func(service string) (string, error) {
+			st := live.state()
+			return secretSource(st.cfg, store, st.acqs)(service)
+		},
 		Observer: obs,
 		ProxyKey: o.Key,
 	})
@@ -90,7 +99,7 @@ func startBrokerWith(cfg *policy.Config, store *credential.Store, dir string, o 
 	}
 	env := childEnv(cfg, proxy, caPath)
 	forServer := func(name string) []string {
-		srv, ok := cfg.Server(name)
+		srv, ok := live.config().Server(name)
 		if !ok {
 			return env
 		}

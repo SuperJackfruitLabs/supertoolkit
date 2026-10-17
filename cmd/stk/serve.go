@@ -32,7 +32,8 @@ const approvalTTL = 30 * time.Minute
 // service bundles what the daemon serves: policy, credentials, the broker that
 // performs effects, the approval queue, and any fronted MCP servers.
 type service struct {
-	cfg   *policy.Config
+	// live is the policy in force, read per call so `stk reload` reaches it.
+	live  *liveConfig
 	store *credential.Store
 	queue *approval.Queue
 	// perform makes the real call with the credential attached. It is a closure
@@ -45,7 +46,12 @@ type service struct {
 	// childEnvFor builds a child's environment. Set by the caller, because the
 	// proxy address is only known once the broker is listening.
 	childEnvFor func(server string) []string
+	// reload re-reads the policy file; nil where reloading is not offered.
+	reload func() reloadResult
 }
+
+// config is the policy in force now.
+func (s *service) config() *policy.Config { return s.live.config() }
 
 // frontedServer starts a child on first use and reuses it after.
 //
@@ -53,7 +59,7 @@ type service struct {
 // session, and starting them all at boot would spend memory and processes on
 // tools nobody asked for.
 func (s *service) frontedServer(name string) (mcp.FrontedServer, error) {
-	srv, ok := s.cfg.Server(name)
+	srv, ok := s.config().Server(name)
 	if !ok {
 		return nil, fmt.Errorf("unknown server %q", name)
 	}
@@ -91,8 +97,12 @@ func (s *service) closeHosts() {
 // queue that quietly chose its own directory is how three processes ended up
 // with three private queues.
 func newService(cfg *policy.Config, store *credential.Store, dir, caller string) (*service, error) {
+	return newServiceWith(newLive(cfg, store, &http.Client{Timeout: 60 * time.Second}), store, dir, caller)
+}
+
+// newServiceWith wires a service over a shared, reloadable policy holder.
+func newServiceWith(live *liveConfig, store *credential.Store, dir, caller string) (*service, error) {
 	client := &http.Client{Timeout: 60 * time.Second}
-	acqs := newAcquirers(cfg, store, client)
 	queue, err := approval.Open(dir, approvalTTL)
 	if err != nil {
 		return nil, err
@@ -102,17 +112,23 @@ func newService(cfg *policy.Config, store *credential.Store, dir, caller string)
 	// only proxied reads and **not a single approved write** — the effects that
 	// mattered enough to need a person were exactly the ones missing from the
 	// record of what happened.
-	obs, err := newObserver(cfg, dir, caller)
+	obs, err := newObserverLive(live, dir, caller)
 	if err != nil {
 		return nil, err
 	}
 	return &service{
-		cfg: cfg, store: store, queue: queue,
+		live: live, store: store, queue: queue,
 		hosts: map[string]*mcphost.Host{},
 		perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
-			svc, ok := cfg.Service(svcName)
+			// One read of the policy for this effect.
+			st := live.state()
+			svc, ok := st.cfg.Service(svcName)
 			if !ok {
 				return nil, fmt.Errorf("unknown service %q", svcName)
+			}
+			acqs := st.acqs
+			if acqs == nil {
+				acqs = newAcquirers(st.cfg, store, client)
 			}
 			if err := authorize(ctx, svcName, svc.Entry(), req, store, acqs); err != nil {
 				return nil, err
@@ -124,6 +140,7 @@ func newService(cfg *policy.Config, store *credential.Store, dir, caller string)
 				When: time.Now(), Service: svcName, Host: req.URL.Host,
 				Method: req.Method, Path: req.URL.Path,
 				AuthzFP: fingerprint(req.Header.Get("Authorization")),
+				Labels:  svc.Labels(),
 			}
 			switch {
 			case err != nil:
@@ -202,12 +219,13 @@ func authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Req
 // handle answers control-plane calls. Each one resolves the caller's profile
 // first, so narrowing applies to every method rather than being remembered.
 func (s *service) handle(uid int, r daemon.Request) daemon.Response {
-	prof, ok := s.cfg.Profile(r.Profile)
+	cfg := s.config()
+	prof, ok := cfg.Profile(r.Profile)
 	if !ok {
 		return daemon.Response{Error: fmt.Sprintf("unknown profile %q", r.Profile)}
 	}
 	srv, err := mcp.NewServer(mcp.Options{
-		Config: s.cfg, Profile: prof, Queue: s.queue, Exec: s.perform,
+		Config: cfg, Profile: prof, Queue: s.queue, Exec: s.perform,
 		Servers:      s.frontedServer,
 		ApprovalWait: 0, // the MCP caller gets `pending`; a human decides out of band
 	})
@@ -217,12 +235,20 @@ func (s *service) handle(uid int, r daemon.Request) daemon.Response {
 	switch r.Method {
 	case "status":
 		out, _ := json.Marshal(map[string]any{
-			"workspace": s.cfg.Workspace,
-			"services":  s.cfg.Services(),
-			"profiles":  s.cfg.Profiles(),
+			"workspace": cfg.Workspace,
+			"services":  cfg.Services(),
+			"profiles":  cfg.Profiles(),
 			"pending":   len(s.queue.Pending()),
 			"tools":     mcp.ToolNames,
 		})
+		return daemon.Response{Result: out}
+	case "reload":
+		// Subject to the same socket gates as every method: the file mode and
+		// the uid allowlist. It can only apply what the operator's file says.
+		if s.reload == nil {
+			return daemon.Response{Error: "this process does not reload its policy"}
+		}
+		out, _ := json.Marshal(s.reload())
 		return daemon.Response{Result: out}
 	case "approvals.list":
 		out, _ := json.Marshal(s.queue.List())
@@ -376,11 +402,15 @@ func cmdServe(args []string) error {
 			return err
 		}
 	}
-	svc, err := newService(cfg, store, dir, "serve")
+	// One policy holder for the daemon path, the observer and the proxy's
+	// secret source, so a reload reaches all of them.
+	live := newLive(cfg, store, &http.Client{Timeout: 60 * time.Second})
+	svc, err := newServiceWith(live, store, dir, "serve")
 	if err != nil {
 		return err
 	}
 	defer svc.closeHosts()
+	opts.Live = live
 
 	// Fronted children need the broker's address, so the broker starts first
 	// and the child environment is built from it.
@@ -396,6 +426,8 @@ func cmdServe(args []string) error {
 		defer removeProxyAddr(dir)
 	}
 	svc.childEnvFor = sess.childEnvFor
+	rl := newReloader(configPath(), live, sess.broker, store)
+	svc.reload = rl.reload
 
 	sock := socketPath(dir)
 	d, err := daemon.ListenWith(sock, svc.handle, daemon.Options{AllowUIDs: sa.allowUIDs, SocketMode: sa.socketMode})
@@ -419,12 +451,24 @@ func cmdServe(args []string) error {
 	go func() { errc <- d.Serve() }()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	select {
-	case err := <-errc:
-		return err
-	case <-sig:
-		fmt.Println("\n  stopping")
-		return nil
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	for {
+		select {
+		case err := <-errc:
+			return err
+		case <-hup:
+			// The same reload `stk reload` asks for.
+			res := rl.reload()
+			if res.OK {
+				fmt.Println("  SIGHUP: " + res.summary())
+			} else {
+				fmt.Fprintln(os.Stderr, "  SIGHUP: "+res.summary())
+			}
+		case <-sig:
+			fmt.Println("\n  stopping")
+			return nil
+		}
 	}
 }
 
@@ -439,7 +483,8 @@ func cmdServe(args []string) error {
 // Performing here — in whichever process the person decided in — means an
 // approval causes its effect regardless of who is still listening.
 func (s *service) performApproved(ctx context.Context, e *approval.Effect) (string, error) {
-	if s.cfg.IsServer(e.Service) {
+	cfg := s.config()
+	if cfg.IsServer(e.Service) {
 		// A fronted server's action is executed by its own child process, which
 		// this process may not be running. Saying so is better than a silent
 		// nothing, which is the bug being fixed here.
@@ -447,7 +492,7 @@ func (s *service) performApproved(ctx context.Context, e *approval.Effect) (stri
 			"%s is a fronted MCP server; its approved actions are carried out by the agent's own session, so approve it there",
 			e.Service)
 	}
-	svc, ok := s.cfg.Service(e.Service)
+	svc, ok := cfg.Service(e.Service)
 	if !ok {
 		return "", fmt.Errorf("unknown service %q", e.Service)
 	}

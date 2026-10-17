@@ -88,9 +88,9 @@ func TestNoMethodReturnsACredential(t *testing.T) {
 			}
 		}
 	}
-	// And the set is closed: four meta-tools plus approvals plus status.
-	if len(Methods) != 7 {
-		t.Errorf("Methods has %d entries, want 7 — a new method needs a deliberate review, not a silent addition", len(Methods))
+	// And the set is closed: four meta-tools plus approvals, status and reload.
+	if len(Methods) != 8 {
+		t.Errorf("Methods has %d entries, want 8 — a new method needs a deliberate review, not a silent addition", len(Methods))
 	}
 }
 

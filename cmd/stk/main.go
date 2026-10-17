@@ -30,6 +30,7 @@ func usage() {
   stk serve                   run the broker daemon on a Unix socket
   stk serve --proxy-listen <loopback host:port>
                               also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
   stk env [--json]            print the proxy URL, CA and placeholders for that proxy
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
   stk install --user <name>    run stk as its own OS user under systemd (Linux)
@@ -72,6 +73,8 @@ func main() {
 		err = cmdRun(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
+	case "reload":
+		err = cmdReload(os.Args[2:])
 	case "install":
 		err = cmdInstall(os.Args[2:])
 	case "env":

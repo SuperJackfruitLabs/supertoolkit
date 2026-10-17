@@ -56,22 +56,27 @@ type Record struct {
 	Status   string
 	// Rule names the rule that denied the request, if one did.
 	Rule string
+	// Labels are the service's operator-set audit labels, from the same
+	// policy snapshot that decided the request.
+	Labels map[string]string
 }
 
 // Broker is the egress proxy.
 type Broker struct {
-	cfg *policy.Config
-	ca  *CA
-	src SecretSource
-	log *slog.Logger
+	// snap is the policy in force: the config and the host map built from it,
+	// replaced whole by Reload and never mutated. See snapshot.
+	snap atomic.Pointer[snapshot]
+	// extra are Options.Intercept, re-applied on every Reload.
+	extra []string
+	ca    *CA
+	src   SecretSource
+	log   *slog.Logger
 
 	// upstream talks to the real provider. Injectable so tests can point it at
 	// a local server and trust a test CA.
 	upstream *http.Transport
 	// dial opens tunnels for hosts outside policy. Injectable for the same reason.
 	dial func(ctx context.Context, network, addr string) (net.Conn, error)
-
-	byHost map[string]*policy.Service
 
 	intercept, tunnel, swap, h2, h1, refused, denied atomic.Int64
 
@@ -133,13 +138,13 @@ func New(o Options) (*Broker, error) {
 		return nil, fmt.Errorf("broker: Config, CA and Secrets are all required")
 	}
 	b := &Broker{
-		cfg: o.Config, ca: o.CA, src: o.Secrets,
+		ca: o.CA, src: o.Secrets,
 		log:      o.Logger,
 		observer: o.Observer,
 		proxyKey: o.ProxyKey,
 		upstream: o.Upstream,
 		dial:     o.Dial,
-		byHost:   map[string]*policy.Service{},
+		extra:    append([]string(nil), o.Intercept...),
 	}
 	if b.log == nil {
 		b.log = slog.New(slog.DiscardHandler)
@@ -154,23 +159,69 @@ func New(o Options) (*Broker, error) {
 		d := &net.Dialer{Timeout: 15 * time.Second}
 		b.dial = d.DialContext
 	}
-	for _, name := range o.Config.Services() {
-		s, _ := o.Config.Service(name)
-		for _, h := range s.Entry().Hosts() {
-			b.byHost[h] = s
+	snap, err := b.build(o.Config)
+	if err != nil {
+		return nil, err
+	}
+	b.snap.Store(snap)
+	return b, nil
+}
+
+// snapshot is one policy, immutable once stored. A request reads it once and
+// decides everything — which service, its rules, its labels — from that one
+// value, so a reload can never give a single request a mix of two policies.
+type snapshot struct {
+	cfg    *policy.Config
+	byHost map[string]*policy.Service
+}
+
+// build makes a snapshot from cfg, including the extra intercepted hosts.
+func (b *Broker) build(cfg *policy.Config) (*snapshot, error) {
+	s := &snapshot{cfg: cfg, byHost: map[string]*policy.Service{}}
+	for _, name := range cfg.Services() {
+		svc, _ := cfg.Service(name)
+		for _, h := range svc.Entry().Hosts() {
+			s.byHost[h] = svc
 		}
 	}
-	if len(o.Intercept) > 0 {
-		names := o.Config.Services()
+	if len(b.extra) > 0 {
+		names := cfg.Services()
 		if len(names) == 0 {
 			return nil, fmt.Errorf("broker: Intercept needs at least one configured service to borrow a scheme from")
 		}
-		s, _ := o.Config.Service(names[0])
-		for _, h := range o.Intercept {
-			b.byHost[h] = s
+		svc, _ := cfg.Service(names[0])
+		for _, h := range b.extra {
+			s.byHost[h] = svc
 		}
 	}
-	return b, nil
+	return s, nil
+}
+
+// Reload replaces the policy without a restart. cfg must already be fully
+// validated (policy.Load); a nil cfg, or one the broker cannot build a host
+// map from, is refused and nothing changes.
+//
+// Semantics, chosen so a reload reaches long-lived tunnels:
+//   - Which hosts are intercepted is decided when a CONNECT arrives, from the
+//     policy current then. A host whose service was removed is tunnelled blind
+//     on its next CONNECT.
+//   - Everything else is decided per request, from the policy current when the
+//     request arrives: an HTTP/2 or keep-alive tunnel opened before a reload
+//     enforces the new rules on its next request. A request already in flight
+//     keeps the policy it started with.
+//   - A request on a tunnel whose host no longer maps to the service it was
+//     opened for is refused with 403; it is never forwarded under another
+//     service's credential or without rules.
+func (b *Broker) Reload(cfg *policy.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("broker: Reload needs a config")
+	}
+	snap, err := b.build(cfg)
+	if err != nil {
+		return err
+	}
+	b.snap.Store(snap)
+	return nil
 }
 
 // Placeholder is the worthless stand-in a client carries instead of a
@@ -290,7 +341,8 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	svc, inPolicy := b.byHost[host]
+	// Read once: the interception decision for this tunnel is made here.
+	svc, inPolicy := b.snap.Load().byHost[host]
 	if !inPolicy {
 		b.tunnel.Add(1)
 		b.log.Debug("tunnelling a host outside policy", "host", host)
@@ -298,7 +350,7 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.intercept.Add(1)
-	b.interceptTLS(client, host, svc)
+	b.interceptTLS(client, host, svc.Name)
 }
 
 // blindTunnel copies bytes without looking at them. A host outside policy is
@@ -317,7 +369,9 @@ func (b *Broker) blindTunnel(ctx context.Context, client net.Conn, hostport stri
 	<-done
 }
 
-func (b *Broker) interceptTLS(client net.Conn, host string, svc *policy.Service) {
+// interceptTLS serves the requests of one intercepted tunnel. It holds the
+// service's name, not its policy: each request looks its policy up afresh.
+func (b *Broker) interceptTLS(client net.Conn, host, svcName string) {
 	leaf, err := b.ca.leafFor(host)
 	if err != nil {
 		b.log.Error("could not mint a leaf", "host", host, "error", err)
@@ -341,7 +395,7 @@ func (b *Broker) interceptTLS(client net.Conn, host string, svc *policy.Service)
 		proto = "http/1.1"
 	}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b.forward(w, r, host, proto, svc)
+		b.forward(w, r, host, proto, svcName)
 	})
 	if proto == "h2" {
 		b.h2.Add(1)
@@ -352,8 +406,27 @@ func (b *Broker) interceptTLS(client net.Conn, host string, svc *policy.Service)
 	(&http.Server{Handler: h}).Serve(newSingleConnListener(tc))
 }
 
-func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto string, svc *policy.Service) {
-	rec := Record{When: time.Now(), Service: svc.Name, Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto}
+func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto, svcName string) {
+	// The one read of the policy for this request. Everything below — the
+	// service, its rules, its labels — comes from this snapshot.
+	svc, ok := b.snap.Load().byHost[host]
+	if !ok || svc.Name != svcName {
+		// The tunnel was opened for a service a reload has since removed or
+		// moved. Its credential and rules no longer apply here, so nothing is
+		// sent; a fresh CONNECT gets whatever the current policy says.
+		b.refused.Add(1)
+		b.record(Record{When: time.Now(), Service: svcName, Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto,
+			Status: "403 service no longer brokered"})
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if r.ProtoMajor == 1 {
+			w.Header().Set("Connection", "close")
+		}
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "supertoolkit: %s is no longer brokered for this host after a policy reload. Nothing was sent; reconnect.\n", svcName)
+		return
+	}
+	rec := Record{When: time.Now(), Service: svc.Name, Host: host, Method: r.Method, Path: r.URL.Path, Proto: proto,
+		Labels: svc.Labels()}
 
 	// A protocol upgrade cannot survive this path. Forwarding through a
 	// round-trip into a ResponseWriter gives no way to hand the raw connection
@@ -538,3 +611,6 @@ func trailerNames(t http.Header) []string {
 	}
 	return out
 }
+
+// Config is the policy currently in force.
+func (b *Broker) Config() *policy.Config { return b.snap.Load().cfg }

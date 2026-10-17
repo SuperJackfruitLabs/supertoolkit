@@ -49,6 +49,9 @@ var Methods = []string{
 	"approvals.list",
 	"approvals.decide",
 	"status",
+	// reload re-reads the operator's policy file; it returns only service
+	// names and an error string.
+	"reload",
 }
 
 // Server is the control plane.

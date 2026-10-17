@@ -32,23 +32,15 @@ type acquirers struct {
 }
 
 func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Client) *acquirers {
-	forgeApp := map[string]*credential.Acquirer{}
-	for _, name := range cfg.Services() {
-		svc, _ := cfg.Service(name)
-		e := svc.Entry()
-		if e.Forge == nil || e.Auth != catalog.AuthGitHubApp {
-			continue
-		}
-		names := append([]string(nil), e.Forge.RepositoryNames...)
-		forgeApp[name] = &credential.Acquirer{
-			Material: store.Material,
-			Shared:   scopedCache{store, appScopeKey(e.Forge.APIBase, e.Forge.Owner, names)},
-			Exchange: credential.ExchangeGitHubApp(e.Forge.APIBase, client,
-				func(string) []string { return names }),
-		}
-	}
+	return newAcquirersFn(func() *policy.Config { return cfg }, store, client)
+}
+
+// newAcquirersFn is newAcquirers over a policy that may be reloaded: the
+// OAuth 2.0 refresh looks the service up in whatever policy is current.
+func newAcquirersFn(cfgFn func() *policy.Config, store *credential.Store, client *http.Client) *acquirers {
+	cfg := cfgFn()
 	return &acquirers{
-		forgeApp: forgeApp,
+		forgeApp: forgeAppAcquirers(cfg, store, client, nil),
 		githubApp: &credential.Acquirer{
 			Material: store.Material,
 			Shared:   store,
@@ -62,7 +54,7 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 			Shared: store,
 			Exchange: credential.ExchangeRefresh(
 				func(ctx context.Context, service string, m credential.Material) (string, string, time.Time, error) {
-					svc, ok := cfg.Service(service)
+					svc, ok := cfgFn().Service(service)
 					if !ok {
 						return "", "", time.Time{}, fmt.Errorf("%s is not configured", service)
 					}
@@ -95,6 +87,35 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 			),
 		},
 	}
+}
+
+// forgeAppAcquirers builds one acquirer per app-authenticated forge service.
+// An acquirer in prev whose scope is unchanged is kept, so a reload does not
+// discard its single-flight state; a changed scope gets a fresh one.
+func forgeAppAcquirers(cfg *policy.Config, store *credential.Store, client *http.Client, prev map[string]*credential.Acquirer) map[string]*credential.Acquirer {
+	out := map[string]*credential.Acquirer{}
+	for _, name := range cfg.Services() {
+		svc, _ := cfg.Service(name)
+		e := svc.Entry()
+		if e.Forge == nil || e.Auth != catalog.AuthGitHubApp {
+			continue
+		}
+		names := append([]string(nil), e.Forge.RepositoryNames...)
+		key := appScopeKey(e.Forge.APIBase, e.Forge.Owner, names)
+		if old, ok := prev[name]; ok {
+			if sc, ok := old.Shared.(scopedCache); ok && sc.scope == key {
+				out[name] = old
+				continue
+			}
+		}
+		out[name] = &credential.Acquirer{
+			Material: store.Material,
+			Shared:   scopedCache{store, key},
+			Exchange: credential.ExchangeGitHubApp(e.Forge.APIBase, client,
+				func(string) []string { return names }),
+		}
+	}
+	return out
 }
 
 // appScopeKey digests what an app forge's installation token is minted for. A
