@@ -77,6 +77,11 @@ func cmdRevoke(args []string) error {
 
 	// Then forget it here, whatever the provider said. A credential we failed
 	// to revoke upstream is one we especially do not want to keep.
+	if key := sharedCacheKey(entry, name); key != name {
+		if err := store.ForgetCachedToken(key); err != nil {
+			fmt.Fprintln(os.Stderr, "stk: could not drop the cached token:", err)
+		}
+	}
 	if err := store.ForgetCachedToken(name); err != nil {
 		fmt.Fprintln(os.Stderr, "stk: could not drop the cached token:", err)
 	}

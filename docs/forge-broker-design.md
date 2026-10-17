@@ -111,8 +111,14 @@ rules:
 - **Prefix and query.** Requests are matched on the path after `api_prefix`.
   A request outside the prefix on an intercepted host (web pages, `/login`,
   git smart-HTTP) is denied. The query string is ignored for matching and
-  forwarded unchanged; a rule cannot depend on it. GitHub Enterprise sets
+  forwarded unchanged; a rule cannot depend on it. A `provider: github` forge
+  on any host other than `api.github.com` (GitHub Enterprise) defaults to
   `api_prefix: /api/v3`; github.com has host `api.github.com` and no prefix.
+  An explicit `api_prefix` always wins.
+- **One service per host.** A forge on `api.github.com` (token or `auth: app`)
+  cannot sit in the same policy file as the built-in `github` or `github-app`
+  service: each host is brokered by exactly one service. `auth: app` sends its
+  installation token as Bearer; `scheme: token` is refused with it.
 - **GraphQL is denied by default** because it cannot be rule-checked
   (mutations hide in the body). `allow_graphql: true` is an explicit,
   documented opt-in for a service. The endpoint remains subject to the path

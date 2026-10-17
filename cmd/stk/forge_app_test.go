@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
@@ -80,5 +81,30 @@ func TestAppForgeAcquirerIsPerService(t *testing.T) {
 	}
 	if builtin != acqs.githubApp {
 		t.Error("the built-in github-app no longer uses its own acquirer")
+	}
+}
+
+// Revoking an app forge must drop the token cached under its scoped key, or
+// the next call would still be served the installation token.
+func TestRevokeAppForgeDropsScopedCachedToken(t *testing.T) {
+	home, cfgPath := appForgeEnv(t)
+	withStdin(t, "app_id=1\ninstallation_id=2\nprivate_key=-----BEGIN RSA PRIVATE KEY-----\nMII\n-----END RSA PRIVATE KEY-----\n",
+		func() { _ = cmdConnect([]string{"gh-app-a"}) })
+	cfg, err := policy.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := openTestStore(t, home)
+	acq := newAcquirers(cfg, store, http.DefaultClient).app("gh-app-a")
+	if err := acq.Shared.CacheToken("gh-app-a", "ghs_cached", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	withStdin(t, "", func() {
+		if err := cmdRevoke([]string{"gh-app-a", "--local"}); err != nil {
+			t.Errorf("revoke: %v", err)
+		}
+	})
+	if _, _, ok := acq.Shared.CachedToken("gh-app-a", 0); ok {
+		t.Fatal("the scoped cached installation token survived revoke")
 	}
 }

@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
@@ -38,7 +42,7 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 		names := append([]string(nil), e.Forge.RepositoryNames...)
 		forgeApp[name] = &credential.Acquirer{
 			Material: store.Material,
-			Shared:   store,
+			Shared:   scopedCache{store, appScopeKey(e.Forge.APIBase, names)},
 			Exchange: credential.ExchangeGitHubApp(e.Forge.APIBase, client,
 				func(string) []string { return names }),
 		}
@@ -91,6 +95,46 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 			),
 		},
 	}
+}
+
+// appScopeKey digests what an app forge's installation token is minted for. A
+// token cached under a different scope must never be served: a narrowed
+// repository list would otherwise keep the broader token until it expired.
+func appScopeKey(apiBase string, names []string) string {
+	sorted := append([]string(nil), names...)
+	sort.Strings(sorted)
+	sum := sha256.Sum256([]byte(apiBase + "\n" + strings.Join(sorted, "\n")))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// scopedCache keys the shared token cache by service and scope, so entries
+// written for an old scope are simply never read again and expire.
+type scopedCache struct {
+	inner credential.SharedCache
+	scope string
+}
+
+func (c scopedCache) key(service string) string { return service + ".scope-" + c.scope }
+
+func (c scopedCache) CachedToken(service string, early time.Duration) (string, time.Time, bool) {
+	return c.inner.CachedToken(c.key(service), early)
+}
+
+func (c scopedCache) CacheToken(service, token string, expires time.Time) error {
+	return c.inner.CacheToken(c.key(service), token, expires)
+}
+
+func (c scopedCache) LockRefresh(service string, wait time.Duration) (func(), bool) {
+	return c.inner.LockRefresh(c.key(service), wait)
+}
+
+// sharedCacheKey is the name a service's short-lived token is cached under:
+// scoped for an app forge, the bare service name for everything else.
+func sharedCacheKey(e *catalog.Entry, service string) string {
+	if e.Forge != nil && e.Auth == catalog.AuthGitHubApp {
+		return scopedCache{scope: appScopeKey(e.Forge.APIBase, e.Forge.RepositoryNames)}.key(service)
+	}
+	return service
 }
 
 // app returns the acquirer for a service whose catalogue auth is a GitHub App.

@@ -114,8 +114,11 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 			owner = o
 			names = append(names, n)
 		}
-		// The token stands in for a bearer header whatever scheme was written.
-		placement, field = BearerHeader, ""
+		// An installation token is sent as a bearer token; asking for another
+		// scheme is a contradiction, not a preference.
+		if s.Scheme == "token" {
+			return nil, fmt.Errorf("forge %q: auth app sends its installation token as a Bearer header; scheme token cannot be used with it", s.Name)
+		}
 		apiBase = "https://" + s.Host + "/api/v3"
 		if s.Host == "api.github.com" {
 			apiBase = "https://api.github.com"
@@ -131,6 +134,11 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 	prefix := s.APIPrefix
 	if prefix == "" {
 		prefix = def.apiPrefix
+		// GitHub Enterprise serves its API under /api/v3; only github.com has
+		// a dedicated API host. Without this every rule silently never matches.
+		if s.Provider == "github" && s.Host != "api.github.com" {
+			prefix = "/api/v3"
+		}
 	}
 	return &Entry{
 		Name:      s.Name,

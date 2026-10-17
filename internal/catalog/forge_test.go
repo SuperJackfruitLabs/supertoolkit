@@ -145,3 +145,35 @@ func TestNewForgeEntryTokenScheme(t *testing.T) {
 		t.Errorf("Placement/Field = %v/%q, want SchemeHeader/token", e.Placement, e.Field)
 	}
 }
+
+func TestGitHubEnterpriseDefaultsAPIPrefix(t *testing.T) {
+	for _, auth := range []string{"token", "app"} {
+		s := githubAppSpec()
+		s.Auth = auth
+		s.Host = "ghe.example.com"
+		e, err := NewForgeEntry(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e.Forge.APIPrefix != "/api/v3" {
+			t.Errorf("%s auth on GHE: APIPrefix = %q, want /api/v3", auth, e.Forge.APIPrefix)
+		}
+		s.Host = "api.github.com"
+		if e, _ = NewForgeEntry(s); e.Forge.APIPrefix != "" {
+			t.Errorf("%s auth on api.github.com: APIPrefix = %q, want empty", auth, e.Forge.APIPrefix)
+		}
+		s.Host, s.APIPrefix = "ghe.example.com", "/custom"
+		if e, _ = NewForgeEntry(s); e.Forge.APIPrefix != "/custom" {
+			t.Errorf("%s auth: explicit api_prefix lost: %q", auth, e.Forge.APIPrefix)
+		}
+	}
+}
+
+func TestAppAuthRefusesTokenScheme(t *testing.T) {
+	s := githubAppSpec()
+	s.Scheme = "token"
+	_, err := NewForgeEntry(s)
+	if err == nil || !strings.Contains(err.Error(), "scheme") {
+		t.Errorf("error = %v, want a refusal of scheme token with auth app", err)
+	}
+}
