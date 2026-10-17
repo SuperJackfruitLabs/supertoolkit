@@ -275,12 +275,35 @@ func withCallerUID(ctx context.Context, uid int) context.Context {
 type serveArgs struct {
 	listen    string
 	allowUIDs []int
+	// socketMode is the control socket's file mode. 0600 by default; an
+	// install under its own user passes 0660 so the agent's group can reach
+	// the socket at all, while --allow-uid stays the authorisation.
+	socketMode os.FileMode
 }
 
-const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]..."
+const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--socket-mode 0600|0660]"
+
+// parseSocketMode accepts only owner rw, optionally plus group rw. Anything
+// reachable by other users, or with execute or special bits, is refused: the
+// filesystem mode is the first gate and must never be the open one.
+func parseSocketMode(v string) (os.FileMode, error) {
+	n, err := strconv.ParseUint(v, 8, 32)
+	if err != nil || (n != 0o600 && n != 0o660) {
+		return 0, fmt.Errorf("--socket-mode must be 0600 or 0660, got %q", v)
+	}
+	return os.FileMode(n), nil
+}
 
 func parseServeArgs(args []string) (serveArgs, error) {
-	var o serveArgs
+	o := serveArgs{socketMode: 0o600}
+	setMode := func(v string) error {
+		m, err := parseSocketMode(v)
+		if err != nil {
+			return err
+		}
+		o.socketMode = m
+		return nil
+	}
 	addUID := func(v string) error {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 {
@@ -309,6 +332,18 @@ func parseServeArgs(args []string) (serveArgs, error) {
 			}
 		case strings.HasPrefix(a, "--allow-uid="):
 			if err := addUID(strings.TrimPrefix(a, "--allow-uid=")); err != nil {
+				return o, err
+			}
+		case a == "--socket-mode":
+			if i+1 >= len(args) {
+				return o, fmt.Errorf("--socket-mode needs 0600 or 0660")
+			}
+			i++
+			if err := setMode(args[i]); err != nil {
+				return o, err
+			}
+		case strings.HasPrefix(a, "--socket-mode="):
+			if err := setMode(strings.TrimPrefix(a, "--socket-mode=")); err != nil {
 				return o, err
 			}
 		default:
@@ -363,13 +398,13 @@ func cmdServe(args []string) error {
 	svc.childEnvFor = sess.childEnvFor
 
 	sock := socketPath(dir)
-	d, err := daemon.ListenWith(sock, svc.handle, daemon.Options{AllowUIDs: sa.allowUIDs})
+	d, err := daemon.ListenWith(sock, svc.handle, daemon.Options{AllowUIDs: sa.allowUIDs, SocketMode: sa.socketMode})
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 
-	fmt.Printf("  listening on %s (0600, uid %d only)\n", sock, os.Getuid())
+	fmt.Printf("  listening on %s (%04o, owner uid %d)\n", sock, sa.socketMode, os.Getuid())
 	if len(sa.allowUIDs) > 0 {
 		fmt.Printf("  callers limited to uid(s) %v\n", sa.allowUIDs)
 	}

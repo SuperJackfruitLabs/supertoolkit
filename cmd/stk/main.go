@@ -32,6 +32,7 @@ func usage() {
                               also keep the egress proxy on a fixed port, key required
   stk env [--json]            print the proxy URL, CA and placeholders for that proxy
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
   stk mcp install <host>       print the client configuration (no secret in it)
   stk verify <service> [--expect-login <login>] [--json]
                               prove a stored credential works, and as whom
@@ -70,6 +71,8 @@ func main() {
 		err = cmdRun(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
+	case "install":
+		err = cmdInstall(os.Args[2:])
 	case "env":
 		err = cmdEnv(os.Args[2:])
 	case "mcp":

@@ -82,6 +82,8 @@ type Options struct {
 	// PeerUID reads the caller's uid. Nil means the kernel's answer; tests
 	// inject a fake.
 	PeerUID func(net.Conn) (int, error)
+	// SocketMode is the socket file's mode; zero means 0600.
+	SocketMode os.FileMode
 }
 
 // ListenWith is Listen with options.
@@ -103,7 +105,11 @@ func ListenWith(sock string, h Handler, opts Options) (*Server, error) {
 		return nil, err
 	}
 	// Mode is set after binding, because the umask applies during Listen.
-	if err := os.Chmod(sock, 0o600); err != nil {
+	mode := opts.SocketMode
+	if mode == 0 {
+		mode = 0o600
+	}
+	if err := os.Chmod(sock, mode); err != nil {
 		ln.Close()
 		return nil, fmt.Errorf("securing %s: %w", sock, err)
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // KeySource says where the store key came from, so doctor can be honest about
@@ -28,6 +29,11 @@ const (
 func StoreKey(dir string) (string, KeySource, error) {
 	if p := os.Getenv("STK_PASSPHRASE"); p != "" {
 		return p, KeyFromEnv, nil
+	}
+	if k, ok, err := passphraseFile(); err != nil {
+		return "", "", err
+	} else if ok {
+		return k, KeyFromCredentialFile, nil
 	}
 	account := accountName(dir)
 	if keychainAvailable() {
@@ -60,6 +66,34 @@ func StoreKey(dir string) (string, KeySource, error) {
 	return k, KeyFromFile, nil
 }
 
+// passphraseFile reads a passphrase handed over as a file: STK_PASSPHRASE_FILE
+// if set, else systemd's $CREDENTIALS_DIRECTORY/stk-passphrase. A file that is
+// named but unreadable is an error rather than a fall back, because a
+// different key would silently open (or create) a different store.
+func passphraseFile() (string, bool, error) {
+	path := os.Getenv("STK_PASSPHRASE_FILE")
+	named := path != ""
+	if !named {
+		cd := os.Getenv("CREDENTIALS_DIRECTORY")
+		if cd == "" {
+			return "", false, nil
+		}
+		path = filepath.Join(cd, "stk-passphrase")
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if !named && os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("reading the passphrase file: %w", err)
+	}
+	k := strings.TrimSuffix(string(b), "\n")
+	if k == "" {
+		return "", false, fmt.Errorf("the passphrase file %s is empty", path)
+	}
+	return k, true, nil
+}
+
 // accountName keys the keychain entry by directory, so two workspaces on one
 // machine do not share a store key.
 func accountName(dir string) string {
@@ -77,3 +111,7 @@ func newKey() (string, error) {
 	}
 	return base64.StdEncoding.EncodeToString(raw), nil
 }
+
+// KeyFromCredentialFile is a passphrase file handed over by the service
+// manager (systemd LoadCredential) or named by STK_PASSPHRASE_FILE.
+const KeyFromCredentialFile KeySource = "passphrase file"
