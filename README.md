@@ -134,6 +134,31 @@ rather than only a constant:
 A service we do not front directly is reachable as a fronted MCP server: the
 child gets a placeholder in its environment and nothing else.
 
+### A git forge, defined in configuration
+
+A self-hosted Forgejo or Gitea has a host no catalogue could name, so a forge is
+declared in `supertoolkit.yaml` instead of compiled in:
+
+```yaml
+services:
+  forge-main:
+    kind: forge
+    provider: forgejo            # forgejo | gitea | github | bitbucket
+    host: forge.example.com      # a bare hostname
+    scheme: bearer               # or `token` for Authorization: token <t>
+    env_var: FORGEJO_TOKEN
+    repositories: [acme/widgets] # owner/name, required
+    preset: issues               # read | issues | pull-requests | maintain | none
+```
+
+Then `stk connect forge-main` (token on stdin) and `stk verify forge-main`, which
+makes one read call as that credential and prints the login it acts as, or a
+reason it failed. Presets are recorded now and enforced by request rules in a
+later slice; until then the token's own scopes are the only limit on what an
+agent can do through the proxy. Design: [docs/forge-broker-design.md](docs/forge-broker-design.md).
+A credential can also arrive sealed, from a machine that has it:
+[docs/handover-v1.md](docs/handover-v1.md).
+
 ## Using it from an agent
 
 `stk mcp` speaks MCP on stdio with exactly four tools — categories, actions,
