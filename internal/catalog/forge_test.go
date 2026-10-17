@@ -177,3 +177,13 @@ func TestAppAuthRefusesTokenScheme(t *testing.T) {
 		t.Errorf("error = %v, want a refusal of scheme token with auth app", err)
 	}
 }
+
+// A forge named like another's scoped cache key could have its cached tokens
+// removed (or read) as that service's.
+func TestForgeNameCannotLookLikeAScopedCacheKey(t *testing.T) {
+	s := githubAppSpec()
+	s.Name = "x.scope-0123456789abcdef"
+	if _, err := NewForgeEntry(s); err == nil || !strings.Contains(err.Error(), ".scope-") {
+		t.Errorf("error = %v, want a refusal of .scope- in the name", err)
+	}
+}

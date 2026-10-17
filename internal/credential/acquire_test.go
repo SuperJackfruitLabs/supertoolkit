@@ -370,3 +370,33 @@ func TestAppExchangeErrorNeverEchoesBody(t *testing.T) {
 		t.Errorf("error %v does not name the status", err)
 	}
 }
+
+func TestForgetCachedTokensRemovesEveryScopeOfOneServiceOnly(t *testing.T) {
+	s, err := OpenStore(t.TempDir(), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := time.Now().Add(time.Hour)
+	mine := []string{"x", "x.scope-0123456789abcdef", "x.scope-fedcba9876543210"}
+	others := []string{"y", "xy", "x.scopez", "x.scope-0123", "y.scope-0123456789abcdef", "ax.scope-0123456789abcdef"}
+	for _, k := range append(append([]string{}, mine...), others...) {
+		if err := s.CacheToken(k, "tok-"+k, exp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rel, _ := s.LockRefresh("x.scope-0123456789abcdef", time.Second)
+	rel()
+	if err := s.ForgetCachedTokens("x"); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range mine {
+		if _, _, ok := s.CachedToken(k, 0); ok {
+			t.Errorf("%s survived", k)
+		}
+	}
+	for _, k := range others {
+		if _, _, ok := s.CachedToken(k, 0); !ok {
+			t.Errorf("%s was removed but belongs to another service", k)
+		}
+	}
+}

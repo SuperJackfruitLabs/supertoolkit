@@ -172,6 +172,11 @@ func cmdConnect(args []string) error {
 	if err := store.PutMaterial(name, m); err != nil {
 		return err
 	}
+	// Tokens derived from the old material (another App, installation or
+	// key) must not outlive it.
+	if err := store.ForgetCachedTokens(name); err != nil {
+		fmt.Fprintln(os.Stderr, "stk: could not drop the cached tokens:", err)
+	}
 	fmt.Printf("  %s connected · %s\n", name, entry.Auth)
 	fmt.Printf("  %d field(s) sealed in %s: %s\n", len(m), dir, strings.Join(m.Fields(), ", "))
 	fmt.Printf("  never in %s\n", configPath())

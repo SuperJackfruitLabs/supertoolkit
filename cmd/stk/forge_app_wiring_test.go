@@ -158,6 +158,7 @@ func TestAppForgeInjectsInstallationTokenThroughProxy(t *testing.T) {
 	store, keyPEM := appStore(t)
 	cfg := appConfig(t, "Corp/r, Corp/s")
 	up := f.transport()
+	// log.SetOutput is process-global: this test must never use t.Parallel.
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
 	defer log.SetOutput(os.Stderr)

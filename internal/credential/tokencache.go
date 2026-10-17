@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -118,7 +119,9 @@ func (s *Store) CachedToken(service string, early time.Duration) (string, time.T
 	return c.Token, c.Expires, true
 }
 
-// ForgetCachedToken drops a cached token, used when it turns out not to work.
+// ForgetCachedToken drops the one cached token stored under exactly this key,
+// used when it turns out not to work. To drop everything a service owns,
+// every scope included, use ForgetCachedTokens.
 func (s *Store) ForgetCachedToken(service string) error {
 	err := os.Remove(s.cachePath(service))
 	if errors.Is(err, os.ErrNotExist) {
@@ -166,4 +169,30 @@ func (s *Store) LockRefresh(service string, wait time.Duration) (release func(),
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
+}
+
+// ForgetCachedTokens drops every cached token and lock a service owns: the
+// bare-name entry and each scoped one (`<service>.scope-<16 hex>`), including
+// scopes no longer in the config. The match is exact, so another service's
+// files never qualify; a forge name may not contain ".scope-", which keeps a
+// lookalike name from posing as a scope.
+func (s *Store) ForgetCachedTokens(service string) error {
+	re := regexp.MustCompile(`^` + regexp.QuoteMeta(filepath.Base(service)) + `(\.scope-[0-9a-f]{16})?\.(tok|lock)$`)
+	ents, err := os.ReadDir(s.cacheDir())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var first error
+	for _, e := range ents {
+		if !re.MatchString(e.Name()) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(s.cacheDir(), e.Name())); err != nil && !errors.Is(err, os.ErrNotExist) && first == nil {
+			first = err
+		}
+	}
+	return first
 }

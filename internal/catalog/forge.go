@@ -64,6 +64,9 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 	if s.Name == "" {
 		return nil, fmt.Errorf("forge service needs a name")
 	}
+	if strings.Contains(s.Name, ".scope-") {
+		return nil, fmt.Errorf("forge %q: a service name may not contain \".scope-\", which names a scoped token cache entry", s.Name)
+	}
 	def, ok := forgeProviders[s.Provider]
 	if !ok {
 		return nil, fmt.Errorf("forge %q: unknown provider %q: known providers are %v", s.Name, s.Provider, Providers())
