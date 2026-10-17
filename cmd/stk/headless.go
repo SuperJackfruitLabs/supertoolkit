@@ -229,9 +229,9 @@ func cmdHandover(args []string) error {
 			return fmt.Errorf("usage: stk handover open <service>   (the envelope is read from stdin)")
 		}
 		name := args[1]
-		entry, ok := catalog.Lookup(name)
-		if !ok {
-			return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())
+		entry, err := resolveEntry(name)
+		if err != nil {
+			return err
 		}
 		raw, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -281,9 +281,9 @@ func handoverSeal(args []string, dir string) error {
 	if name == "" || to == "" {
 		return fmt.Errorf("usage: stk handover seal <service> --to <key>")
 	}
-	entry, ok := catalog.Lookup(name)
-	if !ok {
-		return fmt.Errorf("unknown service %q: known services are %s", name, knownServices())
+	entry, err := resolveEntry(name)
+	if err != nil {
+		return err
 	}
 	pub, err := handover.ParsePublicKey(to)
 	if err != nil {
