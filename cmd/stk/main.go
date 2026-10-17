@@ -28,6 +28,9 @@ func usage() {
   stk handover key|seal|open  move a credential to a broker that has no browser
   stk run -- <command>        run a command with the broker in front of it
   stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
   stk mcp install <host>       print the client configuration (no secret in it)
   stk verify <service> [--expect-login <login>] [--json]
@@ -66,7 +69,9 @@ func main() {
 	case "run":
 		err = cmdRun(os.Args[2:])
 	case "serve":
-		err = cmdServe()
+		err = cmdServe(os.Args[2:])
+	case "env":
+		err = cmdEnv(os.Args[2:])
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
 	case "verify":

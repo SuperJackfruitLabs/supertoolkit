@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -257,10 +258,38 @@ func (s *service) handle(uid int, r daemon.Request) daemon.Response {
 	}
 }
 
-func cmdServe() error {
+func cmdServe(args []string) error {
+	var listen string
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--proxy-listen":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--proxy-listen needs a loopback host:port")
+			}
+			i++
+			listen = args[i]
+		case strings.HasPrefix(a, "--proxy-listen="):
+			listen = strings.TrimPrefix(a, "--proxy-listen=")
+		default:
+			return fmt.Errorf("serve: unknown argument %q (usage: stk serve [--proxy-listen <loopback host:port>])", a)
+		}
+	}
+	var opts brokerOpts
+	if listen != "" {
+		ap, err := parseProxyListen(listen)
+		if err != nil {
+			return err
+		}
+		opts.Listen = ap.String()
+	}
 	cfg, store, dir, err := loadForRun()
 	if err != nil {
 		return err
+	}
+	if listen != "" {
+		if opts.Key, err = loadOrCreateProxyKey(dir); err != nil {
+			return err
+		}
 	}
 	svc, err := newService(cfg, store, dir, "serve")
 	if err != nil {
@@ -270,11 +299,17 @@ func cmdServe() error {
 
 	// Fronted children need the broker's address, so the broker starts first
 	// and the child environment is built from it.
-	sess, err := startBroker(cfg, store, dir)
+	sess, err := startBrokerWith(cfg, store, dir, opts)
 	if err != nil {
 		return err
 	}
 	defer sess.stop()
+	if listen != "" {
+		if err := writeProxyAddr(dir, sess.addr); err != nil {
+			return err
+		}
+		defer removeProxyAddr(dir)
+	}
 	svc.childEnvFor = sess.childEnvFor
 
 	sock := socketPath(dir)
@@ -286,6 +321,9 @@ func cmdServe() error {
 
 	fmt.Printf("  listening on %s (0600, uid %d only)\n", sock, os.Getuid())
 	fmt.Printf("  workspace %q · %d service(s) · %d profile(s)\n", cfg.Workspace, len(cfg.Services()), len(cfg.Profiles()))
+	if listen != "" {
+		fmt.Printf("  proxy on %s (key required; `stk env` prints the settings)\n", sess.addr)
+	}
 	fmt.Printf("  %d meta-tools exposed to agents\n", len(mcp.ToolNames))
 	fmt.Println("  ctrl-C to stop")
 
