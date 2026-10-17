@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -201,6 +202,13 @@ func cmdHandover(args []string) error {
 	if err != nil {
 		return err
 	}
+	asJSON := hasFlag(&args, "--json")
+
+	// Sealing runs on the machine that has the credential, which need not run a
+	// broker, so it must not create a broker key as a side effect.
+	if args[0] == "seal" {
+		return handoverSeal(args[1:], dir)
+	}
 	kp, err := handover.Load(dir)
 	if err != nil {
 		return err
@@ -208,6 +216,9 @@ func cmdHandover(args []string) error {
 
 	switch args[0] {
 	case "key":
+		if asJSON {
+			return json.NewEncoder(os.Stdout).Encode(map[string]string{"public_key": kp.PublicKey()})
+		}
 		fmt.Println(kp.PublicKey())
 		fmt.Fprintln(os.Stderr, `
   this broker's hand-over key. It is public: it can only seal, never open.
@@ -220,9 +231,6 @@ func cmdHandover(args []string) error {
   long as it takes to seal it. The device flow and the web UI do not have that
   property, so prefer them when either is possible.`)
 		return nil
-
-	case "seal":
-		return handoverSeal(args[1:], dir)
 
 	case "open":
 		if len(args) != 2 {
@@ -255,6 +263,9 @@ func cmdHandover(args []string) error {
 		if err := store.PutMaterial(name, m); err != nil {
 			return err
 		}
+		if asJSON {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"service": name, "stored": true})
+		}
 		fmt.Printf("  %s connected from a sealed envelope · %s\n", name, entry.Auth)
 		fmt.Printf("  %d field(s) sealed in %s: %s\n", len(m), dir, strings.Join(m.Fields(), ", "))
 		fmt.Printf("  now delete it where it was sealed — it still exists there.\n")
@@ -266,6 +277,7 @@ func cmdHandover(args []string) error {
 // handoverSeal runs on the machine that has the browser.
 func handoverSeal(args []string, dir string) error {
 	var name, to string
+	fromStdin := hasFlag(&args, "--stdin")
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--to":
@@ -289,17 +301,32 @@ func handoverSeal(args []string, dir string) error {
 	if err != nil {
 		return err
 	}
-	pass, _, err := credential.StoreKey(dir)
-	if err != nil {
-		return err
-	}
-	store, err := credential.OpenStore(dir, pass)
-	if err != nil {
-		return err
-	}
-	m, err := store.Material(name)
-	if err != nil {
-		return fmt.Errorf("%s is not connected here, so there is nothing to seal: %w", name, err)
+	var m credential.Material
+	if fromStdin {
+		// The credential comes from the pipe, so this machine needs no store,
+		// salt or key: it only has to hold the value for as long as it takes to
+		// seal it.
+		raw, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		m, err = parseMaterial(string(raw), entry.Auth.Fields())
+		if err != nil {
+			return err
+		}
+	} else {
+		pass, _, err := credential.StoreKey(dir)
+		if err != nil {
+			return err
+		}
+		store, err := credential.OpenStore(dir, pass)
+		if err != nil {
+			return err
+		}
+		m, err = store.Material(name)
+		if err != nil {
+			return fmt.Errorf("%s is not connected here, so there is nothing to seal: %w", name, err)
+		}
 	}
 	if err := m.Require(entry.Auth.Fields()...); err != nil {
 		return err
@@ -568,4 +595,19 @@ func openInBrowser(url string) error {
 		cmd = "xdg-open"
 	}
 	return exec.Command(cmd, append(args, url)...).Start()
+}
+
+// hasFlag removes flag from args and reports whether it was there.
+func hasFlag(args *[]string, flag string) bool {
+	found := false
+	kept := (*args)[:0:0]
+	for _, a := range *args {
+		if a == flag {
+			found = true
+			continue
+		}
+		kept = append(kept, a)
+	}
+	*args = kept
+	return found
 }
