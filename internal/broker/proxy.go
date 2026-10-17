@@ -10,13 +10,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,6 +79,9 @@ type Broker struct {
 	audit   []Record
 
 	observer Observer
+
+	// proxyKey gates use of the broker. Never logged, recorded or returned.
+	proxyKey string
 }
 
 // Options configure a broker. Only cfg, ca and src are required.
@@ -101,6 +107,16 @@ type Options struct {
 	// its tests need no filesystem: the mapping from a wire record to an audit
 	// entry happens at the edge, where the catalogue is already in hand.
 	Observer Observer
+	// ProxyKey, when set, is required from every caller as
+	// Proxy-Authorization: Basic base64("stk:"+key). It gates use of the
+	// broker only: it is not a service credential, never unlocks a secret, and
+	// is never logged or recorded. Empty means no authentication.
+	ProxyKey string
+}
+
+// ProxyURL is the proxy address a caller uses when ProxyKey is set.
+func ProxyURL(addr, key string) string {
+	return (&url.URL{Scheme: "http", User: url.UserPassword("stk", key), Host: addr}).String()
 }
 
 // Observer is told about each effect as it completes.
@@ -120,6 +136,7 @@ func New(o Options) (*Broker, error) {
 		cfg: o.Config, ca: o.CA, src: o.Secrets,
 		log:      o.Logger,
 		observer: o.Observer,
+		proxyKey: o.ProxyKey,
 		upstream: o.Upstream,
 		dial:     o.Dial,
 		byHost:   map[string]*policy.Service{},
@@ -218,7 +235,36 @@ func (b *Broker) Serve(ln net.Listener) error {
 	return srv.Serve(ln)
 }
 
+// authorized reports whether r carries the proxy key. Only the
+// Proxy-Authorization header is consulted; a key anywhere else does not count.
+func (b *Broker) authorized(r *http.Request) bool {
+	if b.proxyKey == "" {
+		return true
+	}
+	scheme, enc, ok := strings.Cut(r.Header.Get("Proxy-Authorization"), " ")
+	if !ok || !strings.EqualFold(scheme, "Basic") {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(enc))
+	if err != nil {
+		return false
+	}
+	user, key, ok := strings.Cut(string(raw), ":")
+	if !ok || user != "stk" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(key), []byte(b.proxyKey)) == 1
+}
+
 func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
+	// Judged before anything else: an unauthenticated caller is never hijacked,
+	// dialled, tunnelled or intercepted, whatever its method.
+	if !b.authorized(r) {
+		b.refused.Add(1)
+		w.Header().Set("Proxy-Authenticate", `Basic realm="stk"`)
+		http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
+		return
+	}
 	if r.Method != http.MethodConnect {
 		// The broker is a proxy, not an API. There is deliberately no endpoint
 		// here that could return a credential.

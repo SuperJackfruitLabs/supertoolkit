@@ -7,12 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,9 +41,33 @@ type fixture struct {
 	secretCalls  *atomic.Int64
 	// lastBody is the body of the provider's most recent catch-all request.
 	lastBody chan []byte
+	// logs holds everything the broker logged, at debug level.
+	logs *lockedBuf
+}
+
+type lockedBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuf) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 func newFixture(t *testing.T, cfgBody string) *fixture {
+	t.Helper()
+	return newFixtureKey(t, cfgBody, "")
+}
+
+func newFixtureKey(t *testing.T, cfgBody, proxyKey string) *fixture {
 	t.Helper()
 
 	// The provider's own CA, so the broker verifies it like a real upstream.
@@ -138,12 +164,14 @@ func newFixture(t *testing.T, cfgBody string) *fixture {
 	}
 
 	var tunnelHits int64
+	logs := &lockedBuf{}
 	brokerCA, err := NewCA("test broker CA", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, err := New(Options{
-		Config: cfg, CA: brokerCA,
+		Config: cfg, CA: brokerCA, ProxyKey: proxyKey,
+		Logger:   slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Secrets:  func(string) (string, error) { secretCalls.Add(1); return theSecret, nil },
 		Upstream: upstream,
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -166,6 +194,7 @@ func newFixture(t *testing.T, cfgBody string) *fixture {
 	return &fixture{
 		broker: b, proxyURL: pu, provider: provAddr, tunnelHits: &tunnelHits,
 		providerHits: &providerHits, secretCalls: &secretCalls, lastBody: lastBody,
+		logs:     logs,
 		clientCA: &tls.Config{RootCAs: brokerCA.Pool()},
 	}
 }
