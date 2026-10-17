@@ -184,8 +184,11 @@ Paths are written relative to `api_prefix`. `{owner}` and `{repo}` must be used
 together and match the configured repositories. Paths containing `..`, `//` or
 an encoded slash are refused. GraphQL is denied by default (rule
 `builtin:graphql`), because one endpoint carries every operation; setting
-`allow_graphql: true` on the service lets it through, and then the service's
-rules are advisory for GraphQL traffic since its bodies are not inspected.
+`allow_graphql: true` on the service stops that built-in deny. The endpoint is
+then still subject to the path rules (a `POST …/graphql` needs an `allow`
+rule; default deny applies), but the operation inside the request body is not
+inspected, so no rule can restrict which queries or mutations run; a body
+condition on a `/graphql` pattern is rejected when the config loads.
 `stk audit` shows the rule that denied a request. Design:
 [docs/forge-broker-design.md](docs/forge-broker-design.md).
 A credential can also arrive sealed, from a machine that has it:

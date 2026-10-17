@@ -115,8 +115,11 @@ rules:
   `api_prefix: /api/v3`; github.com has host `api.github.com` and no prefix.
 - **GraphQL is denied by default** because it cannot be rule-checked
   (mutations hide in the body). `allow_graphql: true` is an explicit,
-  documented opt-in for a service, because it makes the rule set advisory for
-  that service. This is why many `gh` commands fail on a restricted grant.
+  documented opt-in for a service. The endpoint remains subject to the path
+  rules (a `POST …/graphql` still needs an allow rule; default deny applies),
+  but the operation in the body is not inspected, so a rule cannot restrict
+  which queries or mutations run; body conditions on `/graphql` patterns are
+  rejected at load. This is why many `gh` commands fail on a restricted grant.
 - **Path matching** is on the normalised path after the `api_prefix`. Normalise
   before matching: reject `..`, encoded slashes (`%2f`), double slashes and
   control characters. This is the classic bypass; it needs adversarial tests.
