@@ -7,6 +7,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/rules"
 )
 
 // SecretSource hands the broker a credential for one service. It is the only
@@ -35,7 +37,7 @@ type SecretSource func(service string) (string, error)
 // happened: a client's status code cannot distinguish a bypass from a bad
 // credential, so assertions belong here.
 type Stats struct {
-	Intercept, Tunnel, Swap, H2, H1, Refused int64
+	Intercept, Tunnel, Swap, H2, H1, Refused, Denied int64
 }
 
 // Record is one audited effect. It carries fingerprints, never a secret.
@@ -49,6 +51,8 @@ type Record struct {
 	Injected string
 	AuthzFP  string
 	Status   string
+	// Rule names the rule that denied the request, if one did.
+	Rule string
 }
 
 // Broker is the egress proxy.
@@ -66,7 +70,7 @@ type Broker struct {
 
 	byHost map[string]*policy.Service
 
-	intercept, tunnel, swap, h2, h1, refused atomic.Int64
+	intercept, tunnel, swap, h2, h1, refused, denied atomic.Int64
 
 	auditMu sync.Mutex
 	audit   []Record
@@ -161,6 +165,7 @@ func (b *Broker) Stats() Stats {
 	return Stats{
 		Intercept: b.intercept.Load(), Tunnel: b.tunnel.Load(), Swap: b.swap.Load(),
 		H2: b.h2.Load(), H1: b.h1.Load(), Refused: b.refused.Load(),
+		Denied: b.denied.Load(),
 	}
 }
 
@@ -331,6 +336,21 @@ See docs/limitations.md.
 		return
 	}
 
+	// Rules are decided before the secret is fetched: a request the rules do
+	// not allow never causes the credential to be read, let alone sent.
+	if set := svc.Rules(); set != nil {
+		if id, reason, ok := b.decide(r, set, svc); !ok {
+			b.denied.Add(1)
+			rec.Rule = id
+			rec.Status = "403 denied: " + id
+			b.record(rec)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintf(w, "supertoolkit denied this request: rule %s (%s). Nothing was sent.\n", id, reason)
+			return
+		}
+	}
+
 	secret, err := b.src(svc.Name)
 	if err != nil {
 		rec.Status = "no credential: " + err.Error()
@@ -402,6 +422,79 @@ See docs/limitations.md.
 			w.Header().Set(k, v)
 		}
 	}
+}
+
+// GraphQLRuleID names the built-in deny on a forge's GraphQL endpoint.
+const GraphQLRuleID = "builtin:graphql"
+
+// decide evaluates r against set. Any failure is a deny. When the body is read
+// for evaluation, r.Body is replaced so that forwarding sends the same bytes.
+func (b *Broker) decide(r *http.Request, set *rules.Set, svc *policy.Service) (id, reason string, ok bool) {
+	escaped := r.URL.EscapedPath()
+	full, err := rules.NormalizePath(escaped)
+	if err != nil {
+		return "", rules.ReasonBadPath, false
+	}
+	// GraphQL is one endpoint carrying every operation, so path rules cannot
+	// govern it. No allow rule reopens it; only allow_graphql does.
+	if !svc.AllowGraphQL() {
+		if p, in := underPrefix(svc.APIPrefix(), full); in {
+			lp := strings.ToLower(p)
+			if lp == "/graphql" || strings.HasPrefix(lp, "/graphql/") {
+				return GraphQLRuleID, "graphql", false
+			}
+		}
+	}
+	req := rules.Request{
+		Method: r.Method, EscapedPath: escaped, Header: r.Header,
+		ContentType: r.Header.Get("Content-Type"),
+	}
+	if carriesBody(r.Method) && r.Body != nil && r.Body != http.NoBody {
+		buf, err := io.ReadAll(io.LimitReader(r.Body, rules.MaxBody+1))
+		// Restore the body exactly: the bytes read, then the rest unread.
+		r.Body = readCloser{io.MultiReader(bytes.NewReader(buf), r.Body), r.Body}
+		if err != nil {
+			return "", "body unreadable", false
+		}
+		if len(buf) > rules.MaxBody {
+			buf, req.BodyTruncated = buf[:rules.MaxBody], true
+		}
+		req.Body = buf
+	}
+	d := set.Evaluate(svc.APIPrefix(), req)
+	if !d.Allowed {
+		return d.RuleID, d.Reason, false
+	}
+	return d.RuleID, d.Reason, true
+}
+
+// underPrefix strips the API prefix from a normalised path, mirroring the
+// rule set's own stripping.
+func underPrefix(prefix, path string) (string, bool) {
+	prefix = strings.TrimRight(prefix, "/")
+	switch {
+	case prefix == "":
+		return path, true
+	case path == prefix:
+		return "/", true
+	case strings.HasPrefix(path, prefix+"/"):
+		return path[len(prefix):], true
+	}
+	return "", false
+}
+
+func carriesBody(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// readCloser reads from a restored stream and closes the original body.
+type readCloser struct {
+	io.Reader
+	io.Closer
 }
 
 func trailerNames(t http.Header) []string {
