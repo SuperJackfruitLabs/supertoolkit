@@ -51,3 +51,29 @@ func TestInstallCommandDryRunWritesNothingAndIsLinuxOnly(t *testing.T) {
 		t.Fatalf("non-linux: %v", err)
 	}
 }
+
+func TestInstallUnitNameFlag(t *testing.T) {
+	p, _, err := parseInstallArgs([]string{"--user", "u", "--unit-name", "stk-st2"})
+	if err != nil || p.UnitName != "stk-st2" {
+		t.Fatalf("got %+v %v", p, err)
+	}
+	if p, _, _ = parseInstallArgs([]string{"--user", "u", "--unit-name=x"}); p.UnitName != "x" {
+		t.Fatalf("= form: %+v", p)
+	}
+	if p, _, _ = parseInstallArgs([]string{"--user", "u"}); p.UnitName != "" {
+		t.Fatalf("default must stay empty: %q", p.UnitName)
+	}
+	root := t.TempDir()
+	var out bytes.Buffer
+	err = runInstall([]string{"--user", "u", "--agent-uid", "1", "--unit-name", "bad.service", "--dry-run"}, "linux", root, &nopRunner{}, &out)
+	if err == nil || !strings.Contains(err.Error(), "unit-name") {
+		t.Fatalf("bad name: %v", err)
+	}
+	out.Reset()
+	if err := runInstall([]string{"--user", "u", "--agent-uid", "1", "--unit-name", "stk-st2", "--dry-run"}, "linux", root, &nopRunner{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "/etc/systemd/system/stk-st2.service") {
+		t.Fatalf("dry run:\n%s", out.String())
+	}
+}

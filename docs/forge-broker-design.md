@@ -175,7 +175,10 @@ rules:
   creates the user, directories with correct modes, the service unit, and
   loads the sealed-store passphrase from the service manager's credential store
   (`LoadCredential`), so `STK_PASSPHRASE` is not on disk beside the ciphertext.
-  A macOS launchd variant is optional.
+  A macOS launchd variant is optional. `--unit-name` names the unit, so one
+  host can run several instances (one per station) with their own user, state,
+  runtime and config directories, proxy port and unit; install refuses to
+  overwrite another instance's unit.
 - `stk doctor` reports isolation level: `separate-user` when the store, key and
   approval commands are unreachable by the agent's uid; `same-user` otherwise.
   That string is what agentpod records on the grant. It claims only what it

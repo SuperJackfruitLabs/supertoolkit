@@ -45,8 +45,12 @@ func Unit(p Plan) string {
 	if rest, ok := strings.CutPrefix(p.RuntimeDir, "/run/"); ok && rest != "" && !strings.Contains(rest, "/") {
 		runtime = fmt.Sprintf("RuntimeDirectory=%s\nRuntimeDirectoryMode=%s\nRuntimeDirectoryPreserve=yes\n", rest, p.runtimeMode())
 	}
+	desc := "supertoolkit credential broker"
+	if p.unitName() != DefaultUnitName {
+		desc += " (" + p.unitName() + ")"
+	}
 	return fmt.Sprintf(`[Unit]
-Description=supertoolkit credential broker
+Description=%[8]s
 After=network-online.target
 Wants=network-online.target
 
@@ -67,5 +71,5 @@ Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-`, p.User, p.group(), p.StateDir, p.RuntimeDir, p.ConfigPath, exec.String(), runtime)
+`, p.User, p.group(), p.StateDir, p.RuntimeDir, p.ConfigPath, exec.String(), runtime, desc)
 }

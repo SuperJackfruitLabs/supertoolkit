@@ -226,7 +226,7 @@ still reaches the broker, over a loopback proxy it must present a key to.
 ### `stk install`
 
 ```
-sudo stk install --user stk --group stk --agent-uid 1001 [--agent-uid 1002]
+sudo stk install --user stk --group stk --agent-uid 1001 [--agent-uid 1002] [--unit-name stk]
 ```
 
 Linux with systemd only; on any other OS it refuses. It must run as root and
@@ -241,7 +241,8 @@ creates, if absent:
 - `stk-passphrase.key` in the state directory (`0400`, random, never printed);
   the unit hands it to the service with systemd `LoadCredential`, so the
   passphrase is not in an environment file;
-- `/etc/systemd/system/stk.service`, running `stk serve --proxy-listen
+- `/etc/systemd/system/<unit-name>.service` (default `stk`, see
+  [Several instances on one host](#several-instances-on-one-host)), running `stk serve --proxy-listen
   127.0.0.1:<port> --socket-mode … --allow-uid …` (default port 8899).
 
 If a config file already exists its mode is set to `0640 root:<group>`; install
@@ -249,7 +250,37 @@ never creates policy. A second run changes nothing. It refuses to run when the
 state directory holds a store but no `stk-passphrase.key`, rather than add a new
 passphrase over a store sealed under another key. It does not add agent users
 to the group: with `--group`, you run `usermod -aG <group> <agent-user>`
-yourself. Then `systemctl enable --now stk`.
+yourself. Then `systemctl enable --now <unit-name>` (the report prints the exact
+command).
+
+#### Several instances on one host
+
+To keep one station's agent from ever using another station's brokered
+credential, run one stk per station. Give each its own everything: user and
+group, `--state-dir`, `--runtime-dir`, `--config`, `--proxy-port`, `--agent-uid`
+and `--unit-name`:
+
+```
+sudo stk install --user stk-st2 --group stk-st2 --state-dir /var/lib/stk-st2 \
+  --runtime-dir /run/stk-st2 --config /etc/stk-st2/supertoolkit.yaml \
+  --proxy-port 8900 --agent-uid 2001 --unit-name stk-st2
+```
+
+`--unit-name NAME` (letters, digits, `_ . -`, at most 64, no `.service` suffix,
+no `@`; default `stk`) writes `/etc/systemd/system/NAME.service`; the default
+unit's bytes are unchanged. Each instance has its own sealed store, passphrase,
+proxy key and uid allowlist, and `stk doctor` run with that instance's
+`STK_HOME`/`STK_CONFIG`/`STK_SOCKET` (as in its unit) reports that instance's
+isolation only. The agent is given only its own proxy URL and key (`stk env`
+as that instance), never another's.
+
+Install refuses, before changing anything, to overwrite an existing unit at
+that name unless its `User=` and `STK_HOME` (the state directory) are the plan's
+own: a different user or state directory, or a file that is not an stk unit, is
+another instance, and the error says to pick a different `--unit-name`. The same
+plan re-run changes nothing; the same instance with, say, a new `--proxy-port`
+updates its unit. Install does not check that ports, runtime directories or
+state directories are unique across instances: choose them distinct.
 
 ### The proxy, `stk serve --proxy-listen` and `stk env`
 

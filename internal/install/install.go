@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -25,7 +26,27 @@ type Plan struct {
 	AgentUIDs                        []int
 	Binary                           string
 	ProxyPort                        int
+	// UnitName is the systemd unit's name without ".service"; empty means "stk".
+	UnitName string
 }
+
+// StartHint is the command that starts the installed unit.
+func (p Plan) StartHint() string { return "systemctl enable --now " + p.unitName() }
+
+// DefaultUnitName is the unit an install without --unit-name writes.
+const DefaultUnitName = "stk"
+
+var unitNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+
+func (p Plan) unitName() string {
+	if p.UnitName == "" {
+		return DefaultUnitName
+	}
+	return p.UnitName
+}
+
+// UnitFile is where the unit is written, relative to root.
+func (p Plan) UnitFile() string { return "/etc/systemd/system/" + p.unitName() + ".service" }
 
 // Runner runs a host command, argv only.
 type Runner interface {
@@ -66,9 +87,6 @@ func (r Report) String() string {
 // Geteuid is injectable so the root check is testable without root.
 var Geteuid = os.Geteuid
 
-// UnitPath is where the unit is written, relative to root.
-const UnitPath = "/etc/systemd/system/stk.service"
-
 // Validate checks a plan before anything runs.
 func (p Plan) Validate() error {
 	if p.User == "" || strings.ContainsAny(p.User, " :/") || strings.HasPrefix(p.User, "-") {
@@ -81,6 +99,9 @@ func (p Plan) Validate() error {
 		if !filepath.IsAbs(d) || strings.ContainsAny(d, " \n") {
 			return fmt.Errorf("path %q must be absolute with no spaces", d)
 		}
+	}
+	if p.UnitName != "" && (!unitNameRE.MatchString(p.UnitName) || strings.HasSuffix(p.UnitName, ".service") || strings.Contains(p.UnitName, "@")) {
+		return fmt.Errorf("invalid --unit-name %q: want letters, digits, _ . - (starting with a letter or digit, at most 64), without a .service suffix or @", p.UnitName)
 	}
 	if len(p.AgentUIDs) == 0 {
 		return errors.New("stk install needs at least one --agent-uid: without it the socket allowlist is empty and any member of the group would be served")
@@ -107,7 +128,7 @@ func DryRun(p Plan) string {
 	if p.Group != "" {
 		fmt.Fprintf(&b, "you must add each agent user to group %s (install runs no usermod)\n", p.Group)
 	}
-	fmt.Fprintf(&b, "would write %s:\n\n%s", UnitPath, Unit(p))
+	fmt.Fprintf(&b, "would write %s:\n\n%s", p.UnitFile(), Unit(p))
 	return b.String()
 }
 
@@ -133,6 +154,12 @@ func Run(ctx context.Context, p Plan, root string, r Runner) (Report, error) {
 			return rep, fmt.Errorf("%s holds a store but no "+PassphraseFile+"; it is sealed under another key "+
 				"(machine.key or STK_PASSPHRASE) — refusing to add a new passphrase over it", p.StateDir)
 		}
+	}
+
+	// Another instance may own this unit name. Refuse before any change.
+	unitPath := at(p.UnitFile())
+	if err := checkUnitOwner(p, unitPath); err != nil {
+		return rep, err
 	}
 
 	// Accounts.
@@ -220,7 +247,6 @@ func Run(ctx context.Context, p Plan, root string, r Runner) (Report, error) {
 	}
 
 	// The unit.
-	unitPath := at(UnitPath)
 	want := Unit(p)
 	if have, err := os.ReadFile(unitPath); err == nil && string(have) == want {
 		rep.Unchanged = append(rep.Unchanged, unitPath)
@@ -241,10 +267,48 @@ func Run(ctx context.Context, p Plan, root string, r Runner) (Report, error) {
 			rep.Created = append(rep.Created, unitPath)
 		}
 	}
+	rep.Notes = append(rep.Notes, "start it with "+p.StartHint())
 	if p.Group != "" {
 		rep.Notes = append(rep.Notes, fmt.Sprintf("add each agent user to group %s yourself (install runs no usermod): usermod -aG %s <agent-user>", p.Group, p.Group))
 	}
 	return rep, ctx.Err()
+}
+
+// checkUnitOwner refuses to overwrite a unit that belongs to a different
+// instance. The rule: an existing unit file at the plan's path may be rewritten
+// only if its User= and its STK_HOME (the state dir) both equal the plan's —
+// the same instance, perhaps re-planned (port, uids, binary). Anything else,
+// including a file naming neither (not an stk unit), is refused, since
+// overwriting it would silently repoint another station's service. Pick a
+// different --unit-name, or remove the old unit yourself.
+func checkUnitOwner(p Plan, path string) error {
+	have, err := os.ReadFile(path)
+	if err != nil {
+		return nil // absent (or unreadable: the write will say)
+	}
+	user, state := unitIdentity(string(have))
+	if user == p.User && state == p.StateDir {
+		return nil
+	}
+	return fmt.Errorf("%s already exists for another instance (User=%q, state dir %q; this plan is User=%q, state dir %q) — "+
+		"refusing to overwrite it; choose a different --unit-name", path, user, state, p.User, p.StateDir)
+}
+
+// unitIdentity reads User= and STK_HOME= back out of a unit.
+func unitIdentity(unit string) (user, state string) {
+	for _, line := range strings.Split(unit, "\n") {
+		if v, ok := strings.CutPrefix(line, "User="); ok {
+			user = strings.TrimSpace(v)
+		}
+		if v, ok := strings.CutPrefix(line, "Environment="); ok {
+			for _, f := range strings.Fields(v) {
+				if h, ok := strings.CutPrefix(f, "STK_HOME="); ok {
+					state = h
+				}
+			}
+		}
+	}
+	return
 }
 
 func ensureDir(rep *Report, r Runner, path string, mode os.FileMode, owner string) error {

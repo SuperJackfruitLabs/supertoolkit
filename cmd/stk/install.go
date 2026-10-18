@@ -14,7 +14,7 @@ import (
 )
 
 const installUsage = "usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] " +
-	"[--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--dry-run]"
+	"[--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run]"
 
 func parseInstallArgs(args []string) (install.Plan, bool, error) {
 	p := install.Plan{StateDir: "/var/lib/stk", RuntimeDir: "/run/stk",
@@ -50,6 +50,8 @@ func parseInstallArgs(args []string) (install.Plan, bool, error) {
 				return p, false, fmt.Errorf("--agent-uid wants a non-negative integer, got %q", val)
 			}
 			p.AgentUIDs = append(p.AgentUIDs, n)
+		case "--unit-name":
+			p.UnitName = val
 		case "--proxy-port":
 			n, err := strconv.Atoi(val)
 			if err != nil {
@@ -95,7 +97,6 @@ func runInstall(args []string, goos, root string, r install.Runner, out io.Write
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "  next: systemctl enable --now stk")
 	return nil
 }
 

@@ -241,3 +241,47 @@ func TestSecretPathsUseExactConfigPath(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// Two instances on one host: doctor run with the second's environment reports
+// the second's paths only. Nothing is hard-coded to the default instance.
+func TestDoctorIsolationFollowsTheInstanceEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(name string) (home, cfg, sock string) {
+		home = filepath.Join(dir, name, "state")
+		os.MkdirAll(home, 0o700)
+		cfg = filepath.Join(dir, name, "supertoolkit.yaml")
+		os.WriteFile(cfg, []byte("agent_uids: [4242]\n"), 0o600)
+		return home, cfg, filepath.Join(dir, name, "run", "stk.sock")
+	}
+	h1, c1, s1 := mk("one")
+	h2, c2, s2 := mk("two")
+	t.Setenv("STK_HOME", h2)
+	t.Setenv("STK_CONFIG", c2)
+	t.Setenv("STK_SOCKET", s2)
+	paths := isolationPaths(h2, configPath(), socketPath(h2))
+	for _, p := range paths {
+		if strings.HasPrefix(p, filepath.Join(dir, "one")) || strings.HasPrefix(p, "/var/lib/stk") || strings.HasPrefix(p, "/run/stk") || strings.HasPrefix(p, "/etc/stk") {
+			t.Errorf("instance two's checked paths leak %q", p)
+		}
+	}
+	has := func(want string) bool {
+		for _, p := range paths {
+			if p == want {
+				return true
+			}
+		}
+		return false
+	}
+	for _, want := range []string{h2, absPath(c2), s2, filepath.Join(h2, "stk-passphrase.key"), filepath.Join(h2, "proxy.key")} {
+		if !has(want) {
+			t.Errorf("instance two's path %q not checked: %v", want, paths)
+		}
+	}
+	// And it picks instance two's agent uids from instance two's config only.
+	os.WriteFile(c1, []byte("agent_uids: [1111]\n"), 0o600)
+	os.WriteFile(c2, []byte("agent_uids: [2222]\n"), 0o600)
+	if got := agentUIDsFor(doctorOpts{}); len(got) != 1 || got[0] != 2222 {
+		t.Errorf("agent uids = %v, want [2222]", got)
+	}
+	_, _ = h1, s1
+}
