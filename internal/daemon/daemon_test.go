@@ -2,9 +2,12 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -85,9 +88,9 @@ func TestNoMethodReturnsACredential(t *testing.T) {
 			}
 		}
 	}
-	// And the set is closed: four meta-tools plus approvals plus status.
-	if len(Methods) != 7 {
-		t.Errorf("Methods has %d entries, want 7 — a new method needs a deliberate review, not a silent addition", len(Methods))
+	// And the set is closed: four meta-tools plus approvals, status and reload.
+	if len(Methods) != 8 {
+		t.Errorf("Methods has %d entries, want 8 — a new method needs a deliberate review, not a silent addition", len(Methods))
 	}
 }
 
@@ -123,5 +126,99 @@ func TestCloseRemovesTheSocket(t *testing.T) {
 	s.Close()
 	if _, err := os.Stat(sock); !os.IsNotExist(err) {
 		t.Fatalf("socket still present after Close(): %v", err)
+	}
+}
+
+func serveWith(t *testing.T, h Handler, o Options) *Server {
+	t.Helper()
+	// Short path: unix socket names are limited to ~104 bytes on macOS.
+	dir, err := os.MkdirTemp("", "d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "s")
+	s, err := ListenWith(sock, h, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go s.Serve()
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+func fakeUID(uid int, err error) func(net.Conn) (int, error) {
+	return func(net.Conn) (int, error) { return uid, err }
+}
+
+func TestDaemonRefusesAnUnlistedUID(t *testing.T) {
+	var calls atomic.Int32
+	s := serveWith(t, func(int, Request) Response { calls.Add(1); return Response{} },
+		Options{AllowUIDs: []int{501}, PeerUID: fakeUID(4242, nil)})
+	c, err := Dial(s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	resp, err := c.Call(Request{Method: "status"})
+	if err == nil {
+		t.Fatalf("an unlisted uid got an answer: %+v", resp)
+	}
+	if resp.Error != "" || len(resp.Result) != 0 {
+		t.Fatalf("the refusal leaked a body: %+v", resp)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("the handler ran for an unlisted uid")
+	}
+}
+
+func TestDaemonAcceptsAListedUID(t *testing.T) {
+	s := serveWith(t, func(int, Request) Response { return Response{Error: "ok"} },
+		Options{AllowUIDs: []int{7, 4242}, PeerUID: fakeUID(4242, nil)})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	resp, err := c.Call(Request{Method: "status"})
+	if err != nil || resp.Error != "ok" {
+		t.Fatalf("listed uid: resp=%+v err=%v", resp, err)
+	}
+}
+
+func TestEmptyAllowListKeepsOldBehaviour(t *testing.T) {
+	s := serveWith(t, func(int, Request) Response { return Response{Error: "ok"} },
+		Options{PeerUID: fakeUID(4242, nil)})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	resp, err := c.Call(Request{Method: "status"})
+	if err != nil || resp.Error != "ok" {
+		t.Fatalf("empty list: resp=%+v err=%v", resp, err)
+	}
+}
+
+func TestHandleReceivesTheUID(t *testing.T) {
+	seen := make(chan int, 1)
+	s := serveWith(t, func(uid int, r Request) Response { seen <- uid; return Response{} },
+		Options{AllowUIDs: []int{4242}, PeerUID: fakeUID(4242, nil)})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	if _, err := c.Call(Request{Method: "status"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-seen; got != 4242 {
+		t.Fatalf("handler saw uid %d, want 4242", got)
+	}
+}
+
+// Failing to learn who is calling must never become permission to call.
+func TestPeerUIDErrorRefuses(t *testing.T) {
+	var calls atomic.Int32
+	s := serveWith(t, func(int, Request) Response { calls.Add(1); return Response{} },
+		Options{AllowUIDs: []int{501}, PeerUID: fakeUID(501, errors.New("no creds"))})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	if _, err := c.Call(Request{Method: "status"}); err == nil {
+		t.Fatal("a caller whose uid could not be read got an answer")
+	}
+	if calls.Load() != 0 {
+		t.Fatal("the handler ran although the uid was unknown")
 	}
 }

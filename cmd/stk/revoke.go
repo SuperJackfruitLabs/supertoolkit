@@ -77,7 +77,9 @@ func cmdRevoke(args []string) error {
 
 	// Then forget it here, whatever the provider said. A credential we failed
 	// to revoke upstream is one we especially do not want to keep.
-	if err := store.ForgetCachedToken(name); err != nil {
+	// Every scope, not just the current config's: a token minted before the
+	// repositories were edited is still valid until it expires.
+	if err := store.ForgetCachedTokens(name); err != nil {
 		fmt.Fprintln(os.Stderr, "stk: could not drop the cached token:", err)
 	}
 	if err := store.Revoke(name); err != nil {

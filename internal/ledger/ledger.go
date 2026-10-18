@@ -47,6 +47,9 @@ type Entry struct {
 	Outcome    string `json:"outcome,omitempty"`
 	// Rule is the id of the rule that denied the request, when one did.
 	Rule string `json:"rule,omitempty"`
+	// Labels are the operator-set labels of the service (station, principal,
+	// grant), copied onto every row for it.
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // Ledger appends effects to a file and reads them back.

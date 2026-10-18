@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
@@ -21,14 +25,26 @@ import (
 type acquirers struct {
 	githubApp *credential.Acquirer
 	oauth2    *credential.Acquirer
+	// forgeApp holds one acquirer per `kind: forge` service with auth: app.
+	// Each has its own App, installation, API base and repository list, so
+	// sharing a cache would hand one service's token to another.
+	forgeApp map[string]*credential.Acquirer
 }
 
 func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Client) *acquirers {
+	return newAcquirersFn(func() *policy.Config { return cfg }, store, client)
+}
+
+// newAcquirersFn is newAcquirers over a policy that may be reloaded: the
+// OAuth 2.0 refresh looks the service up in whatever policy is current.
+func newAcquirersFn(cfgFn func() *policy.Config, store *credential.Store, client *http.Client) *acquirers {
+	cfg := cfgFn()
 	return &acquirers{
+		forgeApp: forgeAppAcquirers(cfg, store, client, nil),
 		githubApp: &credential.Acquirer{
 			Material: store.Material,
 			Shared:   store,
-			Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
+			Exchange: credential.ExchangeGitHubApp("https://api.github.com", client, nil),
 		},
 		oauth2: &credential.Acquirer{
 			Material: store.Material,
@@ -38,7 +54,7 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 			Shared: store,
 			Exchange: credential.ExchangeRefresh(
 				func(ctx context.Context, service string, m credential.Material) (string, string, time.Time, error) {
-					svc, ok := cfg.Service(service)
+					svc, ok := cfgFn().Service(service)
 					if !ok {
 						return "", "", time.Time{}, fmt.Errorf("%s is not configured", service)
 					}
@@ -71,6 +87,83 @@ func newAcquirers(cfg *policy.Config, store *credential.Store, client *http.Clie
 			),
 		},
 	}
+}
+
+// forgeAppAcquirers builds one acquirer per app-authenticated forge service.
+// An acquirer in prev whose scope is unchanged is kept, so a reload does not
+// discard its single-flight state; a changed scope gets a fresh one.
+func forgeAppAcquirers(cfg *policy.Config, store *credential.Store, client *http.Client, prev map[string]*credential.Acquirer) map[string]*credential.Acquirer {
+	out := map[string]*credential.Acquirer{}
+	for _, name := range cfg.Services() {
+		svc, _ := cfg.Service(name)
+		e := svc.Entry()
+		if e.Forge == nil || e.Auth != catalog.AuthGitHubApp {
+			continue
+		}
+		names := append([]string(nil), e.Forge.RepositoryNames...)
+		key := appScopeKey(e.Forge.APIBase, e.Forge.Owner, names)
+		if old, ok := prev[name]; ok {
+			if sc, ok := old.Shared.(scopedCache); ok && sc.scope == key {
+				out[name] = old
+				continue
+			}
+		}
+		out[name] = &credential.Acquirer{
+			Material: store.Material,
+			Shared:   scopedCache{store, key},
+			Exchange: credential.ExchangeGitHubApp(e.Forge.APIBase, client,
+				func(string) []string { return names }),
+		}
+	}
+	return out
+}
+
+// appScopeKey digests what an app forge's installation token is minted for. A
+// token cached under a different scope must never be served: a narrowed
+// repository list would otherwise keep the broader token until it expired.
+func appScopeKey(apiBase, owner string, names []string) string {
+	sorted := append([]string(nil), names...)
+	sort.Strings(sorted)
+	sum := sha256.Sum256([]byte(apiBase + "\n" + owner + "\n" + strings.Join(sorted, "\n")))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// scopedCache keys the shared token cache by service and scope, so entries
+// written for an old scope are simply never read again and expire.
+type scopedCache struct {
+	inner credential.SharedCache
+	scope string
+}
+
+func (c scopedCache) key(service string) string { return service + ".scope-" + c.scope }
+
+func (c scopedCache) CachedToken(service string, early time.Duration) (string, time.Time, bool) {
+	return c.inner.CachedToken(c.key(service), early)
+}
+
+func (c scopedCache) CacheToken(service, token string, expires time.Time) error {
+	return c.inner.CacheToken(c.key(service), token, expires)
+}
+
+func (c scopedCache) LockRefresh(service string, wait time.Duration) (func(), bool) {
+	return c.inner.LockRefresh(c.key(service), wait)
+}
+
+// sharedCacheKey is the name a service's short-lived token is cached under:
+// scoped for an app forge, the bare service name for everything else.
+func sharedCacheKey(e *catalog.Entry, service string) string {
+	if e.Forge != nil && e.Auth == catalog.AuthGitHubApp {
+		return scopedCache{scope: appScopeKey(e.Forge.APIBase, e.Forge.Owner, e.Forge.RepositoryNames)}.key(service)
+	}
+	return service
+}
+
+// app returns the acquirer for a service whose catalogue auth is a GitHub App.
+func (a *acquirers) app(service string) *credential.Acquirer {
+	if acq, ok := a.forgeApp[service]; ok {
+		return acq
+	}
+	return a.githubApp
 }
 
 // effectiveAuth is the operation a stored credential actually performs.
@@ -125,7 +218,7 @@ func secretSource(cfg *policy.Config, store *credential.Store, acqs *acquirers) 
 		}
 		switch svc.Entry().Auth {
 		case catalog.AuthGitHubApp:
-			return acqs.githubApp.Token(context.Background(), service)
+			return acqs.app(service).Token(context.Background(), service)
 		case catalog.AuthOAuth2:
 			return acqs.oauth2.Token(context.Background(), service)
 		case catalog.AuthSigV4:

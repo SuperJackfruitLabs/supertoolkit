@@ -27,6 +27,13 @@ type ForgeInfo struct {
 	// the account a credential acts as. `stk verify` calls it.
 	IdentityPath string
 	Repositories []string
+	// APIBase is where an app grant exchanges its JWT, set only for auth: app.
+	APIBase string
+	// Owner and RepositoryNames split Repositories for an app grant: an
+	// installation belongs to one account, and GitHub restricts an
+	// installation token by repository name alone.
+	Owner           string
+	RepositoryNames []string
 }
 
 type providerDefaults struct {
@@ -57,6 +64,9 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 	if s.Name == "" {
 		return nil, fmt.Errorf("forge service needs a name")
 	}
+	if strings.Contains(s.Name, ".scope-") {
+		return nil, fmt.Errorf("forge %q: a service name may not contain \".scope-\", which names a scoped token cache entry", s.Name)
+	}
 	def, ok := forgeProviders[s.Provider]
 	if !ok {
 		return nil, fmt.Errorf("forge %q: unknown provider %q: known providers are %v", s.Name, s.Provider, Providers())
@@ -64,12 +74,18 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 	if err := checkHost(s.Host); err != nil {
 		return nil, fmt.Errorf("forge %q: %w", s.Name, err)
 	}
+	auth := AuthToken
 	switch s.Auth {
 	case "", "token":
 	case "app":
-		return nil, fmt.Errorf("forge %q: app auth arrives with the GitHub adapter; use auth: token", s.Name)
+		// A GitHub App is GitHub's construct; no other provider has an
+		// installation-token exchange to perform.
+		if s.Provider != "github" {
+			return nil, fmt.Errorf("forge %q: auth app is a GitHub App grant and provider %q has none; use auth: token", s.Name, s.Provider)
+		}
+		auth = AuthGitHubApp
 	default:
-		return nil, fmt.Errorf("forge %q: unknown auth %q: want token", s.Name, s.Auth)
+		return nil, fmt.Errorf("forge %q: unknown auth %q: want token or app", s.Name, s.Auth)
 	}
 	placement, field := BearerHeader, ""
 	switch s.Scheme {
@@ -88,6 +104,29 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 			return nil, fmt.Errorf("forge %q: repository %q must be owner/name", s.Name, r)
 		}
 	}
+	var owner, apiBase string
+	var names []string
+	if auth == AuthGitHubApp {
+		// An installation belongs to one account, so a token restricted to
+		// repositories can only name repositories of that account.
+		for _, r := range s.Repositories {
+			o, n, _ := strings.Cut(r, "/")
+			if owner != "" && o != owner {
+				return nil, fmt.Errorf("forge %q: auth app repositories must share one owner (an installation belongs to one account): got %q and %q", s.Name, owner, o)
+			}
+			owner = o
+			names = append(names, n)
+		}
+		// An installation token is sent as a bearer token; asking for another
+		// scheme is a contradiction, not a preference.
+		if s.Scheme == "token" {
+			return nil, fmt.Errorf("forge %q: auth app sends its installation token as a Bearer header; scheme token cannot be used with it", s.Name)
+		}
+		apiBase = "https://" + s.Host + "/api/v3"
+		if s.Host == "api.github.com" {
+			apiBase = "https://api.github.com"
+		}
+	}
 	preset := s.Preset
 	if preset == "" {
 		preset = "read"
@@ -98,6 +137,11 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 	prefix := s.APIPrefix
 	if prefix == "" {
 		prefix = def.apiPrefix
+		// GitHub Enterprise serves its API under /api/v3; only github.com has
+		// a dedicated API host. Without this every rule silently never matches.
+		if s.Provider == "github" && s.Host != "api.github.com" {
+			prefix = "/api/v3"
+		}
 	}
 	return &Entry{
 		Name:      s.Name,
@@ -105,12 +149,13 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 		EnvVar:    s.EnvVar,
 		Placement: placement,
 		Field:     field,
-		Auth:      AuthToken,
+		Auth:      auth,
 		RevokeAt:  "https://" + s.Host + "/user/settings/applications",
 		Forge: &ForgeInfo{
 			Provider: s.Provider, APIPrefix: prefix, Preset: preset,
 			IdentityPath: def.identityPath,
 			Repositories: append([]string(nil), s.Repositories...),
+			APIBase:      apiBase, Owner: owner, RepositoryNames: names,
 		},
 	}, nil
 }

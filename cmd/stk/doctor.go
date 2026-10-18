@@ -182,29 +182,7 @@ func childEnvForLeakCheck() []string {
 	return childEnv(cfg, "http://127.0.0.1:0", dir+"/ca.pem")
 }
 
-func cmdDoctor() error {
-	checks := doctorChecks()
-	bad := 0
-	for _, c := range checks {
-		fmt.Println(c)
-		if !c.ok && !c.warn {
-			bad++
-		}
-	}
-	fmt.Println()
-	if probe := probeCurl(); probe.label != "" {
-		fmt.Println(probe)
-		if !probe.ok && !probe.warn {
-			bad++
-		}
-		fmt.Println()
-	}
-	if bad > 0 {
-		return fmt.Errorf("%d check(s) failed", bad)
-	}
-	fmt.Println("  the agent cannot reach a credential.")
-	return nil
-}
+func cmdDoctor(args []string) error { return runDoctor(args, os.Stdout) }
 
 // probeCurl proves the path end to end if curl is available, because a
 // configuration that looks right and does not work is the thing doctor exists

@@ -217,6 +217,211 @@ fingerprint or the name of the operation that replaced it — never the value, a
 there is a test for every scheme. The web UI (`stk ui`) reads the same file, so
 the two cannot disagree.
 
+## Running as a station service
+
+On a machine where an agent runs as one OS user, the broker can run as another,
+so the agent cannot read the sealed store, its key or the approvals. The agent
+still reaches the broker, over a loopback proxy it must present a key to.
+
+### `stk install`
+
+```
+sudo stk install --user stk --group stk --agent-uid 1001 [--agent-uid 1002] [--unit-name stk]
+```
+
+Linux with systemd only; on any other OS it refuses. It must run as root and
+needs at least one `--agent-uid` (without one the socket allowlist would be
+empty). `--dry-run` prints the plan and the unit and changes nothing. It
+creates, if absent:
+
+- a system user (no home, `nologin`) and, with `--group`, that group;
+- the state directory (default `/var/lib/stk`, `0700`), the runtime directory
+  (default `/run/stk`, `0700`, or `0750` with `--group`) and the config
+  directory (default `/etc/stk`, `0750 root:<group>`);
+- `stk-passphrase.key` in the state directory (`0400`, random, never printed);
+  the unit hands it to the service with systemd `LoadCredential`, so the
+  passphrase is not in an environment file;
+- `/etc/systemd/system/<unit-name>.service` (default `stk`, see
+  [Several instances on one host](#several-instances-on-one-host)), running `stk serve --proxy-listen
+  127.0.0.1:<port> --socket-mode … --allow-uid …` (default port 8899).
+
+If a config file already exists its mode is set to `0640 root:<group>`; install
+never creates policy. A second run changes nothing. It refuses to run when the
+state directory holds a store but no `stk-passphrase.key`, rather than add a new
+passphrase over a store sealed under another key. It does not add agent users
+to the group: with `--group`, you run `usermod -aG <group> <agent-user>`
+yourself. Then `systemctl enable --now <unit-name>` (the report prints the exact
+command).
+
+#### Several instances on one host
+
+To keep one station's agent from ever using another station's brokered
+credential, run one stk per station. Give each its own everything: user and
+group, `--state-dir`, `--runtime-dir`, `--config`, `--proxy-port`, `--agent-uid`
+and `--unit-name`:
+
+```
+sudo stk install --user stk-st2 --group stk-st2 --state-dir /var/lib/stk-st2 \
+  --runtime-dir /run/stk-st2 --config /etc/stk-st2/supertoolkit.yaml \
+  --proxy-port 8900 --agent-uid 2001 --unit-name stk-st2
+```
+
+`--unit-name NAME` (letters, digits, `_ . -`, at most 64, no `.service` suffix,
+no `@`; default `stk`) writes `/etc/systemd/system/NAME.service`; the default
+unit's bytes are unchanged. Each instance has its own sealed store, passphrase,
+proxy key and uid allowlist, and `stk doctor` run with that instance's
+`STK_HOME`/`STK_CONFIG`/`STK_SOCKET` (as in its unit) reports that instance's
+isolation only. The agent is given only its own proxy URL and key (`stk env`
+as that instance), never another's.
+
+Install refuses, before changing anything, to overwrite an existing unit at
+that name unless its `User=` and `STK_HOME` (the state directory) are the plan's
+own: a different user or state directory, or a file that is not an stk unit, is
+another instance, and the error says to pick a different `--unit-name`. The same
+plan re-run changes nothing; the same instance with, say, a new `--proxy-port`
+updates its unit. Install does not check that ports, runtime directories or
+state directories are unique across instances: choose them distinct.
+
+### The proxy, `stk serve --proxy-listen` and `stk env`
+
+`stk serve --proxy-listen <host:port>` (loopback addresses only) publishes the
+proxy at a fixed address. It creates `proxy.key` in the state directory (`0600`)
+and the broker then answers `407` to any `CONNECT` that does not carry it,
+before opening any tunnel. Without `--proxy-listen`, `serve` keeps its random
+loopback port and no key.
+
+`stk env [--json]` prints the variables a client needs: the proxy URL with the
+key as URL userinfo, the CA path, a placeholder for each configured service,
+`NODE_USE_ENV_PROXY=1` and `STK_BROKERED=1`. Run it as a user that can read the
+state directory.
+
+The proxy key is not a service credential. It gates *use of the broker* and
+nothing else: holding it lets a client use the routes policy already allows, and
+unlocks no secret. The agent is still never given a credential.
+
+Before printing the key, `stk env` verifies the listener recorded in
+`proxy.addr` is a live stk proxy: the recorded pid must be running, and a
+keyless `CONNECT` to a dummy host must be answered `407` with stk's own realm.
+A crashed `serve` leaves a stale `proxy.addr`, and another process may since
+have taken the port; the key is not handed to it. This is a check against
+accident, not against a local attacker who can bind the port while stk is not
+running.
+
+`stk run` is unchanged: its per-session loopback proxy is not authenticated.
+
+### `stk reload` and `SIGHUP`
+
+`stk reload [--json]` (or `kill -HUP` on `stk serve`) re-reads the policy file
+in the running service. A file that does not load keeps the old policy and
+reports why; a service removed from the file stops being brokered, and its
+stored credential is kept (`stk revoke` removes a credential).
+
+Policy is read per request, so a tunnel opened before a reload enforces the new
+rules on its next request (a request already in flight keeps the policy it
+started with). Which hosts are brokered is decided when a `CONNECT` is
+accepted: a request on an open tunnel whose service was removed, or whose host
+now belongs to another service, is refused with `403` rather than forwarded.
+
+### `stk verify`
+
+`stk verify <service> [--expect-login <login>] [--json]` makes one read call as
+the stored credential and prints the login it acts as, or the reason it failed,
+and exits non-zero on failure. It never prints a token. For a GitHub App grant
+it checks the app with a signed JWT and then reads the installation's
+repositories; it fails if any configured repository is not in the installation.
+
+### A GitHub App forge
+
+```yaml
+services:
+  acme-app:
+    kind: forge
+    provider: github
+    host: github.example.com     # GitHub Enterprise Server; api.github.com for github.com
+    auth: app
+    env_var: GH_TOKEN
+    repositories: [acme/widgets, acme/gadgets]   # one owner only
+    preset: issues
+```
+
+`auth: app` is GitHub-only and sends the installation token as a Bearer header
+(`scheme: token` is refused with it). The owner is taken from `repositories`,
+which must all belong to one account; the installation token is requested
+restricted to just those repositories. For any host other than `api.github.com`
+the API is served under `/api/v3`, which is the default `api_prefix`. Connect it
+with `app_id`, `installation_id` and `private_key` as `field=value` lines on
+stdin to `stk connect acme-app`, then `stk verify acme-app`.
+
+### `stk doctor`: isolation
+
+`stk doctor` also reports an isolation level for the agent uids it is told about
+(the top-level `agent_uids:` list in the policy file, plus any `--agent-uid`).
+The level never changes doctor's exit status. It is a claim about files, and it
+claims no more than was checked:
+
+| level | meaning |
+|---|---|
+| `separate-user` | every checked path passed every rule below, for every agent uid |
+| `same-user` | at least one reason was found; the reasons are listed |
+| `unknown` | no agent uid is configured, so nothing was checked |
+
+The rules, per path and per parent directory up to `/`: none is owned by an
+agent uid (an unknown owner counts against it); no secret-holding path (state
+directory, `*.cred`, `salt`, `machine.key`, `ca.key`, `handover.key`,
+`proxy.key`, `proxy.addr`, `stk-passphrase.key`, `audit.log`, `approvals`) has
+a group or other read or write bit (for a directory, any group or other bit),
+since agent groups are not known; no parent directory is
+group- or other-writable; no symlink leads outside the checked tree; a path that
+cannot be examined for a reason other than not existing is a reason. The socket
+may be group-accessible, and the policy file group-readable, by design. An agent
+uid of 0 is a reason.
+
+ACLs are examined **on Linux only**, by reading the POSIX ACL attributes: any
+ACL on a checked path or parent is a reason, and so is a filesystem that cannot
+say (no POSIX ACL support, NFSv4, some FUSE and overlay mounts). On macOS and
+other systems ACLs cannot be read, so the report always carries that reason and
+**can never be `separate-user`**.
+
+When doctor runs as root it also makes the access attempt: it re-runs itself as
+each agent uid and tries to open the secret-holding paths. Anything that opens
+is a reason and forces `same-user`; the method then reads `mode-bits+access`
+rather than `mode-bits`. As non-root that step is skipped and the method says so.
+
+### `stk doctor --probe`
+
+`stk doctor --probe` starts a real broker and a stand-in provider at a hostname
+that cannot resolve, and drives curl, python3, node and a default Go client
+through it (a client not installed here is `missing`). Each reports one of
+`honoured`, `bypassed`, `refused-ca`, `missing` or `failed`.
+
+The exit status is non-zero when any client is `bypassed` (it never asked the
+broker) or `failed`, and also when no client was `honoured` (all `missing`, or
+only `refused-ca`): the error is "no client was exercised; nothing is proven".
+`refused-ca` (loud, safe) and `missing` do not fail it when at least one client
+was honoured.
+
+`--json` writes a JSON array to stdout and nothing else; the table goes to
+stderr. The exit status is the same as without `--json`:
+
+```
+[
+  {
+    "client": "curl",
+    "outcome": "honoured",
+    "detail": "the provider received the substituted credential"
+  }
+]
+```
+
+If the probe rig cannot start, stdout is empty, the error is on stderr and the
+exit status is non-zero. The ephemeral proxy key is removed from every `detail`.
+
+`--with-proxy-key` runs the probe through a broker that requires a proxy key,
+sent in the proxy URL. A client that drops the URL's credentials gets a `407`
+and is reported `failed` with the detail `proxy credential not honoured`. The
+probe still only tests clients as run from this environment; see
+[docs/limitations.md](docs/limitations.md).
+
 ## Install
 
 Not yet released. Build from source:

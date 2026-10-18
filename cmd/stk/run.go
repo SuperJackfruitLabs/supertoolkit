@@ -22,6 +22,19 @@ type session struct {
 	// childEnvFor builds the environment for one fronted server: the same
 	// proxy and CA as any other child, with that server's placeholder.
 	childEnvFor func(server string) []string
+	// addr is where the proxy listens.
+	addr string
+}
+
+// brokerOpts are the choices `stk serve --proxy-listen` adds. The zero value is
+// what `stk run` has always done: a random loopback port and no key.
+type brokerOpts struct {
+	// Listen is a loopback host:port; empty means 127.0.0.1:0.
+	Listen string
+	// Key, when set, is demanded of every proxy client.
+	Key string
+	// Live, when set, is the shared policy holder (stk serve).
+	Live *liveConfig
 }
 
 // startBroker brings up a broker on a loopback port.
@@ -30,6 +43,11 @@ type session struct {
 // daemon on a Unix socket, with its own OS user, is Phase 1 — this is enough to
 // prove the invariant and avoids inventing lifecycle management first.
 func startBroker(cfg *policy.Config, store *credential.Store, dir string) (*session, error) {
+	return startBrokerWith(cfg, store, dir, brokerOpts{})
+}
+
+// startBrokerWith is startBroker with a chosen listen address and proxy key.
+func startBrokerWith(cfg *policy.Config, store *credential.Store, dir string, o brokerOpts) (*session, error) {
 	// One CA per install, not per session: a fresh one here overwrote the
 	// certificate every other session and `stk init` had told clients to trust.
 	ca, err := broker.LoadOrCreateCA(dir, "supertoolkit local CA", 365*24*time.Hour)
@@ -42,31 +60,46 @@ func startBroker(cfg *policy.Config, store *credential.Store, dir string) (*sess
 	}
 	// Every brokered effect is recorded durably, so `stk audit` and the web UI
 	// can answer what happened after this process is gone.
-	obs, err := newObserver(cfg, dir, "run")
+	live := o.Live
+	if live == nil {
+		live = newLive(cfg, store, &http.Client{Timeout: 60 * time.Second})
+	}
+	obs, err := newObserverLive(live, dir, "run")
 	if err != nil {
 		return nil, err
 	}
-	acqs := newAcquirers(cfg, store, &http.Client{Timeout: 60 * time.Second})
 	b, err := broker.New(broker.Options{
 		Config: cfg, CA: ca,
 		// The only inbound path for a secret, and the one place every scheme
-		// is dispatched: two of them acquire a short-lived token first.
-		Secrets:  secretSource(cfg, store, acqs),
+		// is dispatched: two of them acquire a short-lived token first. It
+		// reads the policy in force per call, so a reload reaches it.
+		Secrets: func(service string) (string, error) {
+			st := live.state()
+			return secretSource(st.cfg, store, st.acqs)(service)
+		},
 		Observer: obs,
+		ProxyKey: o.Key,
 	})
 	if err != nil {
 		return nil, err
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	listen := o.Listen
+	if listen == "" {
+		listen = "127.0.0.1:0"
+	}
+	ln, err := net.Listen("tcp", listen)
 	if err != nil {
 		return nil, err
 	}
 	go b.Serve(ln)
 
 	proxy := "http://" + ln.Addr().String()
+	if o.Key != "" {
+		proxy = broker.ProxyURL(ln.Addr().String(), o.Key)
+	}
 	env := childEnv(cfg, proxy, caPath)
 	forServer := func(name string) []string {
-		srv, ok := cfg.Server(name)
+		srv, ok := live.config().Server(name)
 		if !ok {
 			return env
 		}
@@ -76,13 +109,19 @@ func startBroker(cfg *policy.Config, store *credential.Store, dir string) (*sess
 		}
 		return broker.ChildEnv(broker.OSEnv(), proxy, caPath, ph, srv.Env)
 	}
-	return &session{broker: b, env: env, stop: func() { ln.Close() }, childEnvFor: forServer}, nil
+	return &session{broker: b, env: env, stop: func() { ln.Close() }, childEnvFor: forServer, addr: ln.Addr().String()}, nil
 }
 
 // childEnv builds the environment for a command run under `stk run`, using the
 // shared implementation so the placeholder, proxy and CA rules cannot drift
 // from the ones a fronted MCP server gets.
 func childEnv(cfg *policy.Config, proxyURL, caPath string) []string {
+	return childEnvFrom(broker.OSEnv(), cfg, proxyURL, caPath)
+}
+
+// childEnvFrom is childEnv over a chosen base. `stk env` passes nil so that it
+// prints only what the broker sets, not the parent's environment.
+func childEnvFrom(base []string, cfg *policy.Config, proxyURL, caPath string) []string {
 	placeholders := map[string]string{}
 	for _, name := range cfg.Services() {
 		svc, _ := cfg.Service(name)
@@ -96,7 +135,7 @@ func childEnv(cfg *policy.Config, proxyURL, caPath string) []string {
 			placeholders[srv.EnvVar] = broker.Placeholder(name)
 		}
 	}
-	return broker.ChildEnv(broker.OSEnv(), proxyURL, caPath, placeholders, nil)
+	return broker.ChildEnv(base, proxyURL, caPath, placeholders, nil)
 }
 
 func indexByte(s string, b byte) int {

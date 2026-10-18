@@ -138,7 +138,7 @@ services:
 	}}
 	acq := &credential.Acquirer{
 		Material: store.Material,
-		Exchange: credential.ExchangeGitHubApp("https://api.github.com", client),
+		Exchange: credential.ExchangeGitHubApp("https://api.github.com", client, nil),
 	}
 
 	q, qerr := approval.Open(t.TempDir(), time.Minute)

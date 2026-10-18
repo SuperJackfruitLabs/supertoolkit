@@ -28,7 +28,12 @@ func usage() {
   stk handover key|seal|open  move a credential to a broker that has no browser
   stk run -- <command>        run a command with the broker in front of it
   stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
   stk mcp install <host>       print the client configuration (no secret in it)
   stk verify <service> [--expect-login <login>] [--json]
                               prove a stored credential works, and as whom
@@ -42,6 +47,9 @@ func usage() {
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
   stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
 The agent never holds a credential. Known services: `)
@@ -66,7 +74,13 @@ func main() {
 	case "run":
 		err = cmdRun(os.Args[2:])
 	case "serve":
-		err = cmdServe()
+		err = cmdServe(os.Args[2:])
+	case "reload":
+		err = cmdReload(os.Args[2:])
+	case "install":
+		err = cmdInstall(os.Args[2:])
+	case "env":
+		err = cmdEnv(os.Args[2:])
 	case "mcp":
 		err = cmdMCP(os.Args[2:])
 	case "verify":
@@ -80,11 +94,7 @@ func main() {
 	case "ui":
 		err = cmdUI(os.Args[2:])
 	case "doctor":
-		if len(os.Args) > 2 && os.Args[2] == "--probe" {
-			err = cmdProbe()
-		} else {
-			err = cmdDoctor()
-		}
+		err = cmdDoctor(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("stk", version)
 	case "help", "--help", "-h":

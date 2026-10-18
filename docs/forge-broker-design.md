@@ -1,7 +1,7 @@
 # Forge broker — design
 
 **Date:** 2026-10-17
-**Status:** slice 1 implemented (forge service, verify, atomic replace, sealing from stdin; see `docs/plan-forge-broker-1.md`). Slice 2 (request rules: presets enforced, operator `rules:`, body conditions, GraphQL denied by default, rule ids in the audit ledger) is implemented. Not yet built: the fixed authenticated listener and `stk env`, `stk install` and isolation reporting, `auth: app` verify, `stk reload` and audit labels, harness probes, CA name constraints, Bitbucket presets.
+**Status:** slices 1 to 3 implemented: forge service, verify, atomic replace, sealing from stdin (slice 1); request rules, presets, GraphQL denied by default, rule ids in the audit ledger (slice 2); the optional proxy key, `stk serve --proxy-listen` and `stk env`, `stk install` (Linux/systemd), doctor isolation reporting, `auth: app` grants and their verify, `stk reload`/SIGHUP, audit labels, and `stk doctor --probe` exiting non-zero on a bypass with `--json` and `--with-proxy-key` (see `docs/plan-forge-broker-3.md`). Not yet built: per-harness bypass probes, CA name constraints, Bitbucket presets, the MCP/daemon `SchemeHeader` guard test, and authenticating `stk run`'s per-session loopback proxy.
 **Companion:** agentpod `docs/superpowers/specs/2026-10-17-forge-api-access-design.md`
 (issue #725). That document says *what the fleet needs and why*; this one says
 what stk must become to provide it.
@@ -111,8 +111,14 @@ rules:
 - **Prefix and query.** Requests are matched on the path after `api_prefix`.
   A request outside the prefix on an intercepted host (web pages, `/login`,
   git smart-HTTP) is denied. The query string is ignored for matching and
-  forwarded unchanged; a rule cannot depend on it. GitHub Enterprise sets
+  forwarded unchanged; a rule cannot depend on it. A `provider: github` forge
+  on any host other than `api.github.com` (GitHub Enterprise) defaults to
   `api_prefix: /api/v3`; github.com has host `api.github.com` and no prefix.
+  An explicit `api_prefix` always wins.
+- **One service per host.** A forge on `api.github.com` (token or `auth: app`)
+  cannot sit in the same policy file as the built-in `github` or `github-app`
+  service: each host is brokered by exactly one service. `auth: app` sends its
+  installation token as Bearer; `scheme: token` is refused with it.
 - **GraphQL is denied by default** because it cannot be rule-checked
   (mutations hide in the body). `allow_graphql: true` is an explicit,
   documented opt-in for a service. The endpoint remains subject to the path
@@ -169,7 +175,10 @@ rules:
   creates the user, directories with correct modes, the service unit, and
   loads the sealed-store passphrase from the service manager's credential store
   (`LoadCredential`), so `STK_PASSPHRASE` is not on disk beside the ciphertext.
-  A macOS launchd variant is optional.
+  A macOS launchd variant is optional. `--unit-name` names the unit, so one
+  host can run several instances (one per station) with their own user, state,
+  runtime and config directories, proxy port and unit; install refuses to
+  overwrite another instance's unit.
 - `stk doctor` reports isolation level: `separate-user` when the store, key and
   approval commands are unreachable by the agent's uid; `same-user` otherwise.
   That string is what agentpod records on the grant. It claims only what it

@@ -78,6 +78,21 @@ type Service struct {
 	// ruleSet and allowGraphQL are set only for a forge service.
 	ruleSet      *rules.Set
 	allowGraphQL bool
+	// labels are operator-set audit labels, set only for a forge service.
+	labels map[string]string
+}
+
+// Labels returns a copy of the service's audit labels, nil when none are set
+// (always nil for a built-in).
+func (s *Service) Labels() map[string]string {
+	if len(s.labels) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(s.labels))
+	for k, v := range s.labels {
+		out[k] = v
+	}
+	return out
 }
 
 // Rules is the request rule set of a forge service, nil for a built-in.
@@ -163,6 +178,8 @@ type Config struct {
 	// servers are MCP servers we did not write, fronted as categories.
 	servers map[string]*Server
 	notify  Notify
+	// agentUIDs are the uids the agents run as (`agent_uids:`).
+	agentUIDs []int
 }
 
 // Notify returns the configured notification routes.
@@ -225,10 +242,12 @@ type file struct {
 		OAuth2       oauth2Override    `yaml:"oauth2"`
 		Rules        []yaml.Node       `yaml:"rules"`
 		AllowGraphQL *bool             `yaml:"allow_graphql"`
+		Labels       yaml.Node         `yaml:"labels"`
 	} `yaml:"services"`
-	Profiles map[string]map[string][]string `yaml:"profiles"`
-	Servers  map[string]serverFile          `yaml:"servers"`
-	Notify   notifyFile                     `yaml:"notify"`
+	Profiles  map[string]map[string][]string `yaml:"profiles"`
+	Servers   map[string]serverFile          `yaml:"servers"`
+	Notify    notifyFile                     `yaml:"notify"`
+	AgentUIDs []int                          `yaml:"agent_uids"`
 }
 
 // ruleFile is one `rules:` item: exactly one of allow or deny.
@@ -258,6 +277,47 @@ func decodeRule(n *yaml.Node) (ruleFile, error) {
 		return rf, err
 	}
 	return rf, nil
+}
+
+// labelKeys are the only audit labels a forge service may carry.
+var labelKeys = map[string]bool{"station": true, "principal": true, "grant": true}
+
+// maxLabelLen bounds a label value, in bytes.
+const maxLabelLen = 128
+
+// decodeLabels reads a `labels:` mapping. Labels are copied onto every audit
+// row, so they are held to what a terminal can print safely and a reader can
+// trust: three known keys, short string values, no control characters.
+func decodeLabels(n *yaml.Node) (map[string]string, error) {
+	if n.IsZero() || n.Kind == 0 {
+		return nil, nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("want a mapping of station, principal and grant")
+	}
+	out := map[string]string{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		if !labelKeys[k.Value] {
+			return nil, fmt.Errorf("unknown key %q (line %d): want station, principal or grant", k.Value, k.Line)
+		}
+		if v.Kind != yaml.ScalarNode || (v.Tag != "!!str" && v.Tag != "!!int" && v.Tag != "!!float" && v.Tag != "!!bool") {
+			return nil, fmt.Errorf("%s: want a string value", k.Value)
+		}
+		if len(v.Value) > maxLabelLen {
+			return nil, fmt.Errorf("%s: value is %d bytes, at most %d allowed", k.Value, len(v.Value), maxLabelLen)
+		}
+		for _, r := range v.Value {
+			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+				return nil, fmt.Errorf("%s: value contains a control character", k.Value)
+			}
+		}
+		out[k.Value] = v.Value
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 // buildRules is the preset's rules followed by the operator's.
@@ -376,6 +436,12 @@ func Load(path string) (*Config, error) {
 		servers:   map[string]*Server{},
 		notify:    Notify{Webhook: f.Notify.Webhook, File: f.Notify.File},
 	}
+	for _, u := range f.AgentUIDs {
+		if u < 0 {
+			return nil, fmt.Errorf("%s: agent_uids: %d is not a uid", path, u)
+		}
+	}
+	cfg.agentUIDs = f.AgentUIDs
 	for name, sf := range f.Services {
 		var entry *catalog.Entry
 		switch sf.Kind {
@@ -398,8 +464,8 @@ func Load(path string) (*Config, error) {
 		default:
 			return nil, fmt.Errorf("%s: service %q: unknown kind %q: want forge, or leave kind out for a built-in", path, name, sf.Kind)
 		}
-		if entry.Forge == nil && (len(sf.Rules) > 0 || sf.AllowGraphQL != nil) {
-			return nil, fmt.Errorf("%s: service %q: rules and allow_graphql apply only to a `kind: forge` service", path, name)
+		if entry.Forge == nil && (len(sf.Rules) > 0 || sf.AllowGraphQL != nil || !sf.Labels.IsZero()) {
+			return nil, fmt.Errorf("%s: service %q: rules, allow_graphql and labels apply only to a `kind: forge` service", path, name)
 		}
 		svc := &Service{
 			Name: name, Scopes: sf.Scopes, explicit: map[string]Action{}, entry: entry,
@@ -418,6 +484,11 @@ func Load(path string) (*Config, error) {
 			}
 			svc.ruleSet = set
 			svc.allowGraphQL = sf.AllowGraphQL != nil && *sf.AllowGraphQL
+			labels, err := decodeLabels(&sf.Labels)
+			if err != nil {
+				return nil, fmt.Errorf("%s: service %q labels: %w", path, name, err)
+			}
+			svc.labels = labels
 		}
 		for cap, want := range sf.Capabilities {
 			a, err := parseAction(want)
@@ -465,3 +536,8 @@ func Load(path string) (*Config, error) {
 	}
 	return cfg, nil
 }
+
+// AgentUIDs returns the OS uids agents run as, from the top-level
+// `agent_uids:` key. `stk doctor` checks that none of them can reach the
+// store; with none configured it states that it does not know.
+func (c *Config) AgentUIDs() []int { return append([]int(nil), c.agentUIDs...) }
