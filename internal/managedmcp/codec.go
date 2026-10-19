@@ -8,6 +8,44 @@ import (
 	"unicode/utf8"
 )
 
+// ValidJSON rejects replacement of malformed UTF-8 or unpaired surrogates at
+// the managed stdio boundary, including within separately decoded arguments.
+func ValidJSON(body []byte) bool { return json.Valid(body) && wireScalars(body) }
+
+func exactFields(fields map[string]json.RawMessage, names ...string) bool {
+	if fields == nil || len(fields) != len(names) {
+		return false
+	}
+	for _, name := range names {
+		if _, ok := fields[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// DecodeArguments keeps JSON null distinct from an empty string. Go's ordinary
+// map[string]string decoder otherwise silently coerces null property values.
+func DecodeArguments(body []byte) (map[string]string, error) {
+	if len(body) > 65536 || !ValidJSON(body) {
+		return nil, refused()
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(body, &raw) != nil || raw == nil || len(raw) > 64 {
+		return nil, refused()
+	}
+	out := make(map[string]string, len(raw))
+	for key, value := range raw {
+		wire := bytes.TrimSpace(value)
+		var text string
+		if !nameShape.MatchString(key) || len(wire) == 0 || wire[0] != '"' || json.Unmarshal(wire, &text) != nil || len(text) > 16384 {
+			return nil, refused()
+		}
+		out[key] = text
+	}
+	return out, nil
+}
+
 // DecodeRequest validates shape only. Fresh execution authority is a separate
 // owner check at dispatch; a well-formed root fingerprint does not grant it.
 func DecodeRequest(body []byte) (Request, error) {
@@ -16,8 +54,15 @@ func DecodeRequest(body []byte) (Request, error) {
 		return out, refused()
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(body, &fields) != nil || len(fields) != 9 {
+	if json.Unmarshal(body, &fields) != nil || !exactFields(fields, "version", "root_digest", "invocation_id", "profile_digest", "service", "action", "args", "approval", "expires_at_ms") {
 		return out, refused()
+	}
+	approval := bytes.TrimSpace(fields["approval"])
+	if !bytes.Equal(approval, []byte("true")) && !bytes.Equal(approval, []byte("false")) {
+		return out, refused()
+	}
+	if _, err := DecodeArguments(fields["args"]); err != nil {
+		return out, err
 	}
 	// Alias avoids recursively invoking Request.UnmarshalJSON below.
 	type wireRequest Request

@@ -424,6 +424,12 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return Parse(path, raw)
+}
+
+// Parse uses bytes already admitted by an owner. path is diagnostic context;
+// parsing never reopens the file between its hash check and policy construction.
+func Parse(path string, raw []byte) (*Config, error) {
 	var f file
 	if err := yaml.Unmarshal(raw, &f); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)

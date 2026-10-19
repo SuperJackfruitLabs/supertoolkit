@@ -4,6 +4,7 @@ package managedmcp
 
 import (
 	"os"
+	"sync"
 	"syscall"
 )
 
@@ -17,6 +18,35 @@ func privateDirectory(path string) error {
 		return refused()
 	}
 	return nil
+}
+func privateSocket(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSocket == 0 || !privateInfo(info) {
+		return refused()
+	}
+	return nil
+}
+
+// OwnProcess prevents two live managed brokers sharing one state directory.
+// It does not replace the parent's durable process identity/stop proof and does
+// not authorize FenceInterrupted on its behalf.
+func OwnProcess(root string) (func(), error) {
+	if !canonicalPath(root) || privateDirectory(root) != nil {
+		return nil, refused()
+	}
+	path := root + string(os.PathSeparator) + "managed-owner-v1.lock"
+	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0600)
+	if err != nil {
+		return nil, refused()
+	}
+	f := os.NewFile(uintptr(fd), path)
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || !privateInfo(info) || info.Sys().(*syscall.Stat_t).Nlink != 1 || syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		f.Close()
+		return nil, refused()
+	}
+	var once sync.Once
+	return func() { once.Do(func() { _ = syscall.Flock(fd, syscall.LOCK_UN); _ = f.Close() }) }, nil
 }
 func readPrivateFile(path string, limit int64) ([]byte, error) {
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)

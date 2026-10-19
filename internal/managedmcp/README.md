@@ -1,7 +1,10 @@
 # Managed broker invocation boundary
 
-This internal component is preparation for the managed MCP entry point. It is not
-connected to `stk mcp`, the legacy approval API, or a model-facing executor yet.
+The versioned `stk managed-mcp-v1` command now uses this ledger with native
+broker dispatch, private manifest admission and a local owner verifier. Legacy
+`stk mcp` and its approval API remain separate. Salaam has not yet connected this
+command to its parent controller or durable process recovery. No station
+capability is enabled by these component proofs.
 
 `Request` binds one invocation to an opaque execution-root fingerprint, reviewed
 profile, exact service/action/arguments, broker approval requirement and bounded
@@ -29,10 +32,19 @@ component; it holds no credential store and cannot redact unknown credentials.
 The canonical producer corpus is `testdata/managed-mcp-v1.json`, mirrored in
 Salaam's `test/fixtures/toolkit-managed-mcp-v1.json`. Both consumers check shape
 and canonical hashes, including Unicode scalars and rejected byte bounds. Shape
-conformance is separate from authority admission. Managed stdio configuration,
-broker policy admission, the private live owner verifier and the daemon/controller
-integration remain required before this becomes an executable capability.
+conformance is separate from authority admission. The versioned command admits
+private configuration and derives approval from its
+actual native policy. The private owner protocol is implemented on the broker
+side. Its Salaam consumer, actual authority/permission registry and durable
+process supervision/recovery remain required before exposing this to a model
+through Salaam.
 
 The process proofs kill an actual child before send, after local HTTP acceptance
 and after result storage. They prove no redispatch and retained uncertainty with
 synthetic authority and effects; they do not exercise a deployed broker/provider.
+
+The managed command is supervisor input, not a replacement for standalone MCP
+configuration. See [the private owner protocol](../../docs/managed-mcp.md). Local
+Unix/API fixtures exercise actual broker dispatch, credential acquisition,
+redaction and cancellation with synthetic credentials. They are not a deployed
+Accounts, station, Library or provider acceptance result.
