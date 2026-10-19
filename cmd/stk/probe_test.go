@@ -216,6 +216,7 @@ func TestClassifyKeyedDoesNotMistakePortDigits(t *testing.T) {
 		t.Errorf("honoured output with 407 text demoted: %+v", got)
 	}
 	for _, o := range []string{"curl: (56) CONNECT tunnel failed, response 407",
+		"curl: (56) Received HTTP code 407 from proxy after CONNECT",
 		"Proxy Authentication Required", "statusCode=407 tunneling: proxy authentication required"} {
 		if g := rig.classify("c", o, errors.New("x")); g.detail != "proxy credential not honoured" {
 			t.Errorf("%q -> %+v", o, g)

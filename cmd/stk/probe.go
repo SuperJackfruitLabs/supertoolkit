@@ -386,7 +386,7 @@ func (r *probeRig) redact(s string) string {
 
 // proxyAuthRequired matches a client's own report of a 407 from the proxy,
 // never bare digits (a port such as 40712 contains them).
-var proxyAuthRequired = regexp.MustCompile(`(?i)(\bresponse 407\b|\bstatuscode=407\b|\b407 proxy authentication required\b|proxy authentication required)`)
+var proxyAuthRequired = regexp.MustCompile(`(?i)(\bresponse 407\b|\breceived http code 407 from proxy\b|\bstatuscode=407\b|\b407 proxy authentication required\b|proxy authentication required)`)
 
 // classify is the package classify plus the one verdict only a keyed broker
 // can produce: a 407 means the client dropped the proxy URL's userinfo. The
