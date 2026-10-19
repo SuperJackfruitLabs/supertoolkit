@@ -95,8 +95,8 @@ The verifier never returns provider credentials to the parent or the model.
 
 The closed protocol is MCP `2025-06-18` with the four progressive meta-tools.
 `capabilities.experimental["salaam.dev/toolkit"]` advertises version, bounded
-grants and native kinds. `lifecycleControl` remains false until the separately
-authorized journal recovery interface exists. These compatibility flags grant no
+grants, native kinds and the separate `lifecycleControl` interface described
+below. These compatibility flags grant no
 authority. Native action discovery exposes `kind` (`read`, `write`, `destructive`
 or `unknown`) separately from `policy` (`agent` or `approval` for visible actions).
 An explicitly agent-callable write is still a write; the parent must never infer
@@ -112,6 +112,80 @@ bounded and sanitized before durable receipt storage and model output. Upstream
 headers, trailers, status reasons and raw errors are not exposed. Redaction covers
 actual injected values and common encodings; it does not defeat deliberately
 arbitrary transformations by a malicious upstream.
+
+## Private supervisor recovery
+
+`stk managed-control-v1 --manifest ABSOLUTE_PATH --sha256 SHA256` accepts one
+closed JSON control on stdin (at most 4 KiB, followed by EOF) and emits one
+bounded JSON result (at most 2 MiB). Failure exits unsuccessfully with a fixed
+diagnostic and no result. It does not load ambient configuration, open a
+provider credential store, read a passphrase, acquire a credential or execute a
+native action. The process has a ten-second bound; owner IPC has a five-second
+bound. An older binary rejects this command rather than using legacy approval
+or effect paths.
+
+The private control manifest has exactly these fields:
+
+```json
+{"version":1,"root_digest":"...","profile_digest":"...","workspace":"/old/workspace","state_dir":"/private/root-state","owner_socket":"/private/owner.sock","owner_key":"..."}
+```
+
+All fingerprints and the private key are 64 lowercase hexadecimal digits. The
+manifest, existing state and socket must be canonical private owner paths outside
+the admitted old workspace. The old workspace itself may have been removed.
+Provider configuration and credential rotation do not prevent recovery. The
+parent must bind the exact manifest and executable to its actual durable resource
+registry and use a separately scoped cleanup-role key; these bytes must never be
+supplied by a model or exposed in its environment. The native execution manifest
+and the control manifest are distinct closed shapes.
+
+The control shape is `Control` in `internal/managedmcp/control.go`; its canonical
+corpus is `testdata/managed-control-v1.json`, mirrored in Salaam. Every control
+has explicit fields `version`, `action`, `root_digest`, `profile_digest`,
+`invocation_id`, `request_digest`, `stop_proof_digest` and `decision_id`.
+`revoke` requires empty invocation/request/decision fields. Other actions require
+an exact saved invocation and request digest. Only `acknowledge` accepts a
+nonempty, exact resolution decision ID. Every action requires a stop-proof digest.
+No invocation/decision field can be omitted or replaced with JSON null.
+
+Before exposing a receipt or changing the journal, the command acquires the same
+exclusive process lock as the managed native broker, then sends the control to
+`POST /managed-toolkit/v1/control` over its private owner socket with Bearer
+authentication. The closed reply is `{version:1, control_digest, decision}`;
+only `allowed` for the exact canonical control digest proceeds. A free process
+lock is insufficient: the **actual parent** must confirm its durable predecessor
+process identity/group and resource-stop evidence for `stop_proof_digest`, saved
+root/profile access and cleanup role. This check remains possible after work
+authority expires or is revoked, and never grants another product effect.
+For acknowledgement it must also verify the exact operator or external-owner
+resolution decision, bound to this uncertain operation. Synthetic owner callbacks
+used in component tests do not implement Salaam's real authority controller.
+
+| Action | Durable result |
+| --- | --- |
+| `inspect` | Returns the exact saved receipt and persisted root revocation flag without a new effect grant. |
+| `fence` | Converts an interrupted `claiming`/`dispatching` receipt to `outcome_unknown` after the predecessor stop proof. Other saved outcomes remain unchanged. |
+| `cancel` | Persists cancellation for the exact invocation; an already sent effect stays uncertain. |
+| `revoke` | Persists root revocation before cancelling that root's nonterminal records. It does not restore work authority. |
+| `acknowledge` | Converts only `outcome_unknown` to `outcome_acknowledged`, with immutable `resolution_id` and `resolution_stop_digest`. Repeating that exact resolution is idempotent. It remains a terminal non-success receipt and is never executed again. |
+
+An acknowledged uncertainty no longer fences different invocations under that
+root, but cannot clear root revocation or replace the parent's own operation
+fence. The parent must finish its separately durable resolution before granting
+new work. Acknowledgement does not verify an external effect, manufacture a
+returned result or turn cancellation into success. Unknown or unrecorded process
+identity must remain unconfirmed; neither an empty process map nor this command's
+free lock substitutes for a predecessor-stop receipt.
+
+The new receipt state is deliberately rejected by older ledger readers. Pin and
+review the executable before admission; do not run different broker versions over
+the same state concurrently or silently downgrade after a new receipt is written.
+The compiled CLI proof uses an actual native broker process, confirms refusal
+while it is alive, observes its SIGKILL death, checks a separate owner denial,
+and then recovers a saved receipt after deleting the disposable provider config,
+store, passphrase and workspace. It uses synthetic authority and no live API.
+Salaam's actual controller/resource registry and station integration remain
+required before enabling this capability in a model-facing station.
 
 `returned` means a complete protocol response, not verified product work. Its
 native result carries `protocol_result`, `is_error`, HTTP `status` and safe `body`.

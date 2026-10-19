@@ -24,15 +24,16 @@ import (
 type State string
 
 const (
-	Prepared         State = "prepared"
-	AwaitingDecision State = "awaiting_decision"
-	Approved         State = "approved"
-	Denied           State = "denied"
-	Claiming         State = "claiming"
-	Dispatching      State = "dispatching"
-	Returned         State = "returned"
-	OutcomeUnknown   State = "outcome_unknown"
-	Cancelled        State = "cancelled"
+	Prepared            State = "prepared"
+	AwaitingDecision    State = "awaiting_decision"
+	Approved            State = "approved"
+	Denied              State = "denied"
+	Claiming            State = "claiming"
+	Dispatching         State = "dispatching"
+	Returned            State = "returned"
+	OutcomeUnknown      State = "outcome_unknown"
+	OutcomeAcknowledged State = "outcome_acknowledged"
+	Cancelled           State = "cancelled"
 )
 
 type Request struct {
@@ -54,6 +55,8 @@ type Receipt struct {
 	// Returned is a protocol outcome, never verification of a product effect.
 	Result                string `json:"result,omitempty"`
 	CancellationRequested bool   `json:"cancellation_requested,omitempty"`
+	ResolutionID          string `json:"resolution_id,omitempty"`
+	ResolutionStopDigest  string `json:"resolution_stop_digest,omitempty"`
 }
 type record struct {
 	Version int     `json:"version"`
@@ -145,8 +148,18 @@ func (l *Ledger) read(id string) (record, error) {
 		return r, refused()
 	}
 	switch r.Receipt.State {
-	case Prepared, AwaitingDecision, Approved, Denied, Claiming, Dispatching, Returned, OutcomeUnknown, Cancelled:
+	case Prepared, AwaitingDecision, Approved, Denied, Claiming, Dispatching, Returned, OutcomeUnknown, OutcomeAcknowledged, Cancelled:
 	default:
+		return r, refused()
+	}
+	if len(r.Receipt.Result) > 256*1024 || (r.Receipt.State == Returned && r.Receipt.Result == "") || (r.Receipt.State != Returned && r.Receipt.Result != "") {
+		return r, refused()
+	}
+	if r.Receipt.State == OutcomeAcknowledged {
+		if !nameShape.MatchString(r.Receipt.ResolutionID) || !hashShape.MatchString(r.Receipt.ResolutionStopDigest) || r.Receipt.Result != "" {
+			return r, refused()
+		}
+	} else if r.Receipt.ResolutionID != "" || r.Receipt.ResolutionStopDigest != "" {
 		return r, refused()
 	}
 	return r, nil
@@ -233,7 +246,7 @@ func (l *Ledger) Decide(id, decisionID string, allow bool) (Receipt, error) {
 	return out, err
 }
 func terminal(s State) bool {
-	return s == Returned || s == OutcomeUnknown || s == Cancelled || s == Denied
+	return s == Returned || s == OutcomeUnknown || s == OutcomeAcknowledged || s == Cancelled || s == Denied
 }
 
 func (l *Ledger) rootHasUnresolved(root, exceptID string) (bool, error) {

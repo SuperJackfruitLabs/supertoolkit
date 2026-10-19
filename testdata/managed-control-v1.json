@@ -1,0 +1,278 @@
+{
+  "version": 1,
+  "owner": "supertoolkit managed-control-v1",
+  "scope": "shape and canonical fingerprints only; stop proof and authority verified separately by actual supervisor",
+  "controls": [
+    {
+      "name": "inspect",
+      "accept": true,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      },
+      "control_digest": "0404005035dbcfd22f2a6d6532cee40df9ca81b639a97903ffc5fde2bd61644f"
+    },
+    {
+      "name": "fence",
+      "accept": true,
+      "value": {
+        "version": 1,
+        "action": "fence",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      },
+      "control_digest": "2d42a6cd78d7917f7a434712590bbec285d8e3aaac934bb03db5b48b8372886e"
+    },
+    {
+      "name": "cancel",
+      "accept": true,
+      "value": {
+        "version": 1,
+        "action": "cancel",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      },
+      "control_digest": "50e77ef5744ee80c4cef7de90f3535543f7abd4defc142d919d63be42fccce3b"
+    },
+    {
+      "name": "acknowledge",
+      "accept": true,
+      "value": {
+        "version": 1,
+        "action": "acknowledge",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": "resolution-1"
+      },
+      "control_digest": "59d685c49b5a10cf14c7652fecca4e0fb919bc0c7fa9196e414f7028074da1a4"
+    },
+    {
+      "name": "revoke",
+      "accept": true,
+      "value": {
+        "version": 1,
+        "action": "revoke",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "",
+        "request_digest": "",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      },
+      "control_digest": "abfedde9c7b0332b258d6649729692518ddfea0a11312c3a9740cd2bfa2a5fdb"
+    },
+    {
+      "name": "no-stop-proof",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "null-invocation",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": null,
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "wrong-version",
+      "accept": false,
+      "value": {
+        "version": 2,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "not-an-effect-grant",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "dispatch",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "unexpected-decision",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": "approve"
+      }
+    },
+    {
+      "name": "bad-invocation",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call with spaces",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "uppercase-digest",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "numeric-decision",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": 1
+      }
+    },
+    {
+      "name": "invalid-scalar",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "\ud800",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "unknown-field",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": "",
+        "extra": true
+      }
+    },
+    {
+      "name": "case-folded-field",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": "",
+        "ROOT_DIGEST": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "ack-needs-exact-decision",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "acknowledge",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "root-revoke-cannot-smuggle-invocation",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "revoke",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "decision_id": ""
+      }
+    },
+    {
+      "name": "explicit-empty-decision-required",
+      "accept": false,
+      "value": {
+        "version": 1,
+        "action": "inspect",
+        "root_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "invocation_id": "call-1",
+        "request_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "stop_proof_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
+  ]
+}

@@ -22,6 +22,13 @@ before dispatch. Saved receipts precede fresh grants. Uncertain or active effect
 fence other invocations under that root. No automatic replay or reconciliation
 is provided. `FenceInterrupted` requires the supervisor to have observed its old
 process stopped, and preserves uncertainty rather than asserting an effect failed.
+The private `managed-control-v1` entry point now exposes exact inspect, fence,
+cancel, root revoke and uncertainty acknowledgement through a separately scoped
+owner check plus exclusive process ownership. An acknowledgement is an immutable
+terminal non-success receipt; it never replays the old invocation or verifies the
+effect. The actual parent must confirm the durable predecessor-stop evidence and
+resolution decision. The control command does not open provider credentials and
+can run after the old credential configuration/workspace is removed.
 
 Cancellation is durable before the local context is aborted. A ledger receipt
 does not confirm a process or external effect stopped. Supervision must account

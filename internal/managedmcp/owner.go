@@ -161,31 +161,9 @@ func (a *Admission) Verify(ctx context.Context, phase string, request Request) (
 	if err != nil {
 		return out, refused()
 	}
-	owned, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	tr := &http.Transport{DisableKeepAlives: true, DisableCompression: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		if a.Check() != nil {
-			return nil, refused()
-		}
-		return (&net.Dialer{}).DialContext(ctx, "unix", a.Manifest.OwnerSocket)
-	}}
-	defer tr.CloseIdleConnections()
-	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	req, _ := http.NewRequestWithContext(owned, http.MethodPost, "http://owner/managed-toolkit/v1/verify", bytes.NewReader(body))
-	req.GetBody = nil
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+a.Manifest.OwnerKey)
-	resp, err := client.Do(req)
+	data, err := privateOwnerPost(ctx, a.Manifest.OwnerSocket, a.Manifest.OwnerKey, a.Check, "/managed-toolkit/v1/verify", body)
 	if err != nil {
-		return out, refused()
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 || resp.Header.Get("Content-Encoding") != "" {
-		return out, refused()
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4097))
-	if err != nil || len(data) > 4096 {
-		return out, refused()
+		return out, err
 	}
 	var fields map[string]json.RawMessage
 	if !ValidJSON(data) || json.Unmarshal(data, &fields) != nil {
@@ -221,8 +199,39 @@ func (a *Admission) Verify(ctx context.Context, phase string, request Request) (
 	if !exactFields(fields, names...) {
 		return out, refused()
 	}
-	if out.Version != 1 || out.Phase != phase || out.RequestDigest != fingerprint(request) || (out.Decision != "allowed" && out.Decision != "denied" && !(phase == "review" && out.Decision == "pending")) || (phase == "review" && out.Decision != "pending" && !nameShape.MatchString(out.DecisionID)) || (phase != "review" && out.DecisionID != "") || a.Check() != nil || owned.Err() != nil || (!out.sendDeadline.IsZero() && !time.Now().Before(out.sendDeadline)) || (!out.authorityDeadline.IsZero() && !time.Now().Before(out.authorityDeadline)) {
+	if out.Version != 1 || out.Phase != phase || out.RequestDigest != fingerprint(request) || (out.Decision != "allowed" && out.Decision != "denied" && !(phase == "review" && out.Decision == "pending")) || (phase == "review" && out.Decision != "pending" && !nameShape.MatchString(out.DecisionID)) || (phase != "review" && out.DecisionID != "") || a.Check() != nil || ctx.Err() != nil || (!out.sendDeadline.IsZero() && !time.Now().Before(out.sendDeadline)) || (!out.authorityDeadline.IsZero() && !time.Now().Before(out.authorityDeadline)) {
 		return OwnerReply{}, refused()
 	}
 	return out, nil
+}
+
+// Both private protocols share the same bounded, no-redirect/no-replay IPC.
+func privateOwnerPost(ctx context.Context, socket, key string, check func() error, path string, body []byte) ([]byte, error) {
+	owned, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tr := &http.Transport{DisableKeepAlives: true, DisableCompression: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		if check() != nil {
+			return nil, refused()
+		}
+		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+	}}
+	defer tr.CloseIdleConnections()
+	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequestWithContext(owned, http.MethodPost, "http://owner"+path, bytes.NewReader(body))
+	req.GetBody = nil
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, refused()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Encoding") != "" {
+		return nil, refused()
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 4097))
+	if err != nil || len(data) > 4096 || owned.Err() != nil || check() != nil {
+		return nil, refused()
+	}
+	return data, nil
 }

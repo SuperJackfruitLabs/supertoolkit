@@ -169,7 +169,7 @@ func (s *managedStdio) serve(ctx context.Context, in io.Reader, out io.Writer) e
 				return managedUnavailable()
 			}
 			initialized = true
-			result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}, "experimental": map[string]any{"salaam.dev/toolkit": map[string]any{"version": 1, "boundedGrants": true, "nativeKinds": true, "lifecycleControl": false}}}, "serverInfo": map[string]any{"name": "supertoolkit-managed", "version": version}}
+			result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}, "experimental": map[string]any{"salaam.dev/toolkit": map[string]any{"version": 1, "boundedGrants": true, "nativeKinds": true, "lifecycleControl": true}}}, "serverInfo": map[string]any{"name": "supertoolkit-managed", "version": version}}
 		case "ping":
 			result = map[string]any{}
 		case "tools/list":
