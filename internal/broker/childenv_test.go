@@ -1,9 +1,31 @@
 package broker
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
+
+func TestBrokerChildProbe(t *testing.T) {
+	if os.Getenv("STK_CHILD_ENV_PROBE") != "1" {
+		return
+	}
+	for _, name := range []string{"STK_PASSPHRASE", "STK_PASSPHRASE_FILE"} {
+		if _, ok := os.LookupEnv(name); ok {
+			os.Exit(41)
+		}
+	}
+	os.Exit(0)
+}
+
+func TestActualBrokerChildCannotReadUnlockEnvironment(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestBrokerChildProbe$")
+	cmd.Env = ChildEnv([]string{"STK_PASSPHRASE=fixture-secret", "STK_PASSPHRASE_FILE=/fixture/private-unlock"}, "http://127.0.0.1:9", "/fixture/ca", nil, map[string]string{"STK_CHILD_ENV_PROBE": "1"})
+	if err := cmd.Run(); err != nil {
+		t.Fatal("actual broker child retained private unlock material")
+	}
+}
 
 func envMap(t *testing.T, kvs []string) map[string]string {
 	t.Helper()
@@ -96,5 +118,28 @@ func TestExtraEnvIsPassedThrough(t *testing.T) {
 	got := envMap(t, ChildEnv(nil, "http://p", "/ca", nil, map[string]string{"SLACK_TEAM_ID": "T123"}))
 	if got["SLACK_TEAM_ID"] != "T123" {
 		t.Errorf("extra env was dropped: %v", got["SLACK_TEAM_ID"])
+	}
+}
+
+func TestBrokerUnlockCredentialsNeverReachAnAgentOrFrontedServer(t *testing.T) {
+	for _, key := range []string{"STK_PASSPHRASE", "STK_PASSPHRASE_FILE"} {
+		for _, source := range []string{"inherited", "extra", "placeholder"} {
+			t.Run(key+"/"+source, func(t *testing.T) {
+				var base []string
+				var extra, placeholders map[string]string
+				switch source {
+				case "inherited":
+					base = []string{key + "=fixture-unlock-material"}
+				case "extra":
+					extra = map[string]string{key: "fixture-unlock-material"}
+				case "placeholder":
+					placeholders = map[string]string{key: "fixture-unlock-material"}
+				}
+				got := envMap(t, ChildEnv(base, "http://p", "/ca", placeholders, extra))
+				if _, ok := got[key]; ok {
+					t.Fatal("broker unlock material reached the child environment")
+				}
+			})
+		}
 	}
 }

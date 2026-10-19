@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// Unlock material belongs only to the broker. A fronted server or stk-run command
+// must not inherit it, even if a service's extra environment attempts to restore it.
+func brokerPrivateEnv(name string) bool {
+	return name == "STK_PASSPHRASE" || name == "STK_PASSPHRASE_FILE"
+}
+
 // ChildEnv builds the environment a brokered child process runs with, whether
 // that child is a command from `stk run` or a fronted MCP server.
 //
@@ -42,7 +48,7 @@ func ChildEnv(base []string, proxyURL, caPath string, placeholders map[string]st
 		if i := strings.IndexByte(kv, '='); i >= 0 {
 			name = kv[:i]
 		}
-		if drop[name] {
+		if drop[name] || brokerPrivateEnv(name) {
 			continue
 		}
 		out = append(out, kv)
@@ -60,9 +66,15 @@ func ChildEnv(base []string, proxyURL, caPath string, placeholders map[string]st
 		"STK_BROKERED=1",
 	)
 	for k, v := range extra {
+		if brokerPrivateEnv(k) {
+			continue
+		}
 		out = append(out, k+"="+v)
 	}
 	for k, v := range placeholders {
+		if brokerPrivateEnv(k) {
+			continue
+		}
 		out = append(out, k+"="+v)
 	}
 	return out
