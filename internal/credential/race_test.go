@@ -9,14 +9,13 @@ import (
 	"time"
 )
 
-// Two processes refreshing a rotating token at the same moment.
-//
-// A provider that rotates invalidates the old refresh token the instant it
-// issues a new one. The Acquirer single-flights, but only inside one process —
-// and `stk run` is a fresh process per invocation, so two concurrent runs each
-// refresh with the same stored token. One wins; the other is refused, and
-// whichever writes last decides what the store holds.
-func TestConcurrentProcessesRefreshingARotatingToken(t *testing.T) {
+// Independent clients share the production disk cache and refresh lock. Every
+// client deliberately starts with the same stale material snapshot. The shared
+// cache must make the others reuse the winner's access token, instead of asking
+// the rotating provider again. This is same-process concurrency through separate
+// store handles, not a claim of a real multi-process provider rehearsal.
+func TestConcurrentClientsSharingCacheRefreshRotatingTokenOnce(t *testing.T) {
+	shared := cacheStore(t)
 	var mu sync.Mutex
 	stored := Material{FieldClientID: "cid", FieldRefreshToken: "r0"}
 	var issued atomic.Int64
@@ -42,9 +41,8 @@ func TestConcurrentProcessesRefreshingARotatingToken(t *testing.T) {
 		return nil
 	}
 
-	// Each "process" gets its own Acquirer, reading the same store.
-	// Each process reads the store once, up front, the way a fresh `stk run`
-	// does when it starts.
+	// Snapshot the original material before the barrier. This deliberately makes
+	// the shared cache necessary, even if a caller retained an early snapshot.
 	snapshot := func() Material {
 		mu.Lock()
 		defer mu.Unlock()
@@ -65,7 +63,11 @@ func TestConcurrentProcessesRefreshingARotatingToken(t *testing.T) {
 		mine := snapshot()
 		readAll.Done()
 		readAll.Wait()
+		// Separate store handles share only on-disk credentials/cache/lock, as production
+		// constructs them. The fallback alone does not serialize four token rotations.
+		storeHandle := *shared
 		acq := &Acquirer{
+			Shared:   &storeHandle,
 			Material: func(string) (Material, error) { return mine, nil },
 			Exchange: ExchangeRefresh(provider, persist, func(string) (Material, error) {
 				return snapshot(), nil
@@ -102,7 +104,10 @@ func TestConcurrentProcessesRefreshingARotatingToken(t *testing.T) {
 	}
 	t.Logf("  %d of 4 concurrent refreshes failed", failed)
 	if failed > 0 {
-		t.Errorf("%d of 4 concurrent refreshes failed; a loser must re-read and retry with whatever the winner stored", failed)
+		t.Errorf("%d of 4 clients failed despite the production shared cache", failed)
+	}
+	if issued.Load() != 1 {
+		t.Fatal("concurrent clients rotated more than once instead of reusing the shared access token")
 	}
 
 	// The question that matters is not whether some calls failed — it is
@@ -114,5 +119,41 @@ func TestConcurrentProcessesRefreshingARotatingToken(t *testing.T) {
 	mu.Unlock()
 	if !usable {
 		t.Fatalf("the store holds %q, which the provider no longer accepts — the connection is dead and only reconnecting fixes it", final)
+	}
+}
+
+func TestRefreshFallbackRetriesOnlyAChangedStoredTokenOnce(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprint(changed), func(t *testing.T) {
+			calls, reads, writes := 0, 0, 0
+			exchange := ExchangeRefresh(func(_ context.Context, _ string, m Material) (string, string, time.Time, error) {
+				calls++
+				if m[FieldRefreshToken] == "old" {
+					return "", "", time.Time{}, fmt.Errorf("invalid_grant")
+				}
+				return "fixture-access", "rotated", time.Now().Add(time.Hour), nil
+			}, func(_ string, m Material) error {
+				writes++
+				if m[FieldRefreshToken] != "rotated" {
+					t.Error("wrong rotated value persisted")
+				}
+				return nil
+			}, func(string) (Material, error) {
+				reads++
+				value := "old"
+				if changed {
+					value = "fresh"
+				}
+				return Material{FieldClientID: "fixture", FieldRefreshToken: value}, nil
+			})
+			_, _, err := exchange(context.Background(), "fixture", Material{FieldClientID: "fixture", FieldRefreshToken: "old"})
+			if changed {
+				if err != nil || calls != 2 || reads != 1 || writes != 1 {
+					t.Fatal("known changed token did not get exactly one bounded fallback")
+				}
+			} else if err == nil || calls != 1 || reads != 1 || writes != 0 {
+				t.Fatal("unchanged token refusal was retried or persisted")
+			}
+		})
 	}
 }
