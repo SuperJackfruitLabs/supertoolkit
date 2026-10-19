@@ -11,7 +11,7 @@ func TestBrokerChildProbe(t *testing.T) {
 	if os.Getenv("STK_CHILD_ENV_PROBE") != "1" {
 		return
 	}
-	for _, name := range []string{"STK_PASSPHRASE", "STK_PASSPHRASE_FILE"} {
+	for _, name := range []string{"STK_PASSPHRASE", "STK_PASSPHRASE_FILE", "CREDENTIALS_DIRECTORY"} {
 		if _, ok := os.LookupEnv(name); ok {
 			os.Exit(41)
 		}
@@ -21,7 +21,7 @@ func TestBrokerChildProbe(t *testing.T) {
 
 func TestActualBrokerChildCannotReadUnlockEnvironment(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestBrokerChildProbe$")
-	cmd.Env = ChildEnv([]string{"STK_PASSPHRASE=fixture-secret", "STK_PASSPHRASE_FILE=/fixture/private-unlock"}, "http://127.0.0.1:9", "/fixture/ca", nil, map[string]string{"STK_CHILD_ENV_PROBE": "1"})
+	cmd.Env = ChildEnv([]string{"STK_PASSPHRASE=fixture-secret", "STK_PASSPHRASE_FILE=/fixture/private-unlock", "CREDENTIALS_DIRECTORY=/fixture/private-systemd-credentials"}, "http://127.0.0.1:9", "/fixture/ca", nil, map[string]string{"STK_CHILD_ENV_PROBE": "1"})
 	if err := cmd.Run(); err != nil {
 		t.Fatal("actual broker child retained private unlock material")
 	}
@@ -122,7 +122,7 @@ func TestExtraEnvIsPassedThrough(t *testing.T) {
 }
 
 func TestBrokerUnlockCredentialsNeverReachAnAgentOrFrontedServer(t *testing.T) {
-	for _, key := range []string{"STK_PASSPHRASE", "STK_PASSPHRASE_FILE"} {
+	for _, key := range []string{"STK_PASSPHRASE", "STK_PASSPHRASE_FILE", "CREDENTIALS_DIRECTORY"} {
 		for _, source := range []string{"inherited", "extra", "placeholder"} {
 			t.Run(key+"/"+source, func(t *testing.T) {
 				var base []string

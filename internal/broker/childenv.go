@@ -8,7 +8,7 @@ import (
 // Unlock material belongs only to the broker. A fronted server or stk-run command
 // must not inherit it, even if a service's extra environment attempts to restore it.
 func brokerPrivateEnv(name string) bool {
-	return name == "STK_PASSPHRASE" || name == "STK_PASSPHRASE_FILE"
+	return name == "STK_PASSPHRASE" || name == "STK_PASSPHRASE_FILE" || name == "CREDENTIALS_DIRECTORY"
 }
 
 // ChildEnv builds the environment a brokered child process runs with, whether
