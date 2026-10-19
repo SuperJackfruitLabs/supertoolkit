@@ -80,6 +80,9 @@ func initializeWire(t *testing.T, wire *managedWireRig) {
 	if !strings.Contains(string(response["result"]), "supertoolkit-managed") {
 		t.Fatal("unversioned legacy MCP served readiness")
 	}
+	if !strings.Contains(string(response["result"]), `"boundedGrants":true`) || !strings.Contains(string(response["result"]), `"nativeKinds":true`) {
+		t.Fatal("managed owner requirements were not advertised")
+	}
 	wire.send(t, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
 }
 
@@ -192,5 +195,34 @@ func TestVersionedManagedCommandRejectsLegacyOrUnknownFlags(t *testing.T) {
 		if err := cmdManagedMCP(args); err == nil || strings.Contains(err.Error(), "/not-read") {
 			t.Fatal("entry point accepted flags or disclosed private paths")
 		}
+	}
+}
+
+func TestManagedNativeDiscoveryDistinguishesReadKindFromAgentApprovalPolicy(t *testing.T) {
+	a := managedFixture(t, "services:\n  github:\n    capabilities:\n      create_issue: agent\n", func(r managedmcp.OwnerRequest) managedmcp.OwnerReply {
+		t.Error("discovery asked for an effect grant")
+		return managedAllowed(r)
+	})
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("discovery dispatched an API effect") }))
+	defer api.Close()
+	engine := managedEngine(t, a, api)
+	wire := managedWire(t, engine)
+	initializeWire(t, wire)
+	wire.send(t, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "get_action_details", "arguments": map[string]string{"category": "github", "action": "create_issue"}}})
+	reply := wire.read(t)
+	var result struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(reply["result"], &result) != nil || len(result.Content) != 1 {
+		t.Fatal("missing action details")
+	}
+	var details struct {
+		Kind   string `json:"kind"`
+		Policy string `json:"policy"`
+	}
+	if json.Unmarshal([]byte(result.Content[0].Text), &details) != nil || details.Kind != "write" || details.Policy != "agent" {
+		t.Fatal("non-approval write was falsely classified as read-only")
 	}
 }

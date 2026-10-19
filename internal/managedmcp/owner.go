@@ -136,13 +136,23 @@ type OwnerReply struct {
 	// pending is valid only for review. admit and dispatch require allowed.
 	Decision   string `json:"decision"`
 	DecisionID string `json:"decision_id,omitempty"`
+	// Durations are anchored before the IPC request, conservatively including
+	// its latency. The resulting deadlines retain Go's monotonic clock reading.
+	SendWithinMS      int64 `json:"send_within_ms,omitempty"`
+	AuthorityForMS    int64 `json:"authority_for_ms,omitempty"`
+	sendDeadline      time.Time
+	authorityDeadline time.Time
 }
+
+func (r OwnerReply) SendDeadline() time.Time      { return r.sendDeadline }
+func (r OwnerReply) AuthorityDeadline() time.Time { return r.authorityDeadline }
 
 // Verify is a private local controller call. The controller must bind the exact
 // request to its current root/principal/worker/attempt/call and live lease.
 // admit checks without consuming an effect grant; dispatch consumes exactly one
 // durable operation grant. review answers a human gate but performs no effect.
 func (a *Admission) Verify(ctx context.Context, phase string, request Request) (OwnerReply, error) {
+	started := time.Now()
 	var out OwnerReply
 	if (phase != "admit" && phase != "dispatch" && phase != "review") || request.RootDigest != a.Manifest.RootDigest || request.ProfileDigest != a.Manifest.ProfileDigest || !validRequest(request) || a.Check() != nil {
 		return out, refused()
@@ -182,19 +192,36 @@ func (a *Admission) Verify(ctx context.Context, phase string, request Request) (
 		return out, refused()
 	}
 	names := []string{"version", "phase", "request_digest", "decision"}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if dec.Decode(&out) != nil || dec.Decode(new(any)) != io.EOF {
+		return OwnerReply{}, refused()
+	}
 	if decision, exists := fields["decision_id"]; exists {
 		names = append(names, "decision_id")
 		wire := bytes.TrimSpace(decision)
-		if phase != "review" || len(wire) == 0 || wire[0] != '"' {
+		if phase != "review" || out.Decision == "pending" || len(wire) == 0 || wire[0] != '"' {
 			return out, refused()
+		}
+	}
+	if (phase == "admit" || phase == "dispatch") && out.Decision == "allowed" {
+		names = append(names, "authority_for_ms")
+		if out.AuthorityForMS < 1 || out.AuthorityForMS > 90000 {
+			return OwnerReply{}, refused()
+		}
+		out.authorityDeadline = started.Add(time.Duration(out.AuthorityForMS) * time.Millisecond)
+		if phase == "dispatch" {
+			names = append(names, "send_within_ms")
+			if out.SendWithinMS < 1 || out.SendWithinMS > 5000 || out.SendWithinMS > out.AuthorityForMS {
+				return OwnerReply{}, refused()
+			}
+			out.sendDeadline = started.Add(time.Duration(out.SendWithinMS) * time.Millisecond)
 		}
 	}
 	if !exactFields(fields, names...) {
 		return out, refused()
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if dec.Decode(&out) != nil || dec.Decode(new(any)) != io.EOF || out.Version != 1 || out.Phase != phase || out.RequestDigest != fingerprint(request) || (out.Decision != "allowed" && out.Decision != "denied" && !(phase == "review" && out.Decision == "pending")) || (phase == "review" && out.Decision != "pending" && !nameShape.MatchString(out.DecisionID)) || (phase != "review" && out.DecisionID != "") || a.Check() != nil || owned.Err() != nil {
+	if out.Version != 1 || out.Phase != phase || out.RequestDigest != fingerprint(request) || (out.Decision != "allowed" && out.Decision != "denied" && !(phase == "review" && out.Decision == "pending")) || (phase == "review" && out.Decision != "pending" && !nameShape.MatchString(out.DecisionID)) || (phase != "review" && out.DecisionID != "") || a.Check() != nil || owned.Err() != nil || (!out.sendDeadline.IsZero() && !time.Now().Before(out.sendDeadline)) || (!out.authorityDeadline.IsZero() && !time.Now().Before(out.authorityDeadline)) {
 		return OwnerReply{}, refused()
 	}
 	return out, nil

@@ -24,15 +24,19 @@ import (
 // grant AFTER acquisition, immediately before its durable dispatch marker.
 // Legacy effects use the same credential and audit path, sending immediately.
 type preparedNative struct {
-	req      *http.Request
-	client   *http.Client
-	observer observer
-	record   broker.Record
-	entry    *catalog.Entry
-	sent     atomic.Bool
+	req          *http.Request
+	client       *http.Client
+	observer     observer
+	record       broker.Record
+	entry        *catalog.Entry
+	sendDeadline time.Time
+	sent         atomic.Bool
 }
 
 func prepareNative(ctx context.Context, live *liveConfig, store *credential.Store, client *http.Client, obs observer, service string, req *http.Request) (*preparedNative, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	st := live.state()
 	svc, ok := st.cfg.Service(service)
 	if !ok {
@@ -46,6 +50,9 @@ func prepareNative(ctx context.Context, live *liveConfig, store *credential.Stor
 	// or injection after preparation. Managed callers also own a copied body.
 	owned := req.Clone(ctx)
 	if err := authorize(ctx, service, svc.Entry(), owned, store, acqs); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	owned.Header.Set("User-Agent", "supertoolkit/"+version)
@@ -68,6 +75,9 @@ func (p *preparedNative) send() (*http.Response, error) {
 	}
 	if err := p.req.Context().Err(); err != nil {
 		return nil, err
+	}
+	if !p.sendDeadline.IsZero() && !time.Now().Before(p.sendDeadline) {
+		return nil, errors.New("native send grant expired")
 	}
 	resp, err := p.client.Do(p.req)
 	p.record.When = time.Now()

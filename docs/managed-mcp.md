@@ -61,8 +61,12 @@ five minutes and real fingerprints are 64 lowercase hex digits. The canonical
 `testdata/managed-mcp-v1.json`. The broker constructs root/profile/approval from
 its admitted configuration and actual native policy, never a model boolean.
 
-The closed reply is `version`, `phase`, `request_digest`, `decision` and optional
-`decision_id`. Phase and request fingerprint must match exactly. The controller
+The closed reply contains `version`, `phase`, `request_digest`, `decision` and
+phase-specific fields. A final `review` answer includes `decision_id`. An allowed
+`admit` includes integer `authority_for_ms` (1–90,000) to bound credential
+acquisition. An allowed `dispatch` includes integer `send_within_ms` (1–5,000)
+and `authority_for_ms` (at least the send window, at most 90,000). Other replies
+omit grant durations. Phase and request fingerprint must match exactly. The controller
 must check actual current principal, station/run epoch, worker, attempt, call,
 exact arguments/profile and live lease. Well-formed metadata is not authority.
 
@@ -71,6 +75,15 @@ exact arguments/profile and live lease. Well-formed metadata is not authority.
 | `review` | Return `pending`, or an exact human answer `allowed`/`denied` with its bounded decision ID. Answering performs no effect. |
 | `admit` | Fresh non-consuming authority check before credential access/acquisition. Return `allowed` or `denied`. |
 | `dispatch` | Fresh exact operation check and durable consumption of **one** effect grant, after credentials are prepared. Return `allowed` or `denied`. |
+
+The parent computes grant durations from the actual remaining authority lease,
+including its monotonic deadline. The broker anchors both durations to monotonic
+time **before** its IPC request; network latency only shortens them. It refuses
+stale replies, rechecks the send window immediately before API handoff, and
+clamps credential acquisition and the actual API HTTP request to their respective
+authority deadlines. The longer immutable
+invocation/review deadline does not extend work authority. A dispatch reply must
+not be cached/reissued as a reusable grant after its permission is consumed.
 
 Do not also consume this effect permission at the MCP stdio handoff. The parent
 may record invocation delivery there. The broker records its dispatch marker
@@ -81,6 +94,13 @@ The verifier never returns provider credentials to the parent or the model.
 ## MCP and outcomes
 
 The closed protocol is MCP `2025-06-18` with the four progressive meta-tools.
+`capabilities.experimental["salaam.dev/toolkit"]` advertises version, bounded
+grants and native kinds. `lifecycleControl` remains false until the separately
+authorized journal recovery interface exists. These compatibility flags grant no
+authority. Native action discovery exposes `kind` (`read`, `write`, `destructive`
+or `unknown`) separately from `policy` (`agent` or `approval` for visible actions).
+An explicitly agent-callable write is still a write; the parent must never infer
+read-only behavior from absence of human approval.
 `execute_action` arguments are `{category, action, args}` with string-valued
 argument properties. Private `params._meta["salaam.dev/toolkit"]` supplies
 `{version:1, invocation_id, expires_at_ms}`. The parent must supply/bind this

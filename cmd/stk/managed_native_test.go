@@ -88,6 +88,12 @@ func managedAllowed(r managedmcp.OwnerRequest) managedmcp.OwnerReply {
 	if r.Phase == "review" {
 		out.DecisionID = "fixture-human-decision"
 	}
+	if r.Phase == "dispatch" {
+		out.SendWithinMS = 5000
+	}
+	if r.Phase == "admit" || r.Phase == "dispatch" {
+		out.AuthorityForMS = 60000
+	}
 	return out
 }
 func managedEngine(t *testing.T, a *managedmcp.Admission, server *httptest.Server) *managedNative {
@@ -199,6 +205,8 @@ func TestManagedNativeFinalGrantFollowsActualCredentialExchange(t *testing.T) {
 		out := managedAllowed(r)
 		if r.Phase == "dispatch" {
 			out.Decision = "denied"
+			out.SendWithinMS = 0
+			out.AuthorityForMS = 0
 		}
 		return out
 	})
@@ -327,5 +335,134 @@ func TestManagedProfilesRejectFrontedAndUnsupportedNativePaths(t *testing.T) {
 				t.Fatal("unproved broker path became a managed capability")
 			}
 		})
+	}
+}
+
+func TestManagedNativeAuthorityExpiryAbortsActualAPIIndependentlyOfRequestExpiry(t *testing.T) {
+	accepted, closed := make(chan struct{}), make(chan struct{})
+	var effects, grants atomic.Int32
+	a := managedFixture(t, "services:\n  github: {}\n", func(r managedmcp.OwnerRequest) managedmcp.OwnerReply {
+		out := managedAllowed(r)
+		if r.Phase == "dispatch" {
+			grants.Add(1)
+			out.SendWithinMS = 2000
+			out.AuthorityForMS = 2000
+		}
+		return out
+	})
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		effects.Add(1)
+		io.Copy(io.Discard, r.Body)
+		close(accepted)
+		<-r.Context().Done()
+		close(closed)
+	}))
+	defer api.Close()
+	s := managedEngine(t, a, api)
+	r := invocation(t, s, "authority-expiry", "get_user", map[string]string{})
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	result := make(chan managedmcp.Receipt, 1)
+	go func() {
+		defer close(finished)
+		v, err := s.invoke(ctx, r)
+		if err != nil {
+			result <- managedmcp.Receipt{}
+			return
+		}
+		result <- v
+	}()
+	defer func() { cancel(); <-finished }()
+	select {
+	case <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("actual API request was not admitted")
+	}
+	select {
+	case v := <-result:
+		if v.State != managedmcp.OutcomeUnknown {
+			t.Fatalf("expired authority looked successful: %s", v.State)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("request outlived its authority grant")
+	}
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("local response resource did not close")
+	}
+	if time.Now().UnixMilli() >= r.ExpiresAtMS {
+		t.Fatal("fixture only proved the original request timeout")
+	}
+	v, err := s.invoke(context.Background(), r)
+	if err != nil || v.State != managedmcp.OutcomeUnknown || grants.Load() != 1 || effects.Load() != 1 {
+		t.Fatal("expiry retried or regranted the uncertain request")
+	}
+}
+
+func TestManagedNativeCredentialExchangeAlsoStopsAtItsIndependentAuthorityDeadline(t *testing.T) {
+	accepted, closed := make(chan struct{}), make(chan struct{})
+	var exchanges, grants, products atomic.Int32
+	a := managedFixture(t, "services:\n  github:\n    oauth2:\n      authorize_url: https://fixture.invalid/auth\n      token_url: https://fixture.invalid/token\n", func(r managedmcp.OwnerRequest) managedmcp.OwnerReply {
+		out := managedAllowed(r)
+		if r.Phase == "admit" {
+			out.AuthorityForMS = 2000
+		}
+		if r.Phase == "dispatch" {
+			grants.Add(1)
+		}
+		return out
+	})
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/token" {
+			products.Add(1)
+			io.WriteString(w, "{}")
+			return
+		}
+		exchanges.Add(1)
+		io.Copy(io.Discard, r.Body)
+		close(accepted)
+		<-r.Context().Done()
+		close(closed)
+	}))
+	defer api.Close()
+	s := managedEngine(t, a, api)
+	if err := s.store.PutMaterial("github", credential.Material{credential.FieldClientID: "fixture-client", credential.FieldRefreshToken: "fixture-refresh"}); err != nil {
+		t.Fatal(err)
+	}
+	r := invocation(t, s, "exchange-authority-expiry", "get_user", map[string]string{})
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	result := make(chan managedmcp.Receipt, 1)
+	go func() {
+		defer close(finished)
+		v, err := s.invoke(ctx, r)
+		if err != nil {
+			result <- managedmcp.Receipt{}
+			return
+		}
+		result <- v
+	}()
+	defer func() { cancel(); <-finished }()
+	select {
+	case <-accepted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("credential exchange did not start")
+	}
+	select {
+	case v := <-result:
+		if v.State != managedmcp.Denied {
+			t.Fatalf("expired credential authority reached product dispatch: %s", v.State)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("credential exchange outlived authority")
+	}
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("credential exchange resource did not close")
+	}
+	if exchanges.Load() != 1 || grants.Load() != 0 || products.Load() != 0 || time.Now().UnixMilli() >= r.ExpiresAtMS {
+		t.Fatal("wrong boundary or request expiry proved")
 	}
 }

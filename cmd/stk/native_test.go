@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
@@ -162,5 +163,22 @@ func TestManagedNativeIncompleteResponseIsUnknown(t *testing.T) {
 	}
 	if result, err := prepared.managedResponse(); err == nil || result != "" {
 		t.Fatal("truncated body became a successful result")
+	}
+}
+
+func TestNativeExpiredSendGrantCannotReachActualAPI(t *testing.T) {
+	var effects atomic.Int32
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { effects.Add(1); io.WriteString(w, "{}") }))
+	defer api.Close()
+	client := managedNativeClient()
+	live, store, obs := nativeRig(t, client)
+	req, _ := http.NewRequest("GET", api.URL, nil)
+	prepared, err := prepareNative(context.Background(), live, store, client, obs, "github", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.sendDeadline = time.Now().Add(-time.Second)
+	if _, err = prepared.send(); err == nil || effects.Load() != 0 {
+		t.Fatal("stale final grant reached API")
 	}
 }

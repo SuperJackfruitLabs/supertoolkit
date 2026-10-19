@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func ownerFixture(t *testing.T, reply func(OwnerRequest) OwnerReply) (*Admission, string, string) {
@@ -77,7 +78,14 @@ func ownerFixture(t *testing.T, reply func(OwnerRequest) OwnerReply) (*Admission
 	return a, path, hash
 }
 func allowedOwner(r OwnerRequest) OwnerReply {
-	return OwnerReply{Version: 1, Phase: r.Phase, RequestDigest: RequestFingerprint(r.Request), Decision: "allowed"}
+	out := OwnerReply{Version: 1, Phase: r.Phase, RequestDigest: RequestFingerprint(r.Request), Decision: "allowed"}
+	if r.Phase == "dispatch" {
+		out.SendWithinMS = 5000
+	}
+	if r.Phase == "admit" || r.Phase == "dispatch" {
+		out.AuthorityForMS = 60000
+	}
+	return out
 }
 
 func TestPrivateOwnerManifestAndActualUnixVerifierBindExactRequest(t *testing.T) {
@@ -131,7 +139,7 @@ func TestPrivateOwnerRefusesDriftPermissionsSymlinksAndWorkspacePlacement(t *tes
 	}
 }
 func TestPrivateOwnerRejectsWrongBindingsAndDecisionShapes(t *testing.T) {
-	for _, bad := range []string{"digest", "phase", "version", "decision", "decision_id"} {
+	for _, bad := range []string{"digest", "phase", "version", "decision", "decision_id", "unbounded", "late-send", "long-authority", "authority-before-send", "stale-reply"} {
 		t.Run(bad, func(t *testing.T) {
 			a, _, _ := ownerFixture(t, func(r OwnerRequest) OwnerReply {
 				out := allowedOwner(r)
@@ -146,6 +154,18 @@ func TestPrivateOwnerRejectsWrongBindingsAndDecisionShapes(t *testing.T) {
 					out.Decision = "success"
 				case "decision_id":
 					out.DecisionID = "unrequested"
+				case "unbounded":
+					out.SendWithinMS = 0
+					out.AuthorityForMS = 0
+				case "late-send":
+					out.SendWithinMS = 5001
+				case "long-authority":
+					out.AuthorityForMS = 90001
+				case "authority-before-send":
+					out.AuthorityForMS = out.SendWithinMS - 1
+				case "stale-reply":
+					out.SendWithinMS = 1
+					time.Sleep(20 * time.Millisecond)
 				}
 				return out
 			})

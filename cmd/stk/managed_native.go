@@ -133,6 +133,12 @@ func (s *managedNative) invoke(ctx context.Context, r managedmcp.Request) (manag
 		}
 	}
 	var prepared *preparedNative
+	var cancelPrepared context.CancelFunc
+	defer func() {
+		if cancelPrepared != nil {
+			cancelPrepared()
+		}
+	}()
 	return s.ledger.Execute(ctx, v.ID, v.RequestDigest, func(ctx context.Context, exact managedmcp.Request) error {
 		// Credential acquisition may perform an exchange. It needs a fresh
 		// non-consuming admission check, then the one final dispatch grant.
@@ -148,7 +154,9 @@ func (s *managedNative) invoke(ctx context.Context, r managedmcp.Request) (manag
 		if err != nil {
 			return managedUnavailable()
 		}
-		prepared, err = prepareNative(ctx, s.live, s.store, s.client, s.observer, exact.Service, req)
+		credentialContext, cancelCredential := context.WithDeadline(ctx, answer.AuthorityDeadline())
+		prepared, err = prepareNative(credentialContext, s.live, s.store, s.client, s.observer, exact.Service, req)
+		cancelCredential()
 		if err != nil {
 			return managedUnavailable()
 		}
@@ -156,6 +164,10 @@ func (s *managedNative) invoke(ctx context.Context, r managedmcp.Request) (manag
 		if err != nil || answer.Decision != "allowed" {
 			return managedUnavailable()
 		}
+		prepared.sendDeadline = answer.SendDeadline()
+		bounded, cancel := context.WithDeadline(ctx, answer.AuthorityDeadline())
+		cancelPrepared = cancel
+		prepared.req = prepared.req.WithContext(bounded)
 		return nil
 	}, func(ctx context.Context, _ managedmcp.Request) (string, error) {
 		if prepared == nil || ctx.Err() != nil || s.admission.Check() != nil {

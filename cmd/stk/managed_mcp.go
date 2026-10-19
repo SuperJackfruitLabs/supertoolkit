@@ -11,6 +11,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/managedmcp"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcp"
 )
@@ -168,7 +169,7 @@ func (s *managedStdio) serve(ctx context.Context, in io.Reader, out io.Writer) e
 				return managedUnavailable()
 			}
 			initialized = true
-			result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "supertoolkit-managed", "version": version}}
+			result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}, "experimental": map[string]any{"salaam.dev/toolkit": map[string]any{"version": 1, "boundedGrants": true, "nativeKinds": true, "lifecycleControl": false}}}, "serverInfo": map[string]any{"name": "supertoolkit-managed", "version": version}}
 		case "ping":
 			result = map[string]any{}
 		case "tools/list":
@@ -301,8 +302,10 @@ func (s *managedStdio) discover(call managedToolCall) (any, bool) {
 			break
 		}
 		out := []any{}
+		svc, _ := s.engine.cfg.Service(args["category"])
 		for _, action := range s.engine.profile.Capabilities(args["category"]) {
-			out = append(out, map[string]any{"action": action, "policy": s.engine.profile.Resolve(args["category"], action).String()})
+			capability, _ := svc.Entry().Capability(action)
+			out = append(out, map[string]any{"action": action, "policy": s.engine.profile.Resolve(args["category"], action).String(), "kind": nativeKind(capability.Kind)})
 		}
 		return map[string]any{"actions": out}, true
 	case "get_action_details":
@@ -311,7 +314,20 @@ func (s *managedStdio) discover(call managedToolCall) (any, bool) {
 		}
 		svc, _ := s.engine.cfg.Service(args["category"])
 		capability, _ := svc.Entry().Capability(args["action"])
-		return map[string]any{"category": args["category"], "action": args["action"], "summary": capability.Summary, "params": capability.Params, "policy": s.engine.profile.Resolve(args["category"], args["action"]).String()}, true
+		return map[string]any{"category": args["category"], "action": args["action"], "summary": capability.Summary, "params": capability.Params, "kind": nativeKind(capability.Kind), "policy": s.engine.profile.Resolve(args["category"], args["action"]).String()}, true
 	}
 	return map[string]any{"error": "managed_toolkit_unavailable"}, false
+}
+
+func nativeKind(kind catalog.Kind) string {
+	switch kind {
+	case catalog.Read:
+		return "read"
+	case catalog.Write:
+		return "write"
+	case catalog.Destructive:
+		return "destructive"
+	default:
+		return "unknown"
+	}
 }
