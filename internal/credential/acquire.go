@@ -53,13 +53,12 @@ type SharedCache interface {
 	// CacheToken stores one for other processes.
 	CacheToken(service, token string, expires time.Time) error
 	// LockRefresh serialises exchanging. ok=false means the wait elapsed, and
-	// the caller should proceed anyway: a racing exchange beats no credential.
+	// acquisition must fail closed rather than exchange without ownership.
 	LockRefresh(service string, wait time.Duration) (release func(), ok bool)
 }
 
-// lockWait is how long a process waits for another's exchange before doing its
-// own. Long enough for one HTTP round trip to a token endpoint, short enough
-// that a wedged peer costs a delay rather than an outage.
+// lockWait bounds waiting for another process. Failure never permits an
+// unserialized exchange; that can invalidate a rotating provider token.
 const lockWait = 10 * time.Second
 
 type entry struct {
@@ -73,6 +72,9 @@ const defaultEarly = 60 * time.Second
 
 // Token returns a valid short-lived token for a service, exchanging if needed.
 func (a *Acquirer) Token(ctx context.Context, service string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	early := a.Early
 	if early <= 0 {
 		early = defaultEarly
@@ -129,9 +131,20 @@ func (a *Acquirer) Token(ctx context.Context, service string) (string, error) {
 	// Against a provider that rotates its refresh token this is the difference
 	// between one exchange and a fight over a token only one of them can use.
 	var release func()
+	var ownershipError error
 	if a.Shared != nil {
 		var locked bool
-		release, locked = a.Shared.LockRefresh(service, lockWait)
+		wait := lockWait
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < wait {
+			wait = time.Until(deadline)
+			if wait < 0 {
+				wait = 0
+			}
+		}
+		release, locked = a.Shared.LockRefresh(service, wait)
+		if !locked {
+			ownershipError = fmt.Errorf("token acquisition: shared refresh ownership unavailable")
+		}
 		if locked {
 			defer release()
 			if tok, _, ok := a.Shared.CachedToken(service, early); ok {
@@ -144,7 +157,14 @@ func (a *Acquirer) Token(ctx context.Context, service string) (string, error) {
 		}
 	}
 
-	m, err := a.Material(service)
+	var m Material
+	err := ownershipError
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		m, err = a.Material(service)
+	}
 	var tok string
 	var exp time.Time
 	if err == nil {
@@ -153,7 +173,10 @@ func (a *Acquirer) Token(ctx context.Context, service string) (string, error) {
 	// Publish it for the processes that are waiting, and for the next
 	// invocation, which would otherwise exchange again from cold.
 	if err == nil && a.Shared != nil && !exp.IsZero() {
-		_ = a.Shared.CacheToken(service, tok, exp)
+		if cacheErr := a.Shared.CacheToken(service, tok, exp); cacheErr != nil {
+			tok = ""
+			err = fmt.Errorf("token acquisition: shared token persistence unavailable")
+		}
 	}
 
 	a.mu.Lock()

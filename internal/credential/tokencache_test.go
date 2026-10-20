@@ -171,13 +171,13 @@ func TestAFreshProcessReusesTheCache(t *testing.T) {
 }
 
 // A lock whose holder died must not block every other process forever.
-func TestAStaleLockIsTakenOver(t *testing.T) {
+func TestAnUnownedLegacyRefreshLockCanMigrate(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := OpenStore(dir, "p")
 	os.MkdirAll(filepath.Join(dir, "cache"), 0o700)
 	p := filepath.Join(dir, "cache", "x.lock")
-	os.WriteFile(p, []byte("99999"), 0o600)
-	old := time.Now().Add(-2 * lockStale)
+	os.WriteFile(p, []byte("2147483647"), 0o600)
+	old := time.Now().Add(-time.Hour)
 	os.Chtimes(p, old, old)
 
 	release, ok := s.LockRefresh("x", time.Second)
@@ -206,5 +206,41 @@ func TestALiveLockIsRespectedButNotForever(t *testing.T) {
 	}
 	if d := time.Since(start); d > 2*time.Second {
 		t.Errorf("waited %v; a wedged peer must cost a delay, not an outage", d)
+	}
+}
+
+func TestAnOldTimestampDoesNotProveTheRefreshOwnerIsDead(t *testing.T) {
+	s := cacheStore(t)
+	release, ok := s.LockRefresh("x", time.Second)
+	if !ok {
+		t.Fatal("first owner could not acquire")
+	}
+	defer release()
+	p := s.lockPath("x")
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(p, old, old); err != nil {
+		t.Fatal(err)
+	}
+	otherRelease, second := s.LockRefresh("x", 100*time.Millisecond)
+	if second {
+		otherRelease()
+		t.Fatal("timestamp-based takeover stole a live refresh owner")
+	}
+}
+
+func TestForgettingCachedTokensCannotUnlinkALiveRefreshLock(t *testing.T) {
+	s := cacheStore(t)
+	release, ok := s.LockRefresh("x", time.Second)
+	if !ok {
+		t.Fatal("first owner could not acquire")
+	}
+	defer release()
+	if err := s.ForgetCachedTokens("x"); err != nil {
+		t.Fatal(err)
+	}
+	other, ok := s.LockRefresh("x", 100*time.Millisecond)
+	if ok {
+		other()
+		t.Fatal("cache invalidation detached the live refresh lock inode")
 	}
 }

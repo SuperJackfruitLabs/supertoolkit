@@ -120,46 +120,11 @@ func newServiceWith(live *liveConfig, store *credential.Store, dir, caller strin
 		live: live, store: store, queue: queue,
 		hosts: map[string]*mcphost.Host{},
 		perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
-			// One read of the policy for this effect.
-			st := live.state()
-			svc, ok := st.cfg.Service(svcName)
-			if !ok {
-				return nil, fmt.Errorf("unknown service %q", svcName)
-			}
-			acqs := st.acqs
-			if acqs == nil {
-				acqs = newAcquirers(st.cfg, store, client)
-			}
-			if err := authorize(ctx, svcName, svc.Entry(), req, store, acqs); err != nil {
+			prepared, err := prepareNative(ctx, live, store, client, obs, svcName, req)
+			if err != nil {
 				return nil, err
 			}
-			req.Header.Set("User-Agent", "supertoolkit/"+version)
-			resp, err := client.Do(req)
-
-			rec := broker.Record{
-				When: time.Now(), Service: svcName, Host: req.URL.Host,
-				Method: req.Method, Path: req.URL.Path,
-				AuthzFP: fingerprint(req.Header.Get("Authorization")),
-				Labels:  svc.Labels(),
-			}
-			switch {
-			case err != nil:
-				rec.Status = "request failed"
-			default:
-				rec.Status = resp.Status
-			}
-			// Injected marks that a credential was put on this request, which
-			// is what makes the observer record a fingerprint rather than the
-			// scheme's name.
-			if rec.AuthzFP != "(absent)" {
-				rec.Injected = "Authorization header"
-			}
-			o := obs
-			if c, ok := ctx.Value(callerKey{}).(string); ok {
-				o.caller = c
-			}
-			o.Observe(rec)
-			return resp, err
+			return prepared.send()
 		},
 	}, nil
 }
@@ -171,6 +136,16 @@ func newServiceWith(live *liveConfig, store *credential.Store, dir, caller strin
 // Three of the four arms never put a long-lived secret on the wire.
 func authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Request,
 	store *credential.Store, acqs *acquirers) error {
+	// A device/browser grant can make a catalogue token service renewable.
+	// Match the actual stored material, as the egress proxy's secretSource does.
+	if refreshable(store, name) {
+		tok, err := acqs.oauth2.Token(ctx, name)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+		return nil
+	}
 	switch e.Auth {
 	case catalog.AuthSigV4:
 		m, err := store.Material(name)

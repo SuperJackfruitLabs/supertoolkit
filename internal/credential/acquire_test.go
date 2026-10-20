@@ -14,6 +14,39 @@ import (
 	"time"
 )
 
+type unavailableSharedCache struct{ lockOK bool }
+
+func (unavailableSharedCache) CachedToken(string, time.Duration) (string, time.Time, bool) {
+	return "", time.Time{}, false
+}
+func (s unavailableSharedCache) LockRefresh(string, time.Duration) (func(), bool) {
+	return func() {}, s.lockOK
+}
+func (unavailableSharedCache) CacheToken(string, string, time.Time) error {
+	return fmt.Errorf("fixture cache unavailable")
+}
+
+func TestUnavailableSharedOwnershipOrPersistenceNeverReturnsACredential(t *testing.T) {
+	for _, persist := range []bool{false, true} {
+		t.Run(fmt.Sprint(persist), func(t *testing.T) {
+			calls := 0
+			a := &Acquirer{Shared: unavailableSharedCache{lockOK: persist}, Material: func(string) (Material, error) {
+				if !persist {
+					t.Error("unowned exchange read credential material")
+				}
+				return Material{}, nil
+			}, Exchange: func(context.Context, string, Material) (string, time.Time, error) {
+				calls++
+				return "fixture-private-access", time.Now().Add(time.Hour), nil
+			}}
+			token, err := a.Token(context.Background(), "fixture")
+			if err == nil || token != "" || (!persist && calls != 0) {
+				t.Fatal("failed shared ownership/persistence returned a credential")
+			}
+		})
+	}
+}
+
 // The property the spike proved and the product has to keep.
 func TestAcquisitionIsSingleFlight(t *testing.T) {
 	var calls atomic.Int64

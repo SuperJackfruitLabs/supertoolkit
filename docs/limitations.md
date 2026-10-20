@@ -178,3 +178,17 @@ done.
 - **`stk handover` briefly puts the credential on the sealing machine.** The
   commands say so. The device grant and the web UI do not have that property, so
   prefer them when either is possible.
+
+## Shared refresh ownership
+
+On supported macOS and Linux hosts, token acquisition uses a stable OS-owned file
+lock. Process death releases it; elapsed time does not prove an owner died. Cache
+invalidation preserves lock files. If ownership or cache persistence is unavailable,
+acquisition fails explicitly instead of racing another refresh or returning an
+unpersisted access token. No additional refresh retries are introduced.
+
+Stop older broker processes before updating a store to this lock format. Known
+live old-format owners are refused, but concurrent old and new broker binaries
+sharing one store are not a supported migration. Do not remove a live cache lock
+file to bypass a refusal. Managed profiles must pin their broker version and
+account for old owned processes during upgrade and recovery.

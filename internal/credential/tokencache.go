@@ -130,54 +130,23 @@ func (s *Store) ForgetCachedToken(service string) error {
 	return err
 }
 
-// lockStale is how long a lock may be held before another process takes it.
-//
-// A process killed between taking a lock and releasing it would otherwise block
-// every other one forever. The exchange it guards is a single HTTP call, so
-// anything beyond this is a corpse rather than slow progress.
-const lockStale = 30 * time.Second
-
-// LockRefresh serialises refreshing across processes.
-//
-// Only one process exchanges at a time; the others wait and then find what it
-// cached. It returns ok=false if the wait times out, and the caller proceeds
-// unserialised rather than failing — a racing exchange is better than no
-// credential.
-func (s *Store) LockRefresh(service string, wait time.Duration) (release func(), ok bool) {
-	if err := os.MkdirAll(s.cacheDir(), 0o700); err != nil {
+// LockRefresh serializes acquisition with a stable OS-owned file lock. Process
+// death releases ownership; timeout/unavailable locking fails closed. Lock files
+// must not be removed while another process may still hold their inode.
+func (s *Store) LockRefresh(service string, wait time.Duration) (func(), bool) {
+	if err := os.MkdirAll(s.cacheDir(), 0700); err != nil {
 		return func() {}, false
 	}
-	p := s.lockPath(service)
-	deadline := time.Now().Add(wait)
-	for {
-		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			fmt.Fprintf(f, "%d", os.Getpid())
-			f.Close()
-			return func() { os.Remove(p) }, true
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return func() {}, false
-		}
-		// Take over a lock whose holder is gone.
-		if fi, serr := os.Stat(p); serr == nil && time.Since(fi.ModTime()) > lockStale {
-			os.Remove(p)
-			continue
-		}
-		if time.Now().After(deadline) {
-			return func() {}, false
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
+	return refreshFileLock(s.lockPath(service), wait)
 }
 
-// ForgetCachedTokens drops every cached token and lock a service owns: the
-// bare-name entry and each scoped one (`<service>.scope-<16 hex>`), including
+// ForgetCachedTokens drops every cached token a service owns, preserving stable locks: the
+// bare-name token and each scoped token (`<service>.scope-<16 hex>`), including
 // scopes no longer in the config. The match is exact, so another service's
 // files never qualify; a forge name may not contain ".scope-", which keeps a
 // lookalike name from posing as a scope.
 func (s *Store) ForgetCachedTokens(service string) error {
-	re := regexp.MustCompile(`^` + regexp.QuoteMeta(filepath.Base(service)) + `(\.scope-[0-9a-f]{16})?\.(tok|lock)$`)
+	re := regexp.MustCompile(`^` + regexp.QuoteMeta(filepath.Base(service)) + `(\.scope-[0-9a-f]{16})?\.tok$`)
 	ents, err := os.ReadDir(s.cacheDir())
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
