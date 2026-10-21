@@ -14,7 +14,11 @@ import (
 
 // This separate command accepts private supervisor input only. It never opens
 // a credential store, loads ambient config, or runs a native API executor.
-func cmdManagedControl(args []string) error {
+func cmdManagedControl(args []string) error { return cmdManagedRead(args, false) }
+
+func cmdManagedEvidence(args []string) error { return cmdManagedRead(args, true) }
+
+func cmdManagedRead(args []string, evidence bool) error {
 	ctx, cancelSignal := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancelSignal()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -28,9 +32,13 @@ func cmdManagedControl(args []string) error {
 		case <-finished:
 		}
 	}()
-	return runManagedControl(ctx, args, os.Stdin, os.Stdout)
+	return runManagedRead(ctx, args, os.Stdin, os.Stdout, evidence)
 }
 func runManagedControl(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
+	return runManagedRead(ctx, args, in, out, false)
+}
+
+func runManagedRead(ctx context.Context, args []string, in io.Reader, out io.Writer, evidence bool) error {
 	if len(args) != 4 || args[0] != "--manifest" || args[2] != "--sha256" {
 		return managedUnavailable()
 	}
@@ -46,7 +54,12 @@ func runManagedControl(ctx context.Context, args []string, in io.Reader, out io.
 	if err != nil {
 		return managedUnavailable()
 	}
-	v, err := a.Apply(ctx, c)
+	var v any
+	if evidence {
+		v, err = a.Evidence(ctx, c)
+	} else {
+		v, err = a.Apply(ctx, c)
+	}
 	if err != nil {
 		return managedUnavailable()
 	}

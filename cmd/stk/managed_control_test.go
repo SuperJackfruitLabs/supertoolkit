@@ -135,9 +135,10 @@ func TestCompiledManagedControlRequiresActualBrokerDeathAndNoCredentialAccess(t 
 		t.Fatal("actual broker not ready", err, stderr.String())
 	}
 	c := managedmcp.Control{Version: 1, Action: "inspect", RootDigest: root, ProfileDigest: m.ProfileDigest, InvocationID: r.InvocationID, RequestDigest: v.RequestDigest, StopProofDigest: strings.Repeat("c", 64)}
+	command := "managed-control-v1"
 	invoke := func(c managedmcp.Control) ([]byte, error) {
 		body, _ := json.Marshal(c)
-		cmd := exec.CommandContext(ctx, bin, append([]string{"managed-control-v1"}, controlArgs...)...)
+		cmd := exec.CommandContext(ctx, bin, append([]string{command}, controlArgs...)...)
 		cmd.Env = []string{"HOME=" + m.Workspace, "PATH=" + dir}
 		cmd.Stdin = bytes.NewReader(body)
 		return cmd.Output()
@@ -177,6 +178,23 @@ func TestCompiledManagedControlRequiresActualBrokerDeathAndNoCredentialAccess(t 
 	if strings.Contains(string(out), key) || strings.Contains(string(out), "fixture-only") {
 		t.Fatal("private material in control output")
 	}
+	command = "managed-evidence-v1"
+	out, err = invoke(c)
+	var evidence managedmcp.Evidence
+	if err != nil || json.Unmarshal(out, &evidence) != nil || evidence.ReceiptID != v.ID || evidence.State != v.State || evidence.Authority || evidence.ProductEffectVerified {
+		t.Fatal("compiled credential-free evidence failed", string(out), err)
+	}
+	for _, forbidden := range []string{key, "fixture-only", `"args"`, `"result"`, m.StateDir} {
+		if strings.Contains(string(out), forbidden) {
+			t.Fatal("evidence disclosed private data")
+		}
+	}
+	c.Action = "cancel"
+	if out, err = invoke(c); err == nil || len(out) != 0 {
+		t.Fatal("evidence accepted mutation")
+	}
+	c.Action = "inspect"
+	command = "managed-control-v1"
 	c.Action = "cancel"
 	out, err = invoke(c)
 	if err != nil || !strings.Contains(string(out), `"state":"cancelled"`) {

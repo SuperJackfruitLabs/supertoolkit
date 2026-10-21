@@ -85,6 +85,8 @@ func main() {
 		err = cmdMCP(os.Args[2:])
 	case "managed-mcp-v1":
 		err = cmdManagedMCP(os.Args[2:])
+	case "managed-evidence-v1":
+		err = cmdManagedEvidence(os.Args[2:])
 	case "managed-control-v1":
 		err = cmdManagedControl(os.Args[2:])
 	case "verify":
