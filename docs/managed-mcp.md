@@ -205,3 +205,30 @@ does not prove the previous owned process stopped or authorize
 `FenceInterrupted`. The parent must persist and reconcile actual process identity,
 stop old resources, then preserve interrupted records as unknown before any
 replacement grant. An empty in-memory map is not a recovery receipt.
+
+### Historical metadata evidence (M23)
+
+`stk managed-evidence-v1 --manifest <private-control-manifest> --sha256 <digest>`
+accepts one exact existing `managed-control-v1` control JSON on stdin with
+`action: "inspect"`. All eight control fields remain mandatory (including the
+empty `decision_id`). The same exclusive process ownership, private owner
+confirmation, predecessor stop proof and exact root/profile/invocation/request
+binding apply. This historical read remains available after work lease expiry or
+root revocation when the parent permits existing control inspection. It requires
+no provider store, passphrase, policy or workspace directory.
+
+The stdout JSON has `evidence_digest`, `version: 1`, `root_digest`, `profile_digest`, `invocation_id`,
+`receipt_id`, `request_digest`, `state`, `cancellation_requested`, `root_revoked`,
+`authority: false`, and `product_effect_verified: false`. Nonempty receipt
+`decision_id`, `resolution_id` and `resolution_stop_digest` are retained. No
+arguments, protocol result/body, provider configuration, socket or owner key are
+exported. `evidence_digest` is SHA256 of the canonical sanitized projection with that field
+omitted (sorted JSON keys, no insignificant whitespace), so it changes with saved
+metadata, never includes a private result, and is separate from any artifact-byte
+digest. It is consistency only, not authenticity. Request and receipt identifiers
+provide consistency joins, not proof of
+product-effect authenticity. `returned` remains a protocol outcome and
+`outcome_acknowledged` remains terminal NON-success. This command cannot cancel,
+fence, acknowledge, revoke or execute. Evidence never restores an execution grant.
+The existing closed authority and control v1 codecs and owner route are unchanged;
+consumers explicitly opt into the new command and versioned metadata shape.
