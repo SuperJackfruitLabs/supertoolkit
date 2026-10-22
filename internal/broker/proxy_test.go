@@ -713,3 +713,66 @@ func TestBodyOfExactlyMaxBodyIsEvaluatedAndForwarded(t *testing.T) {
 		t.Fatalf("provider got %d bytes, want %d identical", len(got), len(body))
 	}
 }
+
+// auth: none brokers a public endpoint for its rules and audit only. git over
+// HTTPS is the case it exists for: fetches are allowed, a push is denied, and
+// in neither case is the secret source consulted or anything injected.
+const gitNoAuth = `
+services:
+  git-public:
+    kind: forge
+    provider: github
+    host: api.github.com
+    auth: none
+    api_prefix: /
+    repositories: [acme/widgets]
+    preset: none
+    rules:
+      - allow: "GET /{owner}/{repo}/info/refs"
+      - allow: "POST /{owner}/{repo}/git-upload-pack"
+      - deny: "POST /*/*/git-receive-pack"
+`
+
+func TestNoAuthServiceForwardsWithoutACredential(t *testing.T) {
+	f := newFixture(t, gitNoAuth)
+	req, _ := http.NewRequest("GET", "https://api.github.com/acme/widgets/info/refs?service=git-upload-pack", nil)
+	resp, err := f.client(false).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || strings.Contains(string(b), theSecret) || !strings.Contains(string(b), `"authorization":""`) {
+		t.Fatalf("allowed no-auth request: %d %q, want 200 with no Authorization", resp.StatusCode, b)
+	}
+	if f.secretCalls.Load() != 0 || f.broker.Stats().Swap != 0 || f.providerHits.Load() != 1 {
+		t.Errorf("secrets %d stats %+v hits %d, want no secret read, no swap, one hit",
+			f.secretCalls.Load(), f.broker.Stats(), f.providerHits.Load())
+	}
+	recs := f.broker.Audit()
+	if len(recs) != 1 || recs[0].Service != "git-public" || recs[0].Injected != "" {
+		t.Errorf("audit = %+v, want one record with nothing injected", recs)
+	}
+}
+
+func TestNoAuthServiceStillEnforcesItsRules(t *testing.T) {
+	f := newFixture(t, gitNoAuth)
+	resp, body := f.do(t, false, "POST", "/acme/widgets/git-receive-pack", strings.NewReader("0000"))
+	assertDenied(t, f, resp, body, "user#3")
+}
+
+// A push's first request is a GET of info/refs naming git-receive-pack. It is
+// decided as the push, so the deny on git-receive-pack refuses it there.
+func TestPushRefDiscoveryIsDecidedAsThePush(t *testing.T) {
+	f := newFixture(t, gitNoAuth)
+	resp, body := f.do(t, false, "GET", "/acme/widgets/info/refs?service=git-receive-pack", nil)
+	assertDenied(t, f, resp, body, "user#3")
+}
+
+func TestFetchRefDiscoveryIsStillAFetch(t *testing.T) {
+	f := newFixture(t, gitNoAuth)
+	resp, _ := f.do(t, false, "GET", "/acme/widgets/info/refs?service=git-upload-pack", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("fetch ref discovery: %d, want 200", resp.StatusCode)
+	}
+}

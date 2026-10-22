@@ -145,6 +145,9 @@ func cmdConnect(args []string) error {
 	if err != nil {
 		return err
 	}
+	if entry.Auth == catalog.AuthNone {
+		return fmt.Errorf("%s is declared auth: none: it holds no credential, so there is nothing to connect", name)
+	}
 	dir, err := home()
 	if err != nil {
 		return err

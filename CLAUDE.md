@@ -22,7 +22,9 @@ public path, chosen now so it does not change when the mirror appears.
 
 ## Versions
 
-Tags start at `0.0.1`, per estate convention. Not `0.1.0`.
+Tags are `vX.Y.Z`, like every other suite repository, and the series starts at
+`0.0.x` (not `0.1.0`). `0.0.1`–`0.0.3` were tagged without the `v` and stay; the
+next release is `v0.0.4`. `scripts/release.sh v0.0.4` stamps the binary `stk 0.0.4`.
 
 ## Layout
 

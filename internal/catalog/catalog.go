@@ -67,6 +67,12 @@ const (
 	// recommends it over OAuth 1.0a and requires it for media upload, and
 	// Google, Slack user tokens and Notion all use it.
 	AuthOAuth2
+	// AuthNone holds no credential. The service is brokered for policy and
+	// audit only: its rules are enforced, every request is recorded, and the
+	// request is forwarded exactly as the client sent it. It exists for public
+	// endpoints, such as anonymous git over HTTPS, where the point is to bound
+	// and record what an agent does rather than to attach a secret.
+	AuthNone
 )
 
 func (a Auth) String() string {
@@ -77,6 +83,8 @@ func (a Auth) String() string {
 		return "acquire (GitHub App installation token)"
 	case AuthOAuth2:
 		return "acquire (OAuth 2.0 refresh)"
+	case AuthNone:
+		return "none (policy and audit only)"
 	default:
 		return "substitute (token)"
 	}
@@ -94,6 +102,8 @@ func (a Auth) Fields() []string {
 		// client_secret is deliberately absent: a public client has none, and
 		// Require would then reject a perfectly good connection.
 		return []string{"client_id", "refresh_token"}
+	case AuthNone:
+		return nil
 	default:
 		return []string{"token"}
 	}
@@ -115,6 +125,8 @@ func (a Auth) Reassurance() string {
 		return "the broker trades the stored key for a token that expires in an hour; the key never goes on the wire"
 	case AuthOAuth2:
 		return "the broker trades the stored refresh token for a short-lived access token; the refresh token only ever reaches the provider's token endpoint, never the API"
+	case AuthNone:
+		return "no credential exists for this service; the broker enforces its rules and records every request"
 	default:
 		return "the stored token is what goes on the wire, so treat it as long-lived"
 	}

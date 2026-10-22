@@ -1,0 +1,36 @@
+# Staging policy on workbench (installed to /etc/stk/supertoolkit.yaml by deploy.sh).
+# Safe to commit: it holds no secrets, and this service has none to hold.
+#
+# One service: anonymous git over HTTPS to github.com, for the agent's `git` (Salaam's `git` is a
+# wrapper that sends it through the broker). `auth: none` means the broker attaches nothing: it
+# is here for policy and audit. Every request is decided by the rules below and recorded in
+# `stk audit`; anything not allowed is refused before it leaves this host.
+#
+# git's smart-HTTP protocol, per request:
+#   ls-remote, clone, fetch   GET  /<owner>/<repo>[.git]/info/refs?service=git-upload-pack
+#                             POST /<owner>/<repo>[.git]/git-upload-pack
+#   push                      GET  .../info/refs?service=git-receive-pack   (ref discovery only)
+#                             POST .../git-receive-pack                      <- denied, by name
+# The rules cannot see a query string, so a push's ref discovery is allowed; it reads what a
+# fetch reads. The push itself is the POST, and that is denied. `git log`/`git show` in a clone
+# are local and make no request at all.
+#
+# A rule's {repo} is a whole path segment, so the `.git` spelling of the repository is listed
+# as a literal path beside the {owner}/{repo} form.
+workspace: staging
+services:
+  git-public:
+    kind: forge
+    provider: github
+    host: github.com
+    auth: none
+    api_prefix: /
+    preset: none
+    repositories:
+      - SuperJackfruitLabs/agentpod
+    rules:
+      - allow: "GET /{owner}/{repo}/info/refs"
+      - allow: "POST /{owner}/{repo}/git-upload-pack"
+      - allow: "GET /SuperJackfruitLabs/agentpod.git/info/refs"
+      - allow: "POST /SuperJackfruitLabs/agentpod.git/git-upload-pack"
+      - deny: "POST /*/*/git-receive-pack"

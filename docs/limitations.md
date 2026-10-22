@@ -192,3 +192,19 @@ live old-format owners are refused, but concurrent old and new broker binaries
 sharing one store are not a supported migration. Do not remove a live cache lock
 file to bypass a refusal. Managed profiles must pin their broker version and
 account for old owned processes during upgrade and recovery.
+
+## The staging deployment (workbench)
+
+`deploy/staging/` runs the broker as user `stk` on the staging host, for the Salaam agent
+(`salaam`, uid 1001). It fronts one service, `git-public` (`auth: none`), and Salaam's git is
+pointed at it through `~/.gitconfig`. That is configuration, not confinement: the agent runs
+commands as an ordinary user with network access, so `/usr/bin/git -c http.proxy= …` or any
+other client that ignores the proxy goes straight out, unrecorded. The broker bounds and records
+what goes *through* it. Enforcing that nothing goes around it needs egress filtering for the
+agent's uid, which staging does not have yet.
+
+Fronted MCP servers (`servers:`) are reachable only through stk's own four meta-tools, and a
+fronted child's egress to a host outside policy is tunnelled unopened and unrecorded. stk's
+rules match paths on declared hosts; they cannot express "any public host, but no private,
+loopback, link-local or tailnet address". So a fetch-style MCP server cannot be fronted with an
+SSRF guarantee today.

@@ -7,7 +7,7 @@ name: release
 
 on:
   push:
-    tags: ['*.*.*']
+    tags: ['v*.*.*']   # vX.Y.Z; 0.0.1-0.0.3 predate the v and are not rebuilt
 
 permissions:
   contents: write

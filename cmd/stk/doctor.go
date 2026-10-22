@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -67,6 +68,10 @@ func doctorChecks() []check {
 		// expected it to be.
 		auth := effectiveAuth(svc.Entry(), store, name)
 		note := auth.String()
+		if svc.Entry().Auth == catalog.AuthNone {
+			out = append(out, check{ok: true, label: "credential for " + name, note: note + " — " + auth.Reassurance()})
+			continue
+		}
 		if !store.Has(name) {
 			// On a machine with no browser, `stk connect` means pasting a
 			// token by hand — the habit this product exists to replace. Where

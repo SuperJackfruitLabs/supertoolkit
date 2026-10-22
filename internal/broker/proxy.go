@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"io"
 	"log/slog"
 	"net"
@@ -479,17 +480,22 @@ See docs/limitations.md.
 	// not know svc.Name (just added, or just removed) or may hold its new
 	// acquirer: the result is "no credential" (502) or a provider error, never
 	// a credential for a request the new rules deny.
-	secret, err := b.src(svc.Name)
-	if err != nil {
-		rec.Status = "no credential: " + err.Error()
-		b.record(rec)
-		http.Error(w, "supertoolkit: no credential for "+svc.Name, http.StatusBadGateway)
-		return
-	}
 	entry := svc.Entry()
-	if where, ok := credential.Inject(r, Placeholder(svc.Name), secret, entry.Placement, entry.Field); ok {
-		b.swap.Add(1)
-		rec.Injected = where
+	// A service with no credential (auth: none) is brokered for its rules and
+	// its audit record only: the secret source is never consulted and nothing
+	// is injected, so the request goes upstream exactly as the client sent it.
+	if entry.Auth != catalog.AuthNone {
+		secret, err := b.src(svc.Name)
+		if err != nil {
+			rec.Status = "no credential: " + err.Error()
+			b.record(rec)
+			http.Error(w, "supertoolkit: no credential for "+svc.Name, http.StatusBadGateway)
+			return
+		}
+		if where, ok := credential.Inject(r, Placeholder(svc.Name), secret, entry.Placement, entry.Field); ok {
+			b.swap.Add(1)
+			rec.Injected = where
+		}
 	}
 	rec.AuthzFP = fingerprint(r.Header.Get("Authorization"))
 
@@ -577,6 +583,18 @@ func (b *Broker) decide(r *http.Request, set *rules.Set, svc *policy.Service) (i
 		Method: r.Method, EscapedPath: escaped, Header: r.Header,
 		ContentType: r.Header.Get("Content-Type"),
 	}
+	// git's smart HTTP starts a push with a GET of info/refs naming the
+	// receive-pack service, and only then POSTs git-receive-pack. Rules match
+	// paths, not query strings, so that GET would pass as a fetch's. Decide it
+	// as the push it begins: under the rule for POST .../git-receive-pack, so a
+	// denied push is refused at its first request rather than wherever the
+	// provider happens to stop it.
+	if r.Method == http.MethodGet && strings.HasSuffix(escaped, "/info/refs") &&
+		r.URL.Query().Get("service") == "git-receive-pack" {
+		req.Method = http.MethodPost
+		req.EscapedPath = strings.TrimSuffix(escaped, "/info/refs") + "/git-receive-pack"
+		return evaluate(set, svc, req)
+	}
 	if carriesBody(r.Method) && r.Body != nil && r.Body != http.NoBody {
 		buf, err := io.ReadAll(io.LimitReader(r.Body, rules.MaxBody+1))
 		// Restore the body exactly: the bytes read, then the rest unread.
@@ -589,11 +607,12 @@ func (b *Broker) decide(r *http.Request, set *rules.Set, svc *policy.Service) (i
 		}
 		req.Body = buf
 	}
+	return evaluate(set, svc, req)
+}
+
+func evaluate(set *rules.Set, svc *policy.Service, req rules.Request) (id, reason string, ok bool) {
 	d := set.Evaluate(svc.APIPrefix(), req)
-	if !d.Allowed {
-		return d.RuleID, d.Reason, false
-	}
-	return d.RuleID, d.Reason, true
+	return d.RuleID, d.Reason, d.Allowed
 }
 
 func carriesBody(method string) bool {

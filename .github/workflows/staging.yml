@@ -1,0 +1,45 @@
+# Every push to main lands on the staging plane (workbench), on the public GitHub mirror only.
+#
+# Forge is primary and runs the conformance suite (.forgejo/workflows/ci.yml); the mirror runs
+# the suite again here so a broken main never reaches staging. The deploy goes through the
+# forced-command key (estate provision/301-staging-deploy.sh), which runs that commit's
+# deploy/staging/deploy.sh on workbench.
+name: staging
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -p 1 ./...
+
+  deploy-staging:
+    needs: [test]
+    if: github.server_url == 'https://github.com' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency: { group: deploy-staging, cancel-in-progress: false }
+    environment: { name: staging }
+    steps:
+      - name: Deploy
+        env:
+          KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          HOST: ${{ vars.STAGING_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh root@"$HOST" supertoolkit "$GITHUB_SHA"
