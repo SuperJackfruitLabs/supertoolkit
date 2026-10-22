@@ -34,3 +34,34 @@ services:
       - allow: "GET /SuperJackfruitLabs/agentpod.git/info/refs"
       - allow: "POST /SuperJackfruitLabs/agentpod.git/git-upload-pack"
       - deny: "POST /*/*/git-receive-pack"
+
+# Hosts not named above. Every request to one is decided by address, after the broker resolves
+# it, and recorded: loopback, private, link-local (169.254/16 metadata), CGNAT/tailnet
+# (100.64/10), ULA and the other non-public ranges are refused. Nothing is tunnelled undecided.
+egress:
+  preset: public-only
+
+# The reference fetch MCP server, served under its own tool names by
+# `stk mcp serve fetch --socket /run/stk/stk.sock` (run as salaam; deploy.sh installs the pinned
+# version). Each tools/call is decided here and audited with its rule id; its HTTP(S) goes
+# through the broker, public addresses only, GET only.
+#
+# --allow-private-ips turns off the server's own private-address check, on purpose: one
+# enforcement point, and it is the one we measure. With it on, IP literals are refused inside the
+# server before the broker sees them, and the audit would show nothing.
+#
+# network: watched, not confined: confinement needs an unprivileged network namespace, which
+# Ubuntu 26.04 refuses (kernel.apparmor_restrict_unprivileged_userns=1) unless an AppArmor
+# profile grants stk `userns`. That is an operator decision not yet taken. Watched means a direct
+# connection is detected, recorded (rule netwatch:direct) and the child stopped — not prevented.
+servers:
+  fetch:
+    command: /home/salaam/.local/bin/mcp-server-fetch
+    args: [--allow-private-ips]
+    network: watched
+    egress:
+      preset: public-only
+      schemes: [https, http]
+      methods: [GET]
+    capabilities:
+      fetch: agent

@@ -203,8 +203,48 @@ other client that ignores the proxy goes straight out, unrecorded. The broker bo
 what goes *through* it. Enforcing that nothing goes around it needs egress filtering for the
 agent's uid, which staging does not have yet.
 
-Fronted MCP servers (`servers:`) are reachable only through stk's own four meta-tools, and a
-fronted child's egress to a host outside policy is tunnelled unopened and unrecorded. stk's
-rules match paths on declared hosts; they cannot express "any public host, but no private,
-loopback, link-local or tailnet address". So a fetch-style MCP server cannot be fronted with an
-SSRF guarantee today.
+Fronted MCP servers can be served directly (`stk mcp serve <server>`), each tool call decided and
+audited, and a host outside policy is decided by address (`egress:`) rather than passed through:
+staging declares `egress: public-only`, so nothing is tunnelled undecided. Its `fetch` server is
+`network: watched` rather than `confined` — see the next section for why, and what that costs.
+
+## A fronted server's own network: blocked, or only detected
+
+`stk mcp serve` starts the server as the caller, with the proxy in its environment. Whether a
+server that ignores the proxy can go around it depends on `network:`:
+
+- **`confined`** (the default for a server with `egress`): the server runs in its own user and
+  network namespace with only a loopback interface; a shim relays to the broker over a Unix
+  socket. A direct connection has no route: **blocked**. If the namespace cannot be created, the
+  server is not started. On Ubuntu 24.04 and later, `kernel.apparmor_restrict_unprivileged_userns=1`
+  refuses it unless an AppArmor profile grants `userns` to the stk binary — an operator decision,
+  not something stk installs. DNS lookups may still work through a resolver's Unix socket
+  (nss-resolve); connections cannot.
+- **`watched`**: the server's sockets (and its descendants') are polled every 50 ms from
+  `/proc`. A TCP connection, or non-DNS UDP, to anything but the broker is **detected**: recorded
+  in the audit as `netwatch:direct` with the address, and the server is stopped; every later call
+  fails. It is not prevented — the first connection happens, and one that opens and closes
+  between two polls is not seen.
+- **`host`**: configured, not confined — the same posture as any `stk run` child.
+
+**Measured: Go clients never proxy loopback.** Go's `ProxyFromEnvironment` skips the proxy for
+`localhost` and loopback addresses, so a Go-based server fetching `http://127.0.0.1/…`, or
+following a redirect there, goes direct and the broker never sees it. A test keeps this
+(`TestMCPServeLoopbackBypassByAGoClientIsCaughtWhenWatched`): watched catches and stops it; only
+confined prevents it. Python's httpx (used by `mcp-server-fetch`) does proxy loopback.
+
+## Egress decisions
+
+- **Ports are not rules.** An allowed address is allowed on any port.
+- **Only `methods:` opens a tunnel.** An egress without `methods` decides by address and passes
+  the tunnel through unopened, so the method and path of an HTTPS request are not seen or
+  recorded, only the host and the address. With `methods` the tunnel is opened with the broker's
+  CA, which the client must trust; one that does not fails loudly.
+- **Approval-gated tools are refused by `stk mcp serve`**, with their rule id: holding a direct
+  tool call open for a person is not built. The meta-tools (`stk mcp`) keep approval.
+- **The tool-call hint is the server's own claim.** An unannotated tool defaults to approval, so
+  is refused; a tool annotated read-only is allowed unless the policy says otherwise. Name each
+  tool you allow in `capabilities:`.
+- **With a daemon, the decision is the daemon's, but the caller runs the server.** An agent that
+  can run commands can run the same server without stk. `stk mcp serve` bounds the server, not
+  the agent.

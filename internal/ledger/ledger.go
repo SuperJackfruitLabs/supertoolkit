@@ -50,6 +50,8 @@ type Entry struct {
 	// Labels are the operator-set labels of the service (station, principal,
 	// grant), copied onto every row for it.
 	Labels map[string]string `json:"labels,omitempty"`
+	// Addr is the address dialled for an egress decision.
+	Addr string `json:"addr,omitempty"`
 }
 
 // Ledger appends effects to a file and reads them back.

@@ -1,7 +1,7 @@
 # Serving fronted MCP servers directly, and deciding egress by address
 
 **Date:** 2026-10-22
-**Status:** spec. Implementation follows in its own pull request.
+**Status:** implemented (`internal/egress`, `internal/mcpserve`, `internal/netjail`, `stk mcp serve`). Added in implementation: `network: watched` (detect and stop) for hosts that cannot confine, and the matched *allow* rule id is now recorded on every brokered request, not only denials.
 
 ## Why
 

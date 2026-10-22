@@ -24,6 +24,8 @@ type session struct {
 	childEnvFor func(server string) []string
 	// addr is where the proxy listens.
 	addr string
+	// caPath is the broker CA's certificate, which a child must trust.
+	caPath string
 }
 
 // brokerOpts are the choices `stk serve --proxy-listen` adds. The zero value is
@@ -109,7 +111,7 @@ func startBrokerWith(cfg *policy.Config, store *credential.Store, dir string, o 
 		}
 		return broker.ChildEnv(broker.OSEnv(), proxy, caPath, ph, srv.Env)
 	}
-	return &session{broker: b, env: env, stop: func() { ln.Close() }, childEnvFor: forServer, addr: ln.Addr().String()}, nil
+	return &session{broker: b, env: env, stop: func() { ln.Close() }, childEnvFor: forServer, addr: ln.Addr().String(), caPath: caPath}, nil
 }
 
 // childEnv builds the environment for a command run under `stk run`, using the

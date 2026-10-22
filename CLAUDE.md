@@ -44,7 +44,8 @@ next release is `v0.0.4`. `scripts/release.sh v0.0.4` stamps the binary `stk 0.0
    announce list must be rebuilt from `resp.Trailer` — Go's client does not leave
    it in `resp.Header`.
 3. **Intercept selectively.** Hosts outside policy are tunnelled with CONNECT and
-   never opened.
+   never opened — unless an `egress:` with `methods:` asks for it. Either way they
+   are recorded, and decided by address when an egress applies.
 4. **Single-flight every acquisition.** Twenty concurrent callers must cause one
    token exchange.
 5. **Never log a secret.** The audit record carries fingerprints. There is a test

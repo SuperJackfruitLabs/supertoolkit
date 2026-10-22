@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/egress"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/rules"
 )
 
@@ -180,6 +181,22 @@ type Config struct {
 	notify  Notify
 	// agentUIDs are the uids the agents run as (`agent_uids:`).
 	agentUIDs []int
+	// egress decides hosts outside policy for a caller that names no server.
+	// nil means they are tunnelled undecided (but recorded).
+	egress *egress.Policy
+}
+
+// Egress is the workspace's egress for hosts not named in policy, nil when
+// none is declared.
+func (c *Config) Egress() *egress.Policy { return c.egress }
+
+// EgressFor is the egress a request on behalf of server is decided by: the
+// server's own when it declares one, otherwise the workspace's.
+func (c *Config) EgressFor(server string) *egress.Policy {
+	if s, ok := c.servers[server]; ok && s.Egress != nil {
+		return s.Egress
+	}
+	return c.egress
 }
 
 // Notify returns the configured notification routes.
@@ -216,7 +233,9 @@ func (c *Config) InterceptHosts() map[string]bool {
 	// A fronted server's host is intercepted too: that is how its placeholder
 	// becomes a real credential on the way out.
 	for _, s := range c.servers {
-		out[s.Host] = true
+		if s.Host != "" {
+			out[s.Host] = true
+		}
 	}
 	return out
 }
@@ -248,6 +267,62 @@ type file struct {
 	Servers   map[string]serverFile          `yaml:"servers"`
 	Notify    notifyFile                     `yaml:"notify"`
 	AgentUIDs []int                          `yaml:"agent_uids"`
+	Egress    *egressFile                    `yaml:"egress"`
+}
+
+// egressFile mirrors an `egress:` block.
+type egressFile struct {
+	Preset  string   `yaml:"preset"`
+	Allow   []string `yaml:"allow"`
+	Deny    []string `yaml:"deny"`
+	Schemes []string `yaml:"schemes"`
+	Methods []string `yaml:"methods"`
+}
+
+// buildEgress validates an egress block. A misspelt preset or class must fail
+// the load: silently reading it as "none" would open every address.
+func buildEgress(ef *egressFile) (*egress.Policy, error) {
+	if ef == nil {
+		return nil, nil
+	}
+	p := &egress.Policy{}
+	switch ef.Preset {
+	case "", string(egress.PresetNone):
+		p.Preset = egress.PresetNone
+	case string(egress.PresetPublicOnly):
+		p.Preset = egress.PresetPublicOnly
+	default:
+		return nil, fmt.Errorf("egress: unknown preset %q: want public-only or none", ef.Preset)
+	}
+	for _, s := range ef.Allow {
+		m, err := egress.ParseMatcher(s)
+		if err != nil {
+			return nil, fmt.Errorf("egress allow: %w", err)
+		}
+		p.Allow = append(p.Allow, m)
+	}
+	for _, s := range ef.Deny {
+		m, err := egress.ParseMatcher(s)
+		if err != nil {
+			return nil, fmt.Errorf("egress deny: %w", err)
+		}
+		p.Deny = append(p.Deny, m)
+	}
+	for _, s := range ef.Schemes {
+		s = strings.ToLower(s)
+		if s != "https" && s != "http" {
+			return nil, fmt.Errorf("egress: scheme %q: want https or http", s)
+		}
+		p.Schemes = append(p.Schemes, s)
+	}
+	for _, m := range ef.Methods {
+		m = strings.ToUpper(m)
+		if m == "" || strings.ContainsAny(m, " \t/") {
+			return nil, fmt.Errorf("egress: method %q is not a method", m)
+		}
+		p.Methods = append(p.Methods, m)
+	}
+	return p, nil
 }
 
 // ruleFile is one `rules:` item: exactly one of allow or deny.
@@ -416,6 +491,8 @@ type serverFile struct {
 	EnvVar       string            `yaml:"env_var"`
 	Env          map[string]string `yaml:"env"`
 	Capabilities map[string]string `yaml:"capabilities"`
+	Egress       *egressFile       `yaml:"egress"`
+	Network      string            `yaml:"network"`
 }
 
 // Load reads and validates a config file.
@@ -448,6 +525,11 @@ func Parse(path string, raw []byte) (*Config, error) {
 		}
 	}
 	cfg.agentUIDs = f.AgentUIDs
+	eg, err := buildEgress(f.Egress)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	cfg.egress = eg
 	for name, sf := range f.Services {
 		var entry *catalog.Entry
 		switch sf.Kind {
