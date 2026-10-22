@@ -50,10 +50,10 @@ egress:
 # enforcement point, and it is the one we measure. With it on, IP literals are refused inside the
 # server before the broker sees them, and the audit would show nothing.
 #
-# network: watched, not confined: confinement needs an unprivileged network namespace, which
-# Ubuntu 26.04 refuses (kernel.apparmor_restrict_unprivileged_userns=1) unless an AppArmor
-# profile grants stk `userns`. That is an operator decision not yet taken. Watched means a direct
-# connection is detected, recorded (rule netwatch:direct) and the child stopped — not prevented.
+# network: confined: the server gets its own user and network namespace and reaches the network
+# only through the broker, so a direct connection is impossible, not just detected. Ubuntu
+# restricts unprivileged userns; /etc/apparmor.d/stk-userns grants it to the stk binary only
+# (operator decision, 2026-10-23; installed by the host's provisioning).
 servers:
   fetch:
     command: /home/salaam/.local/bin/mcp-server-fetch
@@ -62,7 +62,7 @@ servers:
     # /root, which salaam cannot read, and every page fails with EACCES. Without node on PATH it
     # uses its pure-Python path.
     env: { PATH: /usr/bin:/bin }
-    network: watched
+    network: confined
     egress:
       preset: public-only
       schemes: [https, http]
