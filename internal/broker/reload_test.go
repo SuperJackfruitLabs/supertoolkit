@@ -156,7 +156,7 @@ func TestReloadIsAtomicForInFlightRequests(t *testing.T) {
 	var seenA, seenB int
 	for _, r := range recs {
 		switch {
-		case r.Labels["station"] == "a" && r.Rule == "" && strings.HasPrefix(r.Status, "200"):
+		case r.Labels["station"] == "a" && r.Rule == "preset:read#3" && strings.HasPrefix(r.Status, "200"):
 			seenA++
 		case r.Labels["station"] == "b" && r.Rule == "user#1" && r.Status == "403 denied: user#1":
 			seenB++
@@ -259,5 +259,17 @@ func TestReloadHostReassignedToAnotherServiceIsRefusedOnAnOpenTunnel(t *testing.
 	recs := f.broker.Audit()
 	if last := recs[len(recs)-1]; last.Service != "forge-main" || last.Status != "403 service no longer brokered" {
 		t.Fatalf("last record = %+v", last)
+	}
+}
+
+// An allowed request records the rule that allowed it, not only a denial.
+func TestAllowedRequestRecordsItsRule(t *testing.T) {
+	f := newFixture(t, setB)
+	if st, _ := doOn(t, f.client(true), "DELETE", "/repos/acme/widgets"); st != 200 {
+		t.Fatalf("DELETE = %d", st)
+	}
+	a := f.broker.Audit()
+	if r := a[len(a)-1]; r.Rule != "user#2" || r.Status != "200 OK" {
+		t.Fatalf("record %+v, want allowed by user#2", r)
 	}
 }

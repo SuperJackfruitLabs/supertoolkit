@@ -36,6 +36,21 @@ func (o observer) Observe(r broker.Record) {
 		Method: escapeControl(r.Method), Path: escapeControl(r.Path), Outcome: escapeControl(r.Status), Caller: o.caller,
 		Rule: escapeControl(r.Rule),
 	}
+	if r.Kind != "" {
+		// A host outside policy: no service, no credential, and the evidence
+		// is the rule and the address actually dialled.
+		e.Addr = escapeControl(r.Addr)
+		e.Capability, e.Credential, e.Policy = "(egress)", "none", "allow"
+		if r.Kind == broker.KindTunnel {
+			e.Capability, e.Policy = "(tunnel, not decided)", ""
+		} else if strings.HasPrefix(r.Status, "403 denied") {
+			e.Policy = "deny"
+		}
+		if err := o.led.Append(e); err != nil {
+			fmt.Fprintln(os.Stderr, "stk: could not write the audit ledger:", err)
+		}
+		return
+	}
 	// A denied request never fetched a credential, so it must not carry a
 	// credential fingerprint; the rule that refused it is the evidence.
 	denied := r.Rule != "" && strings.HasPrefix(r.Status, "403 denied")
@@ -145,6 +160,9 @@ func cmdAudit(args []string) error {
 		fmt.Printf("  %18s%s %s · credential: %s\n", "", escapeControl(e.Method), escapeControl(e.Path), escapeControl(e.Credential))
 		if e.Rule != "" {
 			fmt.Printf("  %18srule: %s\n", "", escapeControl(e.Rule))
+		}
+		if e.Addr != "" {
+			fmt.Printf("  %18saddress: %s\n", "", escapeControl(e.Addr))
 		}
 		if len(e.Labels) > 0 {
 			fmt.Printf("  %18slabels: %s\n", "", formatLabels(e.Labels))

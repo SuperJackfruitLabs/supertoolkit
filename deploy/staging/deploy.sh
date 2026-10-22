@@ -23,6 +23,7 @@ agent=salaam
 H=/home/$agent
 GO_IMAGE=golang:1.26-bookworm
 REPO_URL=https://github.com/SuperJackfruitLabs/agentpod.git
+FETCH_PIN=mcp-server-fetch==2026.10.10
 
 as_stk() {
   runuser -u stk -- env -i PATH=/usr/local/bin:/usr/bin:/bin STK_HOME=/var/lib/stk \
@@ -98,6 +99,12 @@ if [ "$mpid" != 0 ] && ! grep -qE "^Groups:.*\b$gid\b" /proc/$mpid/status; then
   echo "   restarting user@$uid so salaam's session has the stk group"
   systemctl restart user@$uid
 fi
+
+echo "== fetch MCP server for $agent ($FETCH_PIN)"
+runuser -u $agent -- env -i HOME="$H" PATH=/usr/local/bin:/usr/bin:/bin sh -c \
+  "uv tool install --quiet '$FETCH_PIN' >/dev/null 2>&1 || uv tool install --quiet --force '$FETCH_PIN'"
+runuser -u $agent -- "$H/.local/bin/mcp-server-fetch" --help >/dev/null
+echo "   $H/.local/bin/mcp-server-fetch, served by: stk mcp serve fetch --socket /run/stk/stk.sock"
 
 echo "== smoke"
 doc=$(as_stk /usr/local/bin/stk doctor --agent-uid "$uid" 2>&1 || true)

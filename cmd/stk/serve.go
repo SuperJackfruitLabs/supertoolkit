@@ -48,6 +48,13 @@ type service struct {
 	childEnvFor func(server string) []string
 	// reload re-reads the policy file; nil where reloading is not offered.
 	reload func() reloadResult
+
+	// obs is the durable audit, for rows the proxy does not write: decisions
+	// on a fronted server's direct tool calls.
+	obs observer
+	// proxyAddr, proxyKey and caPath are what a `stk mcp serve` child needs to
+	// reach this broker. The key gates use of the proxy and unlocks no secret.
+	proxyAddr, proxyKey, caPath string
 }
 
 // config is the policy in force now.
@@ -117,7 +124,7 @@ func newServiceWith(live *liveConfig, store *credential.Store, dir, caller strin
 		return nil, err
 	}
 	return &service{
-		live: live, store: store, queue: queue,
+		live: live, store: store, queue: queue, obs: obs,
 		hosts: map[string]*mcphost.Host{},
 		perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
 			prepared, err := prepareNative(ctx, live, store, client, obs, svcName, req)
@@ -224,6 +231,12 @@ func (s *service) handle(uid int, r daemon.Request) daemon.Response {
 			return daemon.Response{Error: "this process does not reload its policy"}
 		}
 		out, _ := json.Marshal(s.reload())
+		return daemon.Response{Result: out}
+	case "mcp.spec", "mcp.decide", "mcp.visible", "mcp.done", "mcp.violation":
+		out, err := s.handleMCPServe(uid, cfg, prof, r)
+		if err != nil {
+			return daemon.Response{Error: err.Error()}
+		}
 		return daemon.Response{Result: out}
 	case "approvals.list":
 		out, _ := json.Marshal(s.queue.List())
@@ -407,6 +420,7 @@ func cmdServe(args []string) error {
 		defer removeProxyAddr(dir)
 	}
 	svc.childEnvFor = sess.childEnvFor
+	svc.proxyAddr, svc.proxyKey, svc.caPath = sess.addr, opts.Key, sess.caPath
 	rl := newReloader(configPath(), live, sess.broker, store)
 	svc.reload = rl.reload
 

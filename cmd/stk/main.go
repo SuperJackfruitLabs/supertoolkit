@@ -7,6 +7,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/netjail"
 )
 
 // version is a var, not a const, because the release build stamps it with
@@ -33,6 +35,9 @@ func usage() {
   stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
   stk env [--json]            print the proxy URL, CA and placeholders for that proxy
   stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
   stk install --user <name>    run stk as its own OS user under systemd (Linux)
   stk mcp install <host>       print the client configuration (no secret in it)
   stk verify <service> [--expect-login <login>] [--json]
@@ -63,6 +68,19 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
+	case netjail.ShimCommand:
+		// Inside a confined child's namespace; never typed by a person.
+		code, serr := netjail.Shim(os.Args[2:])
+		if serr != nil {
+			fmt.Fprintln(os.Stderr, "stk:", serr)
+		}
+		os.Exit(code)
+	case netjail.ShimCommand + "-probe":
+		if perr := netjail.ProbeChild(); perr != nil {
+			fmt.Fprintln(os.Stderr, perr)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	case "init":
 		err = cmdInit()
 	case "add":

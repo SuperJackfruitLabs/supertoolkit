@@ -233,6 +233,36 @@ instead of a thousand:
 stk mcp install claude     # prints the client config; no secret in it
 ```
 
+### A third-party MCP server, under its own tool names
+
+`stk mcp serve <server>` serves one server from `servers:` directly: its own
+tools, its own names. Every `tools/call` is decided by policy and recorded in
+`stk audit` — allowed or denied, with the rule id — before the server sees it,
+and the server's HTTP(S) goes through the broker, decided by `egress:`.
+
+```yaml
+egress: { preset: public-only }       # hosts not named in policy: public addresses only
+servers:
+  fetch:
+    command: /home/agent/.local/bin/mcp-server-fetch   # uv tool install mcp-server-fetch==2026.10.10
+    network: confined                 # or watched (detect + stop), or host
+    egress: { preset: public-only, schemes: [https, http], methods: [GET] }
+    capabilities: { fetch: agent }
+```
+
+```
+stk mcp serve fetch --socket /run/stk/stk.sock   # decisions and audit by the broker daemon
+stk mcp serve fetch --standalone                 # in-process broker, for a laptop
+```
+
+`egress:` decides by address *after* the broker resolves the name, pins the
+connection to that address (no DNS rebinding), and decides every redirect hop
+afresh, because the broker never follows one. Classes: `loopback`, `private`,
+`link-local` (169.254/16, cloud metadata), `cgnat` (100.64/10, tailnets), `ula`,
+`unspecified`, `multicast`, `reserved`; any of them, or a CIDR, can be named in
+`allow:`/`deny:`. The design is
+[docs/mcp-serve-and-egress.md](docs/mcp-serve-and-egress.md).
+
 ## Audit
 
 ```

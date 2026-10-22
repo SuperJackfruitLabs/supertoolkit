@@ -18,6 +18,9 @@ import (
 // launch it directly with no daemon to manage. The credential still never
 // leaves this process.
 func cmdMCP(args []string) error {
+	if len(args) > 0 && args[0] == "serve" {
+		return cmdMCPServe(args[1:])
+	}
 	profile := ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {

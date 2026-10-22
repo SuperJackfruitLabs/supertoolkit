@@ -29,6 +29,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credential"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/egress"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/rules"
 )
@@ -60,7 +61,20 @@ type Record struct {
 	// Labels are the service's operator-set audit labels, from the same
 	// policy snapshot that decided the request.
 	Labels map[string]string
+	// Kind is "" for a brokered service request, KindEgress for a request to a
+	// host outside policy that egress decided, KindTunnel for one tunnelled
+	// with no egress to decide it.
+	Kind string
+	// Addr is the address actually dialled for an egress decision: the
+	// evidence that what was decided is what was connected to.
+	Addr string
 }
+
+// Record kinds.
+const (
+	KindEgress = "egress"
+	KindTunnel = "tunnel"
+)
 
 // Broker is the egress proxy.
 type Broker struct {
@@ -78,6 +92,8 @@ type Broker struct {
 	upstream *http.Transport
 	// dial opens tunnels for hosts outside policy. Injectable for the same reason.
 	dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	// resolve looks up a host outside policy for an egress decision.
+	resolve egress.Resolver
 
 	intercept, tunnel, swap, h2, h1, refused, denied atomic.Int64
 
@@ -98,6 +114,9 @@ type Options struct {
 	Logger   *slog.Logger
 	Upstream *http.Transport
 	Dial     func(ctx context.Context, network, addr string) (net.Conn, error)
+	// Resolve looks hostnames up for egress decisions; nil is the system
+	// resolver. Injectable so tests can make a name resolve anywhere.
+	Resolve egress.Resolver
 	// Intercept are extra hostnames to terminate TLS for, beyond the ones the
 	// configured services declare. They are mapped to the first configured
 	// service, so its placement and auth scheme apply.
@@ -145,6 +164,7 @@ func New(o Options) (*Broker, error) {
 		proxyKey: o.ProxyKey,
 		upstream: o.Upstream,
 		dial:     o.Dial,
+		resolve:  o.Resolve,
 		extra:    append([]string(nil), o.Intercept...),
 	}
 	if b.log == nil {
@@ -159,6 +179,9 @@ func New(o Options) (*Broker, error) {
 	if b.dial == nil {
 		d := &net.Dialer{Timeout: 15 * time.Second}
 		b.dial = d.DialContext
+	}
+	if b.resolve == nil {
+		b.resolve = egress.DefaultResolver
 	}
 	snap, err := b.build(o.Config)
 	if err != nil {
@@ -287,37 +310,85 @@ func (b *Broker) Serve(ln net.Listener) error {
 	return srv.Serve(ln)
 }
 
-// authorized reports whether r carries the proxy key. Only the
-// Proxy-Authorization header is consulted; a key anywhere else does not count.
-func (b *Broker) authorized(r *http.Request) bool {
-	if b.proxyKey == "" {
-		return true
+// IdentityUser is the proxy user name that carries no identity. A caller that
+// speaks for a fronted server uses IdentityUser+"+"+server, so the broker can
+// decide that server's egress.
+const IdentityUser = "stk"
+
+// ProxyURLFor is ProxyURL naming the server the caller speaks for. The key may
+// be empty, when the broker demands none: the identity still travels.
+func ProxyURLFor(addr, key, server string) string {
+	user := IdentityUser
+	if server != "" {
+		user += "+" + server
 	}
+	return (&url.URL{Scheme: "http", User: url.UserPassword(user, key), Host: addr}).String()
+}
+
+// authorized reports whether r carries the proxy key, and the identity it
+// names. Only the Proxy-Authorization header is consulted; a key anywhere else
+// does not count.
+//
+// The identity selects whose egress decides a host outside policy. It is not
+// authority: it can only choose among egress rules the operator wrote, and a
+// caller naming none gets the workspace's.
+func (b *Broker) authorized(r *http.Request) (bool, string) {
+	user, key, ok := proxyCreds(r)
+	ident := ""
+	if ok {
+		if rest, found := strings.CutPrefix(user, IdentityUser+"+"); found {
+			ident = rest
+		} else if user != IdentityUser {
+			ok = false
+		}
+	}
+	if b.proxyKey == "" {
+		return true, ident
+	}
+	if !ok {
+		return false, ""
+	}
+	return subtle.ConstantTimeCompare([]byte(key), []byte(b.proxyKey)) == 1, ident
+}
+
+func proxyCreds(r *http.Request) (user, key string, ok bool) {
 	scheme, enc, ok := strings.Cut(r.Header.Get("Proxy-Authorization"), " ")
 	if !ok || !strings.EqualFold(scheme, "Basic") {
-		return false
+		return "", "", false
 	}
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(enc))
 	if err != nil {
-		return false
+		return "", "", false
 	}
-	user, key, ok := strings.Cut(string(raw), ":")
-	if !ok || user != "stk" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(key), []byte(b.proxyKey)) == 1
+	return strings.Cut(string(raw), ":")
 }
 
 func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 	// Judged before anything else: an unauthenticated caller is never hijacked,
 	// dialled, tunnelled or intercepted, whatever its method.
-	if !b.authorized(r) {
+	authed, ident := b.authorized(r)
+	if !authed {
 		b.refused.Add(1)
 		w.Header().Set("Proxy-Authenticate", `Basic realm="stk"`)
 		http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
 		return
 	}
+	// Read once: the interception and egress decisions are made from here.
+	snap := b.snap.Load()
 	if r.Method != http.MethodConnect {
+		// Plain http:// through the proxy is accepted only where an egress
+		// says so, and is then decided exactly like a tunnel.
+		if r.URL.IsAbs() && strings.EqualFold(r.URL.Scheme, "http") {
+			if pol := snap.cfg.EgressFor(ident); pol != nil {
+				if !pol.AllowsScheme("http") {
+					b.refuseEgress(w, Record{When: time.Now(), Service: egressService(ident), Host: r.URL.Hostname(),
+						Method: r.Method, Path: r.URL.Path, Kind: KindEgress}, "egress:scheme", "plain http is not allowed for this egress")
+					return
+				}
+				b.egressPlain(w, r, pol, ident)
+				return
+			}
+		}
 		// The broker is a proxy, not an API. There is deliberately no endpoint
 		// here that could return a credential.
 		b.refused.Add(1)
@@ -327,6 +398,15 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		host = r.Host
+	}
+	svc, inPolicy := snap.byHost[host]
+	if !inPolicy {
+		if pol := snap.cfg.EgressFor(ident); pol != nil {
+			// Decided before the tunnel is established, so a refusal reaches
+			// nothing.
+			b.egressConnect(w, r, pol, ident)
+			return
+		}
 	}
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -342,11 +422,13 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read once: the interception decision for this tunnel is made here.
-	svc, inPolicy := b.snap.Load().byHost[host]
 	if !inPolicy {
+		// No egress applies, so this host is passed through unopened, as it
+		// always was — but no longer unrecorded.
 		b.tunnel.Add(1)
 		b.log.Debug("tunnelling a host outside policy", "host", host)
+		b.record(Record{When: time.Now(), Service: egressService(ident), Host: host, Method: http.MethodConnect,
+			Kind: KindTunnel, Status: "tunnelled, not decided"})
 		b.blindTunnel(r.Context(), client, r.Host)
 		return
 	}
@@ -459,7 +541,10 @@ See docs/limitations.md.
 	// Rules are decided before the secret is fetched: a request the rules do
 	// not allow never causes the credential to be read, let alone sent.
 	if set := svc.Rules(); set != nil {
-		if id, reason, ok := b.decide(r, set, svc); !ok {
+		id, reason, ok := b.decide(r, set, svc)
+		// The rule that allowed a request is evidence too, not only a denial's.
+		rec.Rule = id
+		if !ok {
 			b.denied.Add(1)
 			rec.Rule = id
 			rec.Status = "403 denied: " + id

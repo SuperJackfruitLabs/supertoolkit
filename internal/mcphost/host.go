@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -54,6 +55,13 @@ type Spec struct {
 	// shared with `stk run`.
 	Env []string
 	Dir string
+	// Build, when set, makes the command instead of Command and Args: how a
+	// confined child is started inside its namespace. Env and Dir still apply.
+	Build func() *exec.Cmd
+	// OnStart is told the child's pid once it runs, so it can be watched.
+	OnStart func(pid int)
+	// Stderr receives the child's diagnostics; nil discards them.
+	Stderr io.Writer
 }
 
 // Host owns one child process.
@@ -67,10 +75,16 @@ type Host struct {
 	nextID  int
 	started bool
 	dead    error
+	// killed is set by Kill; a killed host is never restarted. procMu guards
+	// it and proc, and is never held across a call, so Kill is immediate.
+	procMu sync.Mutex
+	killed error
+	proc   *os.Process
 
 	// tools is cached: a child's list does not change while it runs, and
 	// re-asking on every discovery would spend a round trip per agent turn.
 	tools      []Tool
+	rawTools   []json.RawMessage
 	toolsValid bool
 }
 
@@ -85,10 +99,19 @@ func (h *Host) Start(ctx context.Context) error {
 }
 
 func (h *Host) startLocked(ctx context.Context) error {
+	h.procMu.Lock()
+	killed := h.killed
+	h.procMu.Unlock()
+	if killed != nil {
+		return killed
+	}
 	if h.started && h.dead == nil {
 		return nil
 	}
 	cmd := exec.Command(h.spec.Command, h.spec.Args...)
+	if h.spec.Build != nil {
+		cmd = h.spec.Build()
+	}
 	cmd.Env = h.spec.Env
 	cmd.Dir = h.spec.Dir
 	stdin, err := cmd.StdinPipe()
@@ -102,8 +125,17 @@ func (h *Host) startLocked(ctx context.Context) error {
 	// The child's stderr is its own diagnostics and may be noisy; it is not
 	// protocol, so it is discarded rather than mixed into stdout.
 	cmd.Stderr = io.Discard
+	if h.spec.Stderr != nil {
+		cmd.Stderr = h.spec.Stderr
+	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting %s: %w", h.spec.Name, err)
+	}
+	h.procMu.Lock()
+	h.proc = cmd.Process
+	h.procMu.Unlock()
+	if h.spec.OnStart != nil {
+		h.spec.OnStart(cmd.Process.Pid)
 	}
 	h.cmd, h.stdin = cmd, stdin
 	h.dec = json.NewDecoder(bufio.NewReader(stdout))
@@ -213,8 +245,51 @@ func (h *Host) ListTools(ctx context.Context) ([]Tool, error) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("%s: could not read its tool list: %w", h.spec.Name, err)
 	}
-	h.tools, h.toolsValid = out.Tools, true
+	var rawOut struct {
+		Tools []json.RawMessage `json:"tools"`
+	}
+	json.Unmarshal(raw, &rawOut)
+	h.tools, h.rawTools, h.toolsValid = out.Tools, rawOut.Tools, true
 	return h.tools, nil
+}
+
+// ToolsRaw is ListTools with each tool exactly as the child described it, for
+// serving the list on unchanged: a field we do not model must not vanish.
+func (h *Host) ToolsRaw(ctx context.Context) ([]Tool, []json.RawMessage, error) {
+	tools, err := h.ListTools(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return tools, h.rawTools, nil
+}
+
+// CallToolRaw invokes a tool with the caller's own JSON arguments and returns
+// the child's result unchanged.
+func (h *Host) CallToolRaw(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if err := h.startLocked(ctx); err != nil {
+		return nil, err
+	}
+	if len(args) == 0 {
+		args = json.RawMessage("{}")
+	}
+	return h.callLocked(ctx, "tools/call", map[string]any{"name": name, "arguments": args})
+}
+
+// Kill stops the child at once, as Close does, and makes every later call fail
+// with why rather than restarting it.
+//
+// It does not wait for a call in flight: that call fails when the child dies.
+func (h *Host) Kill(why error) {
+	h.procMu.Lock()
+	defer h.procMu.Unlock()
+	h.killed = why
+	if h.proc != nil {
+		h.proc.Kill()
+	}
 }
 
 // Tool finds one of the child's tools by name.
