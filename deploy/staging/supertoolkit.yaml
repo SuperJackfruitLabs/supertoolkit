@@ -58,6 +58,10 @@ servers:
   fetch:
     command: /home/salaam/.local/bin/mcp-server-fetch
     args: [--allow-private-ips]
+    # readabilipy runs node when it finds one; on this host /usr/local/bin/node points into
+    # /root, which salaam cannot read, and every page fails with EACCES. Without node on PATH it
+    # uses its pure-Python path.
+    env: { PATH: /usr/bin:/bin }
     network: watched
     egress:
       preset: public-only
