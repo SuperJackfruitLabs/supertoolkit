@@ -760,3 +760,19 @@ func TestNoAuthServiceStillEnforcesItsRules(t *testing.T) {
 	resp, body := f.do(t, false, "POST", "/acme/widgets/git-receive-pack", strings.NewReader("0000"))
 	assertDenied(t, f, resp, body, "user#3")
 }
+
+// A push's first request is a GET of info/refs naming git-receive-pack. It is
+// decided as the push, so the deny on git-receive-pack refuses it there.
+func TestPushRefDiscoveryIsDecidedAsThePush(t *testing.T) {
+	f := newFixture(t, gitNoAuth)
+	resp, body := f.do(t, false, "GET", "/acme/widgets/info/refs?service=git-receive-pack", nil)
+	assertDenied(t, f, resp, body, "user#3")
+}
+
+func TestFetchRefDiscoveryIsStillAFetch(t *testing.T) {
+	f := newFixture(t, gitNoAuth)
+	resp, _ := f.do(t, false, "GET", "/acme/widgets/info/refs?service=git-upload-pack", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("fetch ref discovery: %d, want 200", resp.StatusCode)
+	}
+}
