@@ -9,7 +9,7 @@
 #
 # Steps: build in a container (nothing Go on the host) -> install the binary -> `stk install`
 # (stk's own installer; idempotent) -> policy from this commit -> `stk init` once -> restart the
-# broker -> write Salaam's client settings and its git wrapper -> smoke.
+# broker -> write Salaam's client settings and its git configuration -> smoke.
 #
 # Staging holds no credential at all: the one service, git-public, is `auth: none` (policy and
 # audit only). Nothing here prints a secret; the proxy key goes only into Salaam's 0600 env file.
@@ -68,25 +68,27 @@ sed -i 's#/var/lib/stk/ca.pem#/etc/stk/ca.pem#g' "$envfile"
 install -d -o $agent -g $agent -m 700 "$H/.config/stk"
 install -m 600 -o $agent -g $agent "$envfile" "$H/.config/stk/env"
 rm -f "$envfile"
-install -d -o $agent -g $agent -m 755 "$H/.local/bin"
-cat > "$H/.local/bin/git.new" <<'WRAPPER'
-#!/bin/sh
-# Written by supertoolkit deploy/staging/deploy.sh. git, through the stk broker: its proxy and CA.
-# Only HTTPS goes through the proxy, so ssh://, git:// and ext:: (which would go around the
-# broker and its policy) are refused here.
-set -a
-. /home/salaam/.config/stk/env
-set +a
-export GIT_SSL_CAINFO="$SSL_CERT_FILE" GIT_TERMINAL_PROMPT=0
-export GIT_CONFIG_COUNT=3 \
-  GIT_CONFIG_KEY_0=protocol.ssh.allow GIT_CONFIG_VALUE_0=never \
-  GIT_CONFIG_KEY_1=protocol.git.allow GIT_CONFIG_VALUE_1=never \
-  GIT_CONFIG_KEY_2=protocol.ext.allow GIT_CONFIG_VALUE_2=never
-exec /usr/bin/git "$@"
-WRAPPER
-chown $agent:$agent "$H/.local/bin/git.new" && chmod 755 "$H/.local/bin/git.new"
-mv -T "$H/.local/bin/git.new" "$H/.local/bin/git"
-echo "   $H/.config/stk/env (600), $H/.local/bin/git -> stk"
+# git reaches the broker through its own configuration, not a wrapper on PATH: Salaam runs a
+# session's commands with a fixed PATH and HOME=/home/salaam, so ~/.gitconfig is what every
+# git it starts reads. The include below routes HTTPS through the broker's proxy, trusts its CA,
+# and refuses the transports that would go around it (ssh://, git://, ext::).
+proxy=$(sed -n "s/^export HTTPS_PROXY='\(.*\)'$/\1/p" "$H/.config/stk/env")
+[ -n "$proxy" ] || { echo "no HTTPS_PROXY in stk env"; exit 1; }
+gc="$H/.config/stk/gitconfig"
+rm -f "$gc"
+runuser -u $agent -- sh -c "umask 077
+  git config --file '$gc' http.proxy '$proxy'
+  git config --file '$gc' http.sslCAInfo /etc/stk/ca.pem
+  git config --file '$gc' protocol.ssh.allow never
+  git config --file '$gc' protocol.git.allow never
+  git config --file '$gc' protocol.ext.allow never
+  git config --file '$gc' credential.helper ''
+  git config --file '$gc' core.askPass ''"
+unset proxy
+runuser -u $agent -- sh -c "git config --global --get-all include.path | grep -qx '$gc' ||
+  git config --global --add include.path '$gc'"
+rm -f "$H/.local/bin/git"   # an earlier version used a PATH wrapper; Salaam's commands never saw it
+echo "   $H/.config/stk/env (600), $gc (600, included from ~/.gitconfig)"
 
 # A systemd --user manager started before salaam joined the stk group does not have it.
 uid=$(id -u $agent)
@@ -110,12 +112,12 @@ runuser -u $agent -- sh -c "test -w /run/stk/stk.sock" || { echo "$agent cannot 
 if runuser -u $agent -- ls /var/lib/stk >/dev/null 2>&1; then echo "$agent can read /var/lib/stk"; exit 1; fi
 # A read through the broker works, a push is refused by name, and both are in the audit.
 tmpd=$(runuser -u $agent -- mktemp -d)
-head=$(runuser -u $agent -- env HOME="$tmpd" "$H/.local/bin/git" ls-remote "$REPO_URL" refs/heads/main | cut -c1-12)
+head=$(runuser -u $agent -- env -i HOME="$H" PATH=/usr/bin:/bin git ls-remote "$REPO_URL" refs/heads/main | cut -c1-12)
 [ -n "$head" ] || { echo "git ls-remote through the broker returned nothing"; exit 1; }
 echo "   git ls-remote through the broker: agentpod main $head"
-push=$(runuser -u $agent -- env HOME="$tmpd" sh -c "cd '$tmpd' && /usr/bin/git init -q r && cd r &&
-  /usr/bin/git -c user.name=smoke -c user.email=smoke@invalid commit -q --allow-empty -m smoke &&
-  '$H/.local/bin/git' push '$REPO_URL' HEAD:refs/heads/stk-smoke 2>&1" || true)
+push=$(runuser -u $agent -- env -i HOME="$H" PATH=/usr/bin:/bin GIT_TERMINAL_PROMPT=0 sh -c "cd '$tmpd' && git init -q r && cd r &&
+  git -c user.name=smoke -c user.email=smoke@invalid commit -q --allow-empty -m smoke &&
+  git push '$REPO_URL' HEAD:refs/heads/stk-smoke 2>&1" || true)
 rm -rf "$tmpd"
 printf '%s\n' "$push" | grep -q 'error: 403' ||
   { echo "expected the push to be refused with 403, got:"; printf '%s\n' "$push"; exit 1; }
