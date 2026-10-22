@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"io"
 	"log/slog"
 	"net"
@@ -479,17 +480,22 @@ See docs/limitations.md.
 	// not know svc.Name (just added, or just removed) or may hold its new
 	// acquirer: the result is "no credential" (502) or a provider error, never
 	// a credential for a request the new rules deny.
-	secret, err := b.src(svc.Name)
-	if err != nil {
-		rec.Status = "no credential: " + err.Error()
-		b.record(rec)
-		http.Error(w, "supertoolkit: no credential for "+svc.Name, http.StatusBadGateway)
-		return
-	}
 	entry := svc.Entry()
-	if where, ok := credential.Inject(r, Placeholder(svc.Name), secret, entry.Placement, entry.Field); ok {
-		b.swap.Add(1)
-		rec.Injected = where
+	// A service with no credential (auth: none) is brokered for its rules and
+	// its audit record only: the secret source is never consulted and nothing
+	// is injected, so the request goes upstream exactly as the client sent it.
+	if entry.Auth != catalog.AuthNone {
+		secret, err := b.src(svc.Name)
+		if err != nil {
+			rec.Status = "no credential: " + err.Error()
+			b.record(rec)
+			http.Error(w, "supertoolkit: no credential for "+svc.Name, http.StatusBadGateway)
+			return
+		}
+		if where, ok := credential.Inject(r, Placeholder(svc.Name), secret, entry.Placement, entry.Field); ok {
+			b.swap.Add(1)
+			rec.Injected = where
+		}
 	}
 	rec.AuthzFP = fingerprint(r.Header.Get("Authorization"))
 

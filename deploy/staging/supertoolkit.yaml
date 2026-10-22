@@ -1,27 +1,36 @@
 # Staging policy on workbench (installed to /etc/stk/supertoolkit.yaml by deploy.sh).
-# Safe to commit: it holds no secrets.
+# Safe to commit: it holds no secrets, and this service has none to hold.
 #
-# One service: GitHub's REST API for the GitHub CLI, read-only, on public repositories of the
-# suite. The token behind it is a fine-grained, public-repositories, read-only token, so the
-# policy and the token each refuse writes on their own.
+# One service: anonymous git over HTTPS to github.com, for the agent's `git` (Salaam's `git` is a
+# wrapper that sends it through the broker). `auth: none` means the broker attaches nothing: it
+# is here for policy and audit. Every request is decided by the rules below and recorded in
+# `stk audit`; anything not allowed is refused before it leaves this host.
 #
-# GraphQL stays denied (builtin:graphql): one endpoint carries every query and mutation, and the
-# broker cannot tell them apart. So `gh pr list` / `gh issue create`, which speak GraphQL, are
-# refused by the broker; reads go through `gh api` (REST), e.g.
-#   gh api 'repos/SuperJackfruitLabs/agentpod/pulls?state=open&per_page=3'
+# git's smart-HTTP protocol, per request:
+#   ls-remote, clone, fetch   GET  /<owner>/<repo>[.git]/info/refs?service=git-upload-pack
+#                             POST /<owner>/<repo>[.git]/git-upload-pack
+#   push                      GET  .../info/refs?service=git-receive-pack   (ref discovery only)
+#                             POST .../git-receive-pack                      <- denied, by name
+# The rules cannot see a query string, so a push's ref discovery is allowed; it reads what a
+# fetch reads. The push itself is the POST, and that is denied. `git log`/`git show` in a clone
+# are local and make no request at all.
+#
+# A rule's {repo} is a whole path segment, so the `.git` spelling of the repository is listed
+# as a literal path beside the {owner}/{repo} form.
 workspace: staging
 services:
-  github-public:
+  git-public:
     kind: forge
     provider: github
-    host: api.github.com
-    scheme: bearer
-    env_var: GH_TOKEN
-    preset: read
+    host: github.com
+    auth: none
+    api_prefix: /
+    preset: none
     repositories:
       - SuperJackfruitLabs/agentpod
-      - SuperJackfruitLabs/salaam
-      - SuperJackfruitLabs/superpipeline
-      - SuperJackfruitLabs/superlibrary
-      - SuperJackfruitLabs/superwitness
-      - SuperJackfruitLabs/supertoolkit
+    rules:
+      - allow: "GET /{owner}/{repo}/info/refs"
+      - allow: "POST /{owner}/{repo}/git-upload-pack"
+      - allow: "GET /SuperJackfruitLabs/agentpod.git/info/refs"
+      - allow: "POST /SuperJackfruitLabs/agentpod.git/git-upload-pack"
+      - deny: "POST /*/*/git-receive-pack"

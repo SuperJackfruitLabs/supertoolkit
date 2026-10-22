@@ -84,8 +84,15 @@ func NewForgeEntry(s ForgeSpec) (*Entry, error) {
 			return nil, fmt.Errorf("forge %q: auth app is a GitHub App grant and provider %q has none; use auth: token", s.Name, s.Provider)
 		}
 		auth = AuthGitHubApp
+	case "none":
+		// Policy and audit only, for a public endpoint. A scheme or env_var
+		// would promise a credential that does not exist.
+		if s.Scheme != "" || s.EnvVar != "" {
+			return nil, fmt.Errorf("forge %q: auth none holds no credential, so scheme and env_var cannot be set", s.Name)
+		}
+		auth = AuthNone
 	default:
-		return nil, fmt.Errorf("forge %q: unknown auth %q: want token or app", s.Name, s.Auth)
+		return nil, fmt.Errorf("forge %q: unknown auth %q: want token, app or none", s.Name, s.Auth)
 	}
 	placement, field := BearerHeader, ""
 	switch s.Scheme {

@@ -2,28 +2,27 @@
 # Deploy one commit of supertoolkit to the staging plane (workbench), as root.
 #
 # CI runs it on every push to main: `ssh root@workbench supertoolkit <sha>`, forced to estate's
-# staging-deploy (provision/301), which runs this file *from that commit*. By hand:
-#   ssh workbench 'staging-deploy-run() { SSH_ORIGINAL_COMMAND="supertoolkit <sha>" /usr/local/sbin/staging-deploy; }; staging-deploy-run'
+# staging-deploy (provision/301), which runs this file *from that commit*.
 #
 # Host prerequisites are estate provision/305-stk-host.sh: the `stk` user and group, salaam in
-# that group, /var/lib/stk, /etc/stk, the GitHub CLI and the checkout this reads.
+# that group, /var/lib/stk, /etc/stk and the checkout this reads.
 #
 # Steps: build in a container (nothing Go on the host) -> install the binary -> `stk install`
-# (stk's own installer; idempotent) -> policy from this commit -> `stk init` once -> connect the
-# GitHub token if the operator placed one -> restart the broker -> write Salaam's client settings
-# and gh wrapper -> smoke.
+# (stk's own installer; idempotent) -> policy from this commit -> `stk init` once -> restart the
+# broker -> write Salaam's client settings and its git wrapper -> smoke.
 #
-# Nothing here prints a credential. The token file is fed to `stk connect` on stdin and deleted.
+# Staging holds no credential at all: the one service, git-public, is `auth: none` (policy and
+# audit only). Nothing here prints a secret; the proxy key goes only into Salaam's 0600 env file.
 set -euo pipefail
 
 sha="${1:?usage: deploy.sh <sha>}"
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "deploy.sh: want a 40-hex sha" >&2; exit 2; }
 repo=/opt/suite-staging/supertoolkit
 bin=/opt/suite-staging/supertoolkit-bin
-token=/opt/suite-staging/env/stk/gh-token
 agent=salaam
 H=/home/$agent
 GO_IMAGE=golang:1.26-bookworm
+REPO_URL=https://github.com/SuperJackfruitLabs/agentpod.git
 
 as_stk() {
   runuser -u stk -- env -i PATH=/usr/local/bin:/usr/bin:/bin STK_HOME=/var/lib/stk \
@@ -51,13 +50,6 @@ install -m 640 -o root -g stk "$src/deploy/staging/supertoolkit.yaml" /etc/stk/s
 # The CA certificate is public; the agent needs it to trust the broker. Its key stays in 0700.
 install -m 644 -o root -g root /var/lib/stk/ca.pem /etc/stk/ca.pem
 
-if [ -f "$token" ]; then
-  echo "== connect github-public (from the operator's token file, on stdin)"
-  as_stk /usr/local/bin/stk connect github-public < "$token" >/dev/null
-  shred -u "$token" 2>/dev/null || rm -f "$token"
-  echo "   connected; $token removed"
-fi
-
 echo "== broker"
 systemctl daemon-reload
 systemctl enable -q stk
@@ -68,34 +60,39 @@ echo "   stk.service active, socket $(stat -c '%a %U:%G' /run/stk/stk.sock)"
 
 echo "== client settings for $agent"
 # `stk env` checks the proxy is live before printing its key. The key gates use of the broker
-# and unlocks no secret; the service variables are placeholders.
+# and unlocks no secret.
 envfile=$(mktemp)
 for _ in $(seq 20); do as_stk /usr/local/bin/stk env > "$envfile" 2>/dev/null && break; sleep 0.5; done
 [ -s "$envfile" ] || { echo "stk env produced nothing"; exit 1; }
 sed -i 's#/var/lib/stk/ca.pem#/etc/stk/ca.pem#g' "$envfile"
-if grep -qE 'github_pat_|ghp_|gho_|ghs_' "$envfile"; then echo "stk env printed a token"; exit 1; fi
 install -d -o $agent -g $agent -m 700 "$H/.config/stk"
 install -m 600 -o $agent -g $agent "$envfile" "$H/.config/stk/env"
 rm -f "$envfile"
 install -d -o $agent -g $agent -m 755 "$H/.local/bin"
-cat > "$H/.local/bin/gh.new" <<'EOF'
+cat > "$H/.local/bin/git.new" <<'WRAPPER'
 #!/bin/sh
-# Written by supertoolkit deploy/staging/deploy.sh. gh, through the stk broker: the proxy, its CA
-# and a placeholder GH_TOKEN. The real token never reaches this process; the broker attaches it.
+# Written by supertoolkit deploy/staging/deploy.sh. git, through the stk broker: its proxy and CA.
+# Only HTTPS goes through the proxy, so ssh://, git:// and ext:: (which would go around the
+# broker and its policy) are refused here.
 set -a
 . /home/salaam/.config/stk/env
 set +a
-export GH_HOST=github.com GH_NO_UPDATE_NOTIFIER=1 GH_PROMPT_DISABLED=1
-unset GITHUB_TOKEN GH_ENTERPRISE_TOKEN
-exec /usr/local/lib/gh/bin/gh "$@"
-EOF
-chown $agent:$agent "$H/.local/bin/gh.new" && chmod 755 "$H/.local/bin/gh.new"
-mv -T "$H/.local/bin/gh.new" "$H/.local/bin/gh"
-echo "   $H/.config/stk/env (600), $H/.local/bin/gh -> stk"
+export GIT_SSL_CAINFO="$SSL_CERT_FILE" GIT_TERMINAL_PROMPT=0
+export GIT_CONFIG_COUNT=3 \
+  GIT_CONFIG_KEY_0=protocol.ssh.allow GIT_CONFIG_VALUE_0=never \
+  GIT_CONFIG_KEY_1=protocol.git.allow GIT_CONFIG_VALUE_1=never \
+  GIT_CONFIG_KEY_2=protocol.ext.allow GIT_CONFIG_VALUE_2=never
+exec /usr/bin/git "$@"
+WRAPPER
+chown $agent:$agent "$H/.local/bin/git.new" && chmod 755 "$H/.local/bin/git.new"
+mv -T "$H/.local/bin/git.new" "$H/.local/bin/git"
+echo "   $H/.config/stk/env (600), $H/.local/bin/git -> stk"
 
 # A systemd --user manager started before salaam joined the stk group does not have it.
 uid=$(id -u $agent)
-if ! grep -q "^Groups:.* $(getent group stk | cut -d: -f3)\b" /proc/"$(systemctl show -p MainPID --value user@$uid)"/status 2>/dev/null; then
+gid=$(getent group stk | cut -d: -f3)
+mpid=$(systemctl show -p MainPID --value user@$uid)
+if [ "$mpid" != 0 ] && ! grep -qE "^Groups:.*\b$gid\b" /proc/$mpid/status; then
   echo "   restarting user@$uid so salaam's session has the stk group"
   systemctl restart user@$uid
 fi
@@ -104,24 +101,27 @@ echo "== smoke"
 doc=$(as_stk /usr/local/bin/stk doctor --agent-uid "$uid" 2>&1 || true)
 printf '%s\n' "$doc" | grep -E '✓|✗' | sed 's/^/   /'
 printf '%s\n' "$doc" | grep -q 'isolation  separate-user' || { echo "isolation is not separate-user"; exit 1; }
-# Two failures are expected here and are not faults: doctor wants the socket 0600, but
-# `stk install --group` makes it 0660 on purpose (the uid allowlist is the authorisation), and
-# the credential is missing until the operator places the token.
-bad=$(printf '%s\n' "$doc" | grep '✗' | grep -v -e 'daemon socket .* mode 660' -e 'credential for github-public  missing' || true)
+# One failure is expected and is not a fault: doctor wants the socket 0600, but
+# `stk install --group` makes it 0660 on purpose (the uid allowlist is the authorisation).
+bad=$(printf '%s\n' "$doc" | grep '✗' | grep -v 'daemon socket .* mode 660' || true)
 [ -z "$bad" ] || { echo "doctor failed:"; printf '%s\n' "$bad"; exit 1; }
-# The agent can reach the socket, and cannot read the broker's state.
-runuser -u $agent -- test -w /run/stk/stk.sock || { echo "$agent cannot reach the socket"; exit 1; }
+# The agent can reach the socket and cannot read the broker's state.
+runuser -u $agent -- sh -c "test -w /run/stk/stk.sock" || { echo "$agent cannot reach the socket"; exit 1; }
 if runuser -u $agent -- ls /var/lib/stk >/dev/null 2>&1; then echo "$agent can read /var/lib/stk"; exit 1; fi
-# A request outside policy is refused by the broker, recorded, and nothing goes to GitHub.
-code=$(runuser -u $agent -- "$H/.local/bin/gh" api -X POST repos/SuperJackfruitLabs/agentpod/issues \
-  -f title=smoke 2>&1 | grep -oE 'HTTP [0-9]+' | head -1 || true)
-echo "   gh write through the broker: ${code:-no status}"
-[ "$code" = "HTTP 403" ] || { echo "expected the broker to refuse a write with 403"; exit 1; }
-if as_stk /usr/local/bin/stk verify github-public >/dev/null 2>&1; then
-  echo "   verify github-public: ok"
-  runuser -u $agent -- "$H/.local/bin/gh" api repos/SuperJackfruitLabs/agentpod -q .full_name | sed 's/^/   gh read through the broker: /'
-else
-  echo "   github-public has no credential yet (operator places $token, then redeploy)"
-fi
-as_stk /usr/local/bin/stk audit --limit 3 | sed 's/^/   /'
+# A read through the broker works, a push is refused by name, and both are in the audit.
+tmpd=$(runuser -u $agent -- mktemp -d)
+head=$(runuser -u $agent -- env HOME="$tmpd" "$H/.local/bin/git" ls-remote "$REPO_URL" refs/heads/main | cut -c1-12)
+[ -n "$head" ] || { echo "git ls-remote through the broker returned nothing"; exit 1; }
+echo "   git ls-remote through the broker: agentpod main $head"
+push=$(runuser -u $agent -- env HOME="$tmpd" sh -c "cd '$tmpd' && /usr/bin/git init -q r && cd r &&
+  /usr/bin/git -c user.name=smoke -c user.email=smoke@invalid commit -q --allow-empty -m smoke &&
+  '$H/.local/bin/git' push '$REPO_URL' HEAD:refs/heads/stk-smoke 2>&1" || true)
+rm -rf "$tmpd"
+printf '%s\n' "$push" | grep -q 'error: 403' ||
+  { echo "expected the push to be refused with 403, got:"; printf '%s\n' "$push"; exit 1; }
+# git does not show the broker's reason; the audit record is the evidence, not git's exit code.
+as_stk /usr/local/bin/stk audit --json --limit 10 | grep -q 'git-receive-pack.*denied: user#5\|denied: user#5.*git-receive-pack' ||
+  { echo "the audit does not show the push denied by rule user#5"; exit 1; }
+echo "   git push through the broker: 403, audit shows it denied by rule user#5"
+as_stk /usr/local/bin/stk audit --limit 4 | sed 's/^/   /'
 echo "deployed supertoolkit ${sha:0:12}"

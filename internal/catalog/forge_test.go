@@ -187,3 +187,22 @@ func TestForgeNameCannotLookLikeAScopedCacheKey(t *testing.T) {
 		t.Errorf("error = %v, want a refusal of .scope- in the name", err)
 	}
 }
+
+func TestNoAuthForgeHoldsNoCredential(t *testing.T) {
+	e, err := NewForgeEntry(ForgeSpec{Name: "git", Provider: "github", Host: "github.com", Auth: "none",
+		APIPrefix: "/", Repositories: []string{"a/b"}, Preset: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Auth != AuthNone || len(e.Auth.Fields()) != 0 || e.Auth.LongLivedOnTheWire() {
+		t.Errorf("entry = %+v, want AuthNone with no fields", e)
+	}
+	for _, bad := range []ForgeSpec{
+		{Name: "git", Provider: "github", Host: "github.com", Auth: "none", Scheme: "bearer", Repositories: []string{"a/b"}},
+		{Name: "git", Provider: "github", Host: "github.com", Auth: "none", EnvVar: "T", Repositories: []string{"a/b"}},
+	} {
+		if _, err := NewForgeEntry(bad); err == nil {
+			t.Errorf("%+v: want refused, a no-auth service cannot name a scheme or env_var", bad)
+		}
+	}
+}
