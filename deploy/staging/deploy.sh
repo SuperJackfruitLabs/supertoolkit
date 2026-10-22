@@ -120,7 +120,8 @@ rm -rf "$tmpd"
 printf '%s\n' "$push" | grep -q 'error: 403' ||
   { echo "expected the push to be refused with 403, got:"; printf '%s\n' "$push"; exit 1; }
 # git does not show the broker's reason; the audit record is the evidence, not git's exit code.
-as_stk /usr/local/bin/stk audit --json --limit 10 | grep -q 'git-receive-pack.*denied: user#5\|denied: user#5.*git-receive-pack' ||
+# (The record shows the push's first request, GET .../info/refs, which is decided as the push.)
+as_stk /usr/local/bin/stk audit --json --limit 3 | grep -q '"outcome": "403 denied: user#5"' ||
   { echo "the audit does not show the push denied by rule user#5"; exit 1; }
 echo "   git push through the broker: 403, audit shows it denied by rule user#5"
 as_stk /usr/local/bin/stk audit --limit 4 | sed 's/^/   /'
