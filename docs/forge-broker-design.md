@@ -313,7 +313,7 @@ confirmed when the builder reads `internal/catalog`.
 7. Probe plug-ins (9), CA constraints (10), fronted-server fix or doc removal (8).
 
 Each is its own PR on forge (this repo's primary). `gh` bypasses the push
-guard; do not use it here. Tags continue from `0.0.1`.
+guard; do not use it here. Tags are `vX.Y.Z` from `v0.0.4` on (`0.0.1`–`0.0.3` predate the `v`).
 
 ## Tests that must exist
 

@@ -1,0 +1,27 @@
+# Staging policy on workbench (installed to /etc/stk/supertoolkit.yaml by deploy.sh).
+# Safe to commit: it holds no secrets.
+#
+# One service: GitHub's REST API for the GitHub CLI, read-only, on public repositories of the
+# suite. The token behind it is a fine-grained, public-repositories, read-only token, so the
+# policy and the token each refuse writes on their own.
+#
+# GraphQL stays denied (builtin:graphql): one endpoint carries every query and mutation, and the
+# broker cannot tell them apart. So `gh pr list` / `gh issue create`, which speak GraphQL, are
+# refused by the broker; reads go through `gh api` (REST), e.g.
+#   gh api 'repos/SuperJackfruitLabs/agentpod/pulls?state=open&per_page=3'
+workspace: staging
+services:
+  github-public:
+    kind: forge
+    provider: github
+    host: api.github.com
+    scheme: bearer
+    env_var: GH_TOKEN
+    preset: read
+    repositories:
+      - SuperJackfruitLabs/agentpod
+      - SuperJackfruitLabs/salaam
+      - SuperJackfruitLabs/superpipeline
+      - SuperJackfruitLabs/superlibrary
+      - SuperJackfruitLabs/superwitness
+      - SuperJackfruitLabs/supertoolkit

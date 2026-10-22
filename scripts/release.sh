@@ -17,15 +17,22 @@
 # and uid/gid 0, and gzip is told not to timestamp.
 set -euo pipefail
 
-VERSION="${1:-}"
-if [ -z "$VERSION" ]; then
-  echo "usage: scripts/release.sh <version>   e.g. scripts/release.sh 0.0.1" >&2
+TAG="${1:-}"
+if [ -z "$TAG" ]; then
+  echo "usage: scripts/release.sh <tag>   e.g. scripts/release.sh v0.0.4" >&2
   exit 2
 fi
+# Tags are vX.Y.Z, like every other repository in the suite. The binary reports
+# the bare number (`stk 0.0.4`); the tag and the release URL carry the v.
+# 0.0.1-0.0.3 were tagged without it and stay as they are.
+case "$TAG" in
+  v0.*|v1.*) ;;
+  0.*|1.*) echo "tags are vX.Y.Z: pass v$TAG, not $TAG" >&2; exit 2 ;;
+  *) echo "unexpected tag '$TAG'; expected vX.Y.Z" >&2; exit 2 ;;
+esac
+VERSION="${TAG#v}"
 case "$VERSION" in
-  0.*|1.*) ;;
-  v*) echo "pass the version without a leading v: 0.0.1, not $VERSION" >&2; exit 2 ;;
-  *) echo "unexpected version '$VERSION'" >&2; exit 2 ;;
+  *[!0-9.]*|*..*|.*|*.) echo "unexpected tag '$TAG'; expected vX.Y.Z" >&2; exit 2 ;;
 esac
 
 # A fixed timestamp for every archive entry. The date is arbitrary and only has
