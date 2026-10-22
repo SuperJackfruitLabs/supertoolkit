@@ -101,7 +101,14 @@ if ! grep -q "^Groups:.* $(getent group stk | cut -d: -f3)\b" /proc/"$(systemctl
 fi
 
 echo "== smoke"
-as_stk /usr/local/bin/stk doctor --agent-uid "$uid" 2>&1 | sed 's/^/   /' | tail -25
+doc=$(as_stk /usr/local/bin/stk doctor --agent-uid "$uid" 2>&1 || true)
+printf '%s\n' "$doc" | grep -E '✓|✗' | sed 's/^/   /'
+printf '%s\n' "$doc" | grep -q 'isolation  separate-user' || { echo "isolation is not separate-user"; exit 1; }
+# Two failures are expected here and are not faults: doctor wants the socket 0600, but
+# `stk install --group` makes it 0660 on purpose (the uid allowlist is the authorisation), and
+# the credential is missing until the operator places the token.
+bad=$(printf '%s\n' "$doc" | grep '✗' | grep -v -e 'daemon socket .* mode 660' -e 'credential for github-public  missing' || true)
+[ -z "$bad" ] || { echo "doctor failed:"; printf '%s\n' "$bad"; exit 1; }
 # The agent can reach the socket, and cannot read the broker's state.
 runuser -u $agent -- test -w /run/stk/stk.sock || { echo "$agent cannot reach the socket"; exit 1; }
 if runuser -u $agent -- ls /var/lib/stk >/dev/null 2>&1; then echo "$agent can read /var/lib/stk"; exit 1; fi
