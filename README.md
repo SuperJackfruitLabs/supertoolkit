@@ -191,6 +191,35 @@ inspected, so no rule can restrict which queries or mutations run; a body
 condition on a `/graphql` pattern is rejected when the config loads.
 `stk audit` shows the rule that denied a request. Design:
 [docs/forge-broker-design.md](docs/forge-broker-design.md).
+### A public endpoint, for policy and audit only
+
+`auth: none` declares a forge service that holds no credential. The broker never
+reads the store for it and injects nothing; its rules still decide every request
+and `stk audit` still records it. Anonymous git over HTTPS is the case it is for:
+
+```yaml
+services:
+  git-public:
+    kind: forge
+    provider: github
+    host: github.com
+    auth: none
+    api_prefix: /
+    preset: none
+    repositories: [acme/widgets]
+    rules:
+      - allow: "GET /{owner}/{repo}/info/refs"
+      - allow: "POST /{owner}/{repo}/git-upload-pack"
+      - deny: "POST /*/*/git-receive-pack"
+```
+
+A push opens with `GET …/info/refs?service=git-receive-pack`; the broker decides
+that request as the push it begins (under the rule for `POST …/git-receive-pack`),
+so a denied push is refused at its first request. `scheme` and `env_var` cannot
+be set with `auth: none`, and `stk connect`/`stk verify` refuse it. Point git at
+the broker with `http.proxy` and `http.sslCAInfo` (from `stk env`), and turn off
+`ssh://`, `git://` and `ext::`, which would go around it.
+
 A credential can also arrive sealed, from a machine that has it:
 [docs/handover-v1.md](docs/handover-v1.md).
 
