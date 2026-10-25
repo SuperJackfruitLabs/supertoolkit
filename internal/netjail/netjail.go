@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ShimCommand is the hidden stk subcommand that runs inside the namespace.
@@ -55,7 +56,7 @@ func Open(proxyAddr string) (*Jail, error) {
 
 func (j *Jail) serve() {
 	for {
-		c, err := j.ln.Accept()
+		c, err := accept(j.ln)
 		if err != nil {
 			return
 		}
@@ -99,7 +100,7 @@ func pipe(a, b net.Conn) {
 // relayTo accepts on ln and relays each connection to the Unix socket.
 func relayTo(ln net.Listener, sock string) {
 	for {
-		c, err := ln.Accept()
+		c, err := accept(ln)
 		if err != nil {
 			return
 		}
@@ -128,4 +129,25 @@ type Violation struct {
 
 func (v Violation) String() string {
 	return fmt.Sprintf("pid %d %s to %s", v.PID, v.Proto, v.Remote)
+}
+
+// accept is Accept that survives temporary failures. A relay used to return on the first error,
+// so one EMFILE (a process out of file descriptors) left every later fetch failing instantly,
+// without reaching the broker, until its client was killed. Only a closed listener ends a relay;
+// anything else backs off (5ms doubling to 1s) and accepts again, as net/http's server does.
+func accept(ln net.Listener) (net.Conn, error) {
+	delay := 5 * time.Millisecond
+	for {
+		c, err := ln.Accept()
+		if err == nil {
+			return c, nil
+		}
+		if errors.Is(err, net.ErrClosed) {
+			return nil, err
+		}
+		time.Sleep(delay)
+		if delay *= 2; delay > time.Second {
+			delay = time.Second
+		}
+	}
 }
