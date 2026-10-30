@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -293,9 +295,13 @@ type serveArgs struct {
 	// install under its own user passes 0660 so the agent's group can reach
 	// the socket at all, while --allow-uid stays the authorisation.
 	socketMode os.FileMode
+	// localCommandsSocket, when set, is a unix socket that serves the proxy pinned to the
+	// local-commands identity (operator ruling 2026-10-30). localCommandsMode is its file mode.
+	localCommandsSocket string
+	localCommandsMode   os.FileMode
 }
 
-const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--socket-mode 0600|0660]"
+const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--socket-mode 0600|0660] [--local-commands-socket <absolute path>] [--local-commands-mode 0600|0660]"
 
 // parseSocketMode accepts only owner rw, optionally plus group rw. Anything
 // reachable by other users, or with execute or special bits, is refused: the
@@ -309,7 +315,7 @@ func parseSocketMode(v string) (os.FileMode, error) {
 }
 
 func parseServeArgs(args []string) (serveArgs, error) {
-	o := serveArgs{socketMode: 0o600}
+	o := serveArgs{socketMode: 0o600, localCommandsMode: 0o600}
 	setMode := func(v string) error {
 		m, err := parseSocketMode(v)
 		if err != nil {
@@ -360,6 +366,33 @@ func parseServeArgs(args []string) (serveArgs, error) {
 			if err := setMode(strings.TrimPrefix(a, "--socket-mode=")); err != nil {
 				return o, err
 			}
+		case a == "--local-commands-socket" || strings.HasPrefix(a, "--local-commands-socket="):
+			v, ok := strings.CutPrefix(a, "--local-commands-socket=")
+			if !ok {
+				if i+1 >= len(args) {
+					return o, fmt.Errorf("--local-commands-socket needs an absolute socket path")
+				}
+				i++
+				v = args[i]
+			}
+			if !filepath.IsAbs(v) {
+				return o, fmt.Errorf("--local-commands-socket wants an absolute path, got %q", v)
+			}
+			o.localCommandsSocket = v
+		case a == "--local-commands-mode" || strings.HasPrefix(a, "--local-commands-mode="):
+			v, ok := strings.CutPrefix(a, "--local-commands-mode=")
+			if !ok {
+				if i+1 >= len(args) {
+					return o, fmt.Errorf("--local-commands-mode needs 0600 or 0660")
+				}
+				i++
+				v = args[i]
+			}
+			m, err := parseSocketMode(v)
+			if err != nil {
+				return o, fmt.Errorf("--local-commands-mode: %w", err)
+			}
+			o.localCommandsMode = m
 		default:
 			return o, fmt.Errorf("serve: unknown argument %q (%s)", a, serveUsage)
 		}
@@ -423,6 +456,16 @@ func cmdServe(args []string) error {
 	svc.proxyAddr, svc.proxyKey, svc.caPath = sess.addr, opts.Key, sess.caPath
 	rl := newReloader(configPath(), live, sess.broker, store)
 	svc.reload = rl.reload
+
+	if sa.localCommandsSocket != "" {
+		lc, err := listenLocalCommands(sa.localCommandsSocket, sa.localCommandsMode)
+		if err != nil {
+			return err
+		}
+		defer func() { lc.Close(); os.Remove(sa.localCommandsSocket) }()
+		go sess.broker.ServeAs(lc, broker.LocalCommandsIdentity)
+		fmt.Printf("  local-commands proxy on %s (%04o; every connection is local-commands)\n", sa.localCommandsSocket, sa.localCommandsMode)
+	}
 
 	sock := socketPath(dir)
 	d, err := daemon.ListenWith(sock, svc.handle, daemon.Options{AllowUIDs: sa.allowUIDs, SocketMode: sa.socketMode})
@@ -520,4 +563,27 @@ func (s *service) decideAndPerformCtx(parent context.Context, id string, allow b
 	return s.queue.DecideAndPerform(id, allow, who, func(e *approval.Effect) (string, error) {
 		return s.performApproved(ctx, e)
 	})
+}
+
+// listenLocalCommands binds the local-commands socket with the given file mode. A leftover file
+// from a dead process is replaced; a live socket is refused rather than taken over.
+func listenLocalCommands(path string, mode os.FileMode) (net.Listener, error) {
+	if _, err := os.Stat(path); err == nil {
+		if c, derr := net.Dial("unix", path); derr == nil {
+			c.Close()
+			return nil, fmt.Errorf("%s: a local-commands proxy is already listening", path)
+		}
+		if err := os.Remove(path); err != nil {
+			return nil, fmt.Errorf("removing a stale socket at %s: %w", path, err)
+		}
+	}
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		ln.Close()
+		return nil, fmt.Errorf("securing %s: %w", path, err)
+	}
+	return ln, nil
 }

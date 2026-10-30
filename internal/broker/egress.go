@@ -166,7 +166,7 @@ func (b *Broker) egressPlain(w http.ResponseWriter, r *http.Request, pol *egress
 		b.refuseEgress(w, rec, "egress:upgrade", "a protocol upgrade is not brokered")
 		return
 	}
-	d, addr, err := pol.Resolve(r.Context(), b.resolve, hostport)
+	d, addr, err := pol.ResolveFor(r.Context(), b.resolve, hostport, true)
 	if d.Addr.IsValid() {
 		rec.Addr = d.Addr.String()
 	}
