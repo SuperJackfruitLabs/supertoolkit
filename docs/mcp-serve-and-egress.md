@@ -205,6 +205,34 @@ servers:
 - **Not covered.** A host that stk brokers as a *service* (a policy entry with its own rules and
   credentials) is decided by that service's rules, not by `hosts:`, for every identity.
 
+### 6. The local-commands socket: the identity is the socket's
+
+A command can read its own `HTTP_PROXY`. On the shared proxy, the user name `stk+<server>` only
+selects an identity, so a command could rename itself `stk+fetch` and take fetch's wider egress.
+Operator ruling 2026-10-30: local commands get their own socket instead.
+
+```
+stk serve --local-commands-socket /run/stk/local-commands.sock --local-commands-mode 0660
+```
+
+- **Every connection on it is `local-commands`,** whatever user name it sends. A claimed
+  `stk+<other>` is ignored and recorded (rule `local-commands:identity-forced`, with the claim in
+  the status).
+- **Only `servers.local-commands.egress` decides,** with no fallback to the workspace egress. If the
+  policy has no egress for `local-commands`, the socket stays up and refuses every request
+  (`local-commands:no-policy`). That makes a missing entry fail closed, and visible in audit.
+- **No brokered service is reachable.** A host that policy brokers is refused
+  (`local-commands:brokered-service`) before anything is dialled or intercepted.
+- **The socket's file mode is the only gate**, so no proxy key is asked for. A key handed to a
+  command is a key the command can read. Use `0660` and put the sandbox's command user in stk's
+  group, or `0600` when they are the same user. The policy cannot be changed through this
+  socket; it serves the proxy only, never the control plane.
+- **What clients set:** a command reaches it as `HTTP_PROXY=HTTPS_PROXY=http://127.0.0.1:<port>`
+  inside its sandbox. On Linux that port is a netjail relay to this socket, and on macOS a local
+  relay. The user name does not matter.
+- It is off unless `--local-commands-socket` is given. The main proxy and the control socket are
+  unchanged.
+
 ## Tests that must hold (each revert-proof: remove the guard, the test goes red)
 
 - loopback, private, 169.254.169.254, a 100.64/10 address and `::1` refused

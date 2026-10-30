@@ -199,6 +199,16 @@ func (c *Config) EgressFor(server string) *egress.Policy {
 	return c.egress
 }
 
+// ServerEgress is the egress the operator wrote for this server, with no fallback to the
+// workspace's: nil when the server is absent or names none. The local-commands socket decides
+// with this alone, so a missing entry refuses everything rather than inheriting a wider egress.
+func (c *Config) ServerEgress(server string) *egress.Policy {
+	if s, ok := c.servers[server]; ok {
+		return s.Egress
+	}
+	return nil
+}
+
 // Notify returns the configured notification routes.
 func (c *Config) Notify() Notify { return c.notify }
 
