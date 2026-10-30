@@ -12,6 +12,8 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 // Class names a range of addresses that is not the public internet.
@@ -144,6 +146,95 @@ type Policy struct {
 	Deny    []Matcher
 	Schemes []string // lower-case; empty means https only
 	Methods []string // upper-case; empty means any
+	// HostsSet turns on the hostname allowlist (`hosts:`), decided before DNS: only the listed
+	// names, on port 443 (port 80 too for a host listed as http://), and never an IP literal. An
+	// empty list refuses every host. The address checks still run after (operator ruling
+	// 2026-10-30, the network allowlist for local commands).
+	HostsSet bool
+	Hosts    []HostRule
+}
+
+// HostRule is one `hosts:` entry: an exact name, or `*.suffix` for every name under suffix
+// (not suffix itself). HTTP also allows plain http and port 80 for it.
+type HostRule struct {
+	Name     string // lower-case ASCII (IDNA), no trailing dot
+	Wildcard bool
+	HTTP     bool
+}
+
+// ParseHostRule reads "registry.npmjs.org", "*.pythonhosted.org" or "http://deb.debian.org".
+func ParseHostRule(s string) (HostRule, error) {
+	s = strings.TrimSpace(s)
+	var r HostRule
+	if rest, ok := strings.CutPrefix(strings.ToLower(s), "http://"); ok {
+		r.HTTP, s = true, rest
+	} else if strings.Contains(s, "://") {
+		return r, fmt.Errorf("hosts entry %q: only a bare name, *.name or http://name", s)
+	}
+	if strings.ContainsAny(s, "/:[]@ ") {
+		return r, fmt.Errorf("hosts entry %q: a hostname only, with no port, path or address", s)
+	}
+	if rest, ok := strings.CutPrefix(s, "*."); ok {
+		r.Wildcard, s = true, rest
+	}
+	name, err := normaliseHost(s)
+	if err != nil {
+		return r, fmt.Errorf("hosts entry %q: %v", s, err)
+	}
+	r.Name = name
+	return r, nil
+}
+
+// normaliseHost lower-cases and IDNA-encodes a hostname and refuses an address or a wildcard.
+func normaliseHost(h string) (string, error) {
+	h = strings.TrimSuffix(h, ".")
+	if _, err := netip.ParseAddr(strings.Trim(h, "[]")); err == nil {
+		return "", fmt.Errorf("%s is an address, not a name", h)
+	}
+	if h == "" || strings.Contains(h, "*") {
+		return "", fmt.Errorf("not a hostname")
+	}
+	a, err := idna.Lookup.ToASCII(h)
+	if err != nil || a == "" || !strings.Contains(a, ".") {
+		return "", fmt.Errorf("%q is not a valid hostname", h)
+	}
+	return strings.ToLower(a), nil
+}
+
+func (r HostRule) matches(name string) bool {
+	if r.Wildcard {
+		return strings.HasSuffix(name, "."+r.Name)
+	}
+	return name == r.Name
+}
+
+// hostAllowed is the `hosts:` decision for host:port, before any DNS. plain is a plain http
+// request (not a CONNECT tunnel).
+func (p *Policy) hostAllowed(host, port string, plain bool) (Decision, error) {
+	refuse := func(rule, why string) (Decision, error) {
+		return Decision{Rule: rule}, fmt.Errorf("%s; the host operator adds it to this server's egress.hosts in the stk policy", why)
+	}
+	if _, err := netip.ParseAddr(host); err == nil {
+		return refuse("egress:hosts/ip-literal", host+" is an address; this egress allows listed names only")
+	}
+	name, err := normaliseHost(host)
+	if err != nil {
+		return refuse("egress:hosts/not-listed", host+" is not a listed hostname")
+	}
+	for i, r := range p.Hosts {
+		if !r.matches(name) {
+			continue
+		}
+		switch {
+		case plain && (port != "80" || !r.HTTP):
+			return refuse("egress:hosts/http-not-listed", name+" is not listed for plain http")
+		case port == "443", port == "80" && r.HTTP:
+			return Decision{Allowed: true, Rule: fmt.Sprintf("egress:hosts#%d", i+1)}, nil
+		default:
+			return refuse("egress:hosts/port", name+":"+port+" is not an allowed port (443 only)")
+		}
+	}
+	return refuse("egress:hosts/not-listed", name+" is not in the egress hosts allowlist")
 }
 
 // Decision is the answer for one address.
@@ -184,6 +275,15 @@ func (p *Policy) Decide(a netip.Addr) Decision {
 // AllowsScheme reports whether a URL scheme may be used.
 func (p *Policy) AllowsScheme(s string) bool {
 	s = strings.ToLower(s)
+	if p.HostsSet && s == "http" {
+		// Plain http goes on to the per-host check only if some host is listed for it.
+		for _, r := range p.Hosts {
+			if r.HTTP {
+				return true
+			}
+		}
+		return false
+	}
 	if len(p.Schemes) == 0 {
 		return s == "https"
 	}
@@ -228,11 +328,26 @@ func DefaultResolver(ctx context.Context, host string) ([]netip.Addr, error) {
 // address, not the name, so a second DNS answer cannot move the connection
 // (rebinding).
 func (p *Policy) Resolve(ctx context.Context, res Resolver, hostport string) (Decision, string, error) {
+	return p.ResolveFor(ctx, res, hostport, false)
+}
+
+// ResolveFor is Resolve for a CONNECT tunnel (plain false) or a plain http request (plain true),
+// which a `hosts:` egress decides differently. The hosts check runs first, on the name, before
+// any lookup.
+func (p *Policy) ResolveFor(ctx context.Context, res Resolver, hostport string, plain bool) (Decision, string, error) {
 	host, port, err := net.SplitHostPort(hostport)
 	if err != nil {
 		return Decision{Rule: "egress:bad-address"}, "", err
 	}
 	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+	hostRule := ""
+	if p.HostsSet {
+		d, err := p.hostAllowed(host, port, plain)
+		if err != nil {
+			return d, "", err
+		}
+		hostRule = d.Rule
+	}
 	var addrs []netip.Addr
 	if a, err := netip.ParseAddr(host); err == nil {
 		addrs = []netip.Addr{a}
@@ -254,6 +369,9 @@ func (p *Policy) Resolve(ctx context.Context, res Resolver, hostport string) (De
 		if i == 0 {
 			first = d
 		}
+	}
+	if hostRule != "" {
+		first.Rule = hostRule + "+" + first.Rule
 	}
 	return first, net.JoinHostPort(first.Addr.WithZone("").String(), port), nil
 }

@@ -277,6 +277,9 @@ type egressFile struct {
 	Deny    []string `yaml:"deny"`
 	Schemes []string `yaml:"schemes"`
 	Methods []string `yaml:"methods"`
+	// Hosts is the hostname allowlist; present (even empty) turns it on. A pointer so an empty
+	// list (refuse every host) differs from no list (no hostname check).
+	Hosts *[]string `yaml:"hosts"`
 }
 
 // buildEgress validates an egress block. A misspelt preset or class must fail
@@ -287,7 +290,15 @@ func buildEgress(ef *egressFile) (*egress.Policy, error) {
 	}
 	p := &egress.Policy{}
 	switch ef.Preset {
-	case "", string(egress.PresetNone):
+	case "":
+		// A hostname allowlist still refuses every non-public address unless the operator says
+		// otherwise: a listed name that resolves to this machine or its network is not an
+		// internet host.
+		p.Preset = egress.PresetNone
+		if ef.Hosts != nil {
+			p.Preset = egress.PresetPublicOnly
+		}
+	case string(egress.PresetNone):
 		p.Preset = egress.PresetNone
 	case string(egress.PresetPublicOnly):
 		p.Preset = egress.PresetPublicOnly
@@ -314,6 +325,17 @@ func buildEgress(ef *egressFile) (*egress.Policy, error) {
 			return nil, fmt.Errorf("egress: scheme %q: want https or http", s)
 		}
 		p.Schemes = append(p.Schemes, s)
+	}
+	if ef.Hosts != nil {
+		p.HostsSet = true
+		p.Hosts = []egress.HostRule{}
+		for _, h := range *ef.Hosts {
+			r, err := egress.ParseHostRule(h)
+			if err != nil {
+				return nil, fmt.Errorf("egress hosts: %w", err)
+			}
+			p.Hosts = append(p.Hosts, r)
+		}
 	}
 	for _, m := range ef.Methods {
 		m = strings.ToUpper(m)

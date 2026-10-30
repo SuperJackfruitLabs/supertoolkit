@@ -169,6 +169,42 @@ servers:
 
 `host:` becomes optional for a server with no credential (`env_var` unset).
 
+### 5. A hostname allowlist: `hosts:` (local commands)
+
+Operator ruling 2026-10-30. An address preset answers "any public host". A sandboxed command
+that runs `npm install` needs something narrower: "these registries and nothing else". An
+`egress:` block with `hosts:` allows exactly the listed names:
+
+```yaml
+servers:
+  local-commands:            # the identity Salaam's local commands present to the proxy
+    command: none
+    network: host
+    egress:
+      hosts:
+        - registry.npmjs.org         # exact name, https (port 443) only
+        - "*.pythonhosted.org"       # every name under it, not pythonhosted.org itself
+        - http://deb.debian.org      # also plain http and port 80, for this host only
+```
+
+- **Before DNS.** The CONNECT target name is checked against the list before any lookup, so an
+  unlisted host is never resolved or dialled. Names are lower-cased and IDNA-encoded, and a
+  trailing dot is ignored. An IP literal is refused (`egress:hosts/ip-literal`).
+- **Then the address.** A `hosts:` egress defaults to `preset: public-only`, so a listed name that
+  resolves to this machine, its network or the metadata service is still refused. The dial is
+  pinned to the decided address, as for every egress.
+- **Ports.** Only 443, plus 80 for a host listed as `http://`. Plain `http://` requests reach only
+  hosts listed that way (`egress:hosts/http-not-listed`).
+- **Empty means nothing.** `hosts: []` refuses every host. With no `hosts:` key, there is no
+  hostname check, which is the behaviour before this change.
+- **Refusals name the fix.** `egress:hosts/not-listed`, `egress:hosts/port`, and so on. The body
+  says the host operator adds the host to this server's `egress.hosts`. Every allow and deny is
+  recorded with the identity, host, port and rule (`egress:hosts#N+egress:public-only` when
+  allowed).
+- **Who sets it.** The host operator only, in the root-owned stk policy file. There is no API.
+- **Not covered.** A host that stk brokers as a *service* (a policy entry with its own rules and
+  credentials) is decided by that service's rules, not by `hosts:`, for every identity.
+
 ## Tests that must hold (each revert-proof: remove the guard, the test goes red)
 
 - loopback, private, 169.254.169.254, a 100.64/10 address and `::1` refused
