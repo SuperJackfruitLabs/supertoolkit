@@ -2,9 +2,9 @@
 # Build supertoolkit.dev and docs.supertoolkit.dev and deploy both as Cloudflare
 # Workers with static assets.
 #
-# Run from the operator's machine with an existing `wrangler login`; no API token is
-# created or stored anywhere. Each site's wrangler.jsonc names its Worker and its
-# custom domain, so this attaches the domain too.
+# CI runs it on every merge to main that touches a site (.github/workflows/sites.yml), with
+# the organisation's CLOUDFLARE_API_TOKEN. It also runs by hand with a `wrangler login`.
+# Each site's wrangler.jsonc names its Worker and its custom domain, so this attaches the domain too.
 #
 # --config is explicit and wrangler runs from a scratch directory: in a site directory
 # without a config, wrangler's project detection scaffolds an adapter into the site and

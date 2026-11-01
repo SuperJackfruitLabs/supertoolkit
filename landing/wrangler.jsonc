@@ -2,8 +2,8 @@
 //
 // A Worker rather than a Pages project because the custom domain can be declared
 // here, so `wrangler deploy` attaches it — the same shape the other product sites
-// use. Deployed by scripts/deploy-sites.sh with the operator's own `wrangler
-// login`; no API token is created or stored.
+// use. Deployed by scripts/deploy-sites.sh, from .github/workflows/sites.yml on
+// merge to main.
 {
   "name": "supertoolkit-landing",
   "compatibility_date": "2026-10-01",

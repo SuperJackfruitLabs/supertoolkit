@@ -8,7 +8,8 @@ npm ci && npm run dev      # http://localhost:4330
 npm run build              # dist/
 ```
 
-Deployed with `scripts/deploy-sites.sh docs`.
+Deployed on merge to main by `.github/workflows/sites.yml`, which runs
+`scripts/deploy-sites.sh`. To deploy by hand: `scripts/deploy-sites.sh docs`.
 
 **The pages here are derived from the repository's own documents** — `README.md`,
 `docs/limitations.md`, `docs/measurements.md`. Where they disagree, the
