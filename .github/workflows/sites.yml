@@ -1,0 +1,42 @@
+name: Deploy public sites
+# Deploys the landing page and docs site on every merge to main that touches them, with the
+# organisation's shared CLOUDFLARE_API_TOKEN secret and CLOUDFLARE_ACCOUNT_ID variable. The
+# websites environment only accepts main. Run it by hand to redeploy one site.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - 'docs-site/**'
+      - 'install.sh'
+      - 'scripts/deploy-sites.sh'
+      - '.github/workflows/sites.yml'
+  workflow_dispatch:
+    inputs:
+      site:
+        description: Which site to deploy
+        type: choice
+        options: [all, landing, docs]
+        default: all
+permissions:
+  contents: read
+concurrency:
+  group: public-sites
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment: websites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --global wrangler@4.103.0 --ignore-scripts
+      - name: Build and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SITE: ${{ inputs.site || 'all' }}
+        run: scripts/deploy-sites.sh "$SITE"

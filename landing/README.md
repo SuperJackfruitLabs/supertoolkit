@@ -14,8 +14,9 @@ npm ci && npm run dev      # http://localhost:4329
 npm run build              # dist/
 ```
 
-Deployed with `scripts/deploy-sites.sh landing` from a machine that has already
-run `wrangler login`.
+Deployed on merge to main by `.github/workflows/sites.yml`, which runs
+`scripts/deploy-sites.sh`. To deploy by hand: `scripts/deploy-sites.sh landing`
+after `wrangler login`.
 
 **Every claim on the page must be true of the current source**, and every
 command must match the docs site's install page. If the two disagree, the page
