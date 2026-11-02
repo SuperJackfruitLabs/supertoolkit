@@ -11,9 +11,16 @@ supertoolkit is a single Go binary, `stk`. It runs on your own machine.
 git clone https://github.com/SuperJackfruitLabs/supertoolkit
 cd supertoolkit
 go build -o stk ./cmd/stk
+mkdir -p "$HOME/.local/bin"
+install -m 0755 stk "$HOME/.local/bin/stk"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Go 1.21 or newer. There is nothing else to install: the web interface is
+Go 1.26.0 or newer is required by the module. The commands above install `stk`
+under your account and add it to this shell's `PATH`. Add the same `export` line
+to your shell startup file to use it in future terminals.
+
+There is nothing else to install: the web interface is
 embedded in the binary.
 
 ## First run
