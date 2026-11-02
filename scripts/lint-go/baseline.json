@@ -2,9 +2,9 @@
   "bodyclose": 21,
   "errcheck": 293,
   "errorlint": 13,
-  "gosec": 151,
+  "gosec": 150,
   "misspell": 4,
   "nilerr": 7,
-  "noctx": 145,
+  "noctx": 121,
   "staticcheck": 14
 }

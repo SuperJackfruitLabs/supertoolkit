@@ -2,6 +2,7 @@ package proxyenv
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,7 +57,7 @@ func verifyStkProxy(addr string, pid int) error {
 	if kerr := syscall.Kill(pid, 0); pid <= 0 || kerr != nil && !errors.Is(kerr, syscall.EPERM) {
 		return fmt.Errorf("process %d is not running", pid)
 	}
-	c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	c, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(context.Background(), "tcp", addr)
 	if err != nil {
 		return err
 	}

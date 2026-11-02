@@ -229,7 +229,7 @@ func newProbeRigKeyed(home string, keyed bool) (*probeRig, error) {
 		// from a placeholder that got through.
 		fmt.Fprintln(w, req.Header.Get("Authorization"))
 	})
-	r.provLn, err = net.Listen("tcp", "127.0.0.1:0")
+	r.provLn, err = (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func newProbeRigKeyed(home string, keyed bool) (*probeRig, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.proxyLn, err = net.Listen("tcp", "127.0.0.1:0")
+	r.proxyLn, err = (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}

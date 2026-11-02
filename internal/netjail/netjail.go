@@ -9,6 +9,7 @@
 package netjail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -44,7 +45,7 @@ func Open(proxyAddr string) (*Jail, error) {
 		return nil, err
 	}
 	sock := filepath.Join(dir, "proxy.sock")
-	ln, err := net.Listen("unix", sock)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", sock)
 	if err != nil {
 		os.RemoveAll(dir)
 		return nil, err
@@ -61,7 +62,7 @@ func (j *Jail) serve() {
 			return
 		}
 		go func() {
-			up, err := net.Dial("tcp", j.proxy)
+			up, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", j.proxy)
 			if err != nil {
 				c.Close()
 				return
@@ -105,7 +106,7 @@ func relayTo(ln net.Listener, sock string) {
 			return
 		}
 		go func() {
-			up, err := net.Dial("unix", sock)
+			up, err := (&net.Dialer{}).DialContext(context.Background(), "unix", sock)
 			if err != nil {
 				c.Close()
 				return

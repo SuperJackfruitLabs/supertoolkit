@@ -596,7 +596,7 @@ func openInBrowser(url string) error {
 	default:
 		cmd = "xdg-open"
 	}
-	return exec.Command(cmd, append(args, url)...).Start()
+	return exec.CommandContext(context.Background(), cmd, append(args, url)...).Start()
 }
 
 // hasFlag removes flag from args and reports whether it was there.

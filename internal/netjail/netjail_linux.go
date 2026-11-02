@@ -3,6 +3,7 @@
 package netjail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -23,7 +24,7 @@ import (
 // and can open nothing the caller cannot.
 func (j *Jail) Command(self string, port int, name string, args ...string) *exec.Cmd {
 	argv := append([]string{ShimCommand, "--sock", j.sock, "--port", strconv.Itoa(port), "--", name}, args...)
-	cmd := exec.Command(self, argv...)
+	cmd := exec.CommandContext(context.Background(), self, argv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:                 syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
 		UidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},
@@ -69,7 +70,7 @@ run:
 	if err := loopbackUp(); err != nil {
 		return 1, fmt.Errorf("bringing loopback up in the namespace: %w", err)
 	}
-	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
 		return 1, err
 	}
@@ -77,7 +78,7 @@ run:
 
 	// The child gains nothing from this namespace's root: no new privileges.
 	unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
-	cmd := exec.Command(args[i], args[i+1:]...)
+	cmd := exec.CommandContext(context.Background(), args[i], args[i+1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	if err := cmd.Start(); err != nil {
@@ -122,7 +123,7 @@ func loopbackUp() error {
 // Probe reports whether this process can create the namespaces at all, so a
 // caller can refuse to start a child rather than start it unconfined.
 func Probe(self string) error {
-	cmd := exec.Command(self, ShimCommand+"-probe")
+	cmd := exec.CommandContext(context.Background(), self, ShimCommand+"-probe")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:                 syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
 		UidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},

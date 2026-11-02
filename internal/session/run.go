@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -94,7 +95,7 @@ func StartWith(cfg *policy.Config, store *credential.Store, dir string, o Option
 	if listen == "" {
 		listen = "127.0.0.1:0"
 	}
-	ln, err := net.Listen("tcp", listen)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", listen)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +167,7 @@ func Command(args []string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
 	}
-	cmd := exec.Command(bin, args[1:]...)
+	cmd := exec.CommandContext(context.Background(), bin, args[1:]...)
 	cmd.Env = sess.Env
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir, _ = os.Getwd()

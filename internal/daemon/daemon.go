@@ -12,6 +12,7 @@ package daemon
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -95,7 +96,7 @@ func ListenWith(sock string, h Handler, opts Options) (*Server, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(sock); err == nil {
-		if c, derr := net.Dial("unix", sock); derr == nil {
+		if c, derr := (&net.Dialer{}).DialContext(context.Background(), "unix", sock); derr == nil {
 			c.Close()
 			return nil, fmt.Errorf("%s: a daemon is already listening", sock)
 		}
@@ -103,7 +104,7 @@ func ListenWith(sock string, h Handler, opts Options) (*Server, error) {
 			return nil, fmt.Errorf("removing a stale socket at %s: %w", sock, err)
 		}
 	}
-	ln, err := net.Listen("unix", sock)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", sock)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +199,7 @@ type Client struct {
 
 // Dial connects to a daemon.
 func Dial(sock string) (*Client, error) {
-	conn, err := net.Dial("unix", sock)
+	conn, err := (&net.Dialer{}).DialContext(context.Background(), "unix", sock)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w — is `stk serve` running?", sock, err)
 	}

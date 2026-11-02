@@ -246,7 +246,7 @@ func Listen(port int, state string) (*Receiver, string, error) {
 // ListenAt is Listen on a chosen path, for an already-registered callback whose
 // path is not ours to choose.
 func ListenAt(port int, path, state string) (*Receiver, string, error) {
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return nil, "", fmt.Errorf("could not listen for the provider's redirect: %w", err)
 	}

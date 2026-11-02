@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -247,7 +248,7 @@ func Command(args []string, version string) error {
 // from a dead process is replaced; a live socket is refused rather than taken over.
 func listenLocalCommands(path string, mode os.FileMode) (net.Listener, error) {
 	if _, err := os.Stat(path); err == nil {
-		if c, derr := net.Dial("unix", path); derr == nil {
+		if c, derr := (&net.Dialer{}).DialContext(context.Background(), "unix", path); derr == nil {
 			c.Close()
 			return nil, fmt.Errorf("%s: a local-commands proxy is already listening", path)
 		}
@@ -255,7 +256,7 @@ func listenLocalCommands(path string, mode os.FileMode) (net.Listener, error) {
 			return nil, fmt.Errorf("removing a stale socket at %s: %w", path, err)
 		}
 	}
-	ln, err := net.Listen("unix", path)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", path)
 	if err != nil {
 		return nil, err
 	}

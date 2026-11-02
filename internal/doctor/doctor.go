@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -212,7 +213,7 @@ func probeCurl() check {
 	}
 	defer sess.Stop()
 
-	cmd := exec.Command("curl", "-s", "-o", "/dev/null", "-m", "10", "https://example.com/")
+	cmd := exec.CommandContext(context.Background(), "curl", "-s", "-o", "/dev/null", "-m", "10", "https://example.com/")
 	cmd.Env = sess.Env
 	_ = cmd.Run()
 	st := sess.Broker.Stats()
