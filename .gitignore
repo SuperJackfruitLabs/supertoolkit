@@ -19,3 +19,6 @@ docs-site/node_modules/
 docs-site/dist/
 docs-site/.astro/
 /cmd/stk/stk
+
+# The pinned golangci-lint (docs/code-quality.md).
+/.bin/
