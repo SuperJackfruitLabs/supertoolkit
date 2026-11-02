@@ -31,9 +31,7 @@ var oversizeFiles = map[string]int{}
 
 // oversizePackages lists the packages over packageLimit and the most lines each may have.
 // Lower these; never raise them.
-var oversizePackages = map[string]int{
-	"cmd/stk": 5881,
-}
+var oversizePackages = map[string]int{}
 
 // skipDir reports the directories that hold no shipped Go: test fixtures, dependencies of the
 // web build, and hidden directories such as .git and the pinned linter's .bin.

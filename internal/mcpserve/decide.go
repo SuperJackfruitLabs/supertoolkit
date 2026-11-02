@@ -71,7 +71,7 @@ func DoneEntry(server, tool, caller, rule, outcome string) ledger.Entry {
 }
 
 // Gate decides and records. Implementations: Local (in process) and the
-// daemon client in cmd/stk.
+// daemon client in internal/mcpcmd.
 type Gate interface {
 	// Decide decides one call and records the decision.
 	Decide(ctx context.Context, tool string, hint policy.ToolHint) (Decision, error)

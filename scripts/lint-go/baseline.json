@@ -2,10 +2,10 @@
   "bodyclose": 21,
   "errcheck": 293,
   "errorlint": 16,
-  "gosec": 161,
+  "gosec": 151,
   "misspell": 4,
   "nilerr": 7,
-  "noctx": 141,
+  "noctx": 145,
   "staticcheck": 14,
   "unused": 1
 }

@@ -26,9 +26,23 @@ var layers = [][]string{
 		"managedmcp", "mcphost", "netjail", "notify", "oauth2flow", "rules"},
 	// Over the catalogue: the credential operations, policy, and provider verification.
 	{"credential", "policy", "verify"},
-	// The egress proxy, the sealed hand-over, the MCP meta-tools and fronted-server gate, and the
-	// web UI's API.
-	{"broker", "handover", "mcp", "mcpserve", "webui"},
+	// The egress proxy, the sealed hand-over, the MCP meta-tools and fronted-server gate, the web
+	// UI's API, and where stk keeps its local state (state directory, policy file, socket, proxy
+	// key) and dials its daemon.
+	{"broker", "handover", "localstate", "mcp", "mcpserve", "webui"},
+	// Where a stored credential becomes what goes on the wire; shared test fixtures.
+	{"clitest", "secrets"},
+	// The policy in force in a running process and its reload; connecting a credential; verifying
+	// and withdrawing one.
+	{"credcmd", "livepolicy", "setup"},
+	// The durable audit of every effect, and `stk audit`.
+	{"audit"},
+	// A direct native request through the broker's credential path; a running broker and `stk run`.
+	{"native", "session"},
+	// What the daemon serves; `stk doctor` and its probe; the managed Toolkit commands; `stk env`.
+	{"controlplane", "doctor", "managedtoolkit", "proxyenv"},
+	// The commands that run a daemon or speak to one: `stk mcp`, `stk serve`, `stk ui`.
+	{"mcpcmd", "serve", "uicmd"},
 }
 
 // knownBackEdges are imports that point up or across the layers and are allowed for now. It may

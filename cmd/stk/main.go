@@ -8,7 +8,19 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/audit"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/credcmd"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/doctor"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/livepolicy"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/localstate"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/managedtoolkit"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcpcmd"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/netjail"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/proxyenv"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/serve"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/session"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/setup"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/uicmd"
 )
 
 // version is a var, not a const, because the release build stamps it with
@@ -58,7 +70,7 @@ func usage() {
   stk version
 
 The agent never holds a credential. Known services: `)
-	fmt.Fprintln(os.Stderr, knownServices())
+	fmt.Fprintln(os.Stderr, localstate.KnownServices())
 }
 
 func main() {
@@ -82,43 +94,43 @@ func main() {
 		}
 		os.Exit(0)
 	case "init":
-		err = cmdInit()
+		err = setup.Init()
 	case "add":
-		err = cmdAdd(os.Args[2:])
+		err = setup.Add(os.Args[2:])
 	case "connect":
-		err = cmdConnect(os.Args[2:])
+		err = setup.Connect(os.Args[2:])
 	case "handover":
-		err = cmdHandover(os.Args[2:])
+		err = setup.Handover(os.Args[2:])
 	case "run":
-		err = cmdRun(os.Args[2:])
+		err = session.Command(os.Args[2:])
 	case "serve":
-		err = cmdServe(os.Args[2:])
+		err = serve.Command(os.Args[2:], version)
 	case "reload":
-		err = cmdReload(os.Args[2:])
+		err = livepolicy.Command(os.Args[2:])
 	case "install":
 		err = cmdInstall(os.Args[2:])
 	case "env":
-		err = cmdEnv(os.Args[2:])
+		err = proxyenv.Command(os.Args[2:])
 	case "mcp":
-		err = cmdMCP(os.Args[2:])
+		err = mcpcmd.Command(os.Args[2:], version)
 	case "managed-mcp-v1":
-		err = cmdManagedMCP(os.Args[2:])
+		err = managedtoolkit.MCP(os.Args[2:], version)
 	case "managed-evidence-v1":
-		err = cmdManagedEvidence(os.Args[2:])
+		err = managedtoolkit.Evidence(os.Args[2:])
 	case "managed-control-v1":
-		err = cmdManagedControl(os.Args[2:])
+		err = managedtoolkit.Control(os.Args[2:])
 	case "verify":
-		err = cmdVerify(os.Args[2:])
+		err = credcmd.Verify(os.Args[2:])
 	case "revoke", "forget":
-		err = cmdRevoke(os.Args[2:])
+		err = credcmd.Revoke(os.Args[2:])
 	case "audit":
-		err = cmdAudit(os.Args[2:])
+		err = audit.Command(os.Args[2:])
 	case "approvals", "approval":
-		err = cmdApprovals(os.Args[2:])
+		err = mcpcmd.Approvals(os.Args[2:])
 	case "ui":
-		err = cmdUI(os.Args[2:])
+		err = uicmd.Command(os.Args[2:], version)
 	case "doctor":
-		err = cmdDoctor(os.Args[2:])
+		err = doctor.Command(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("stk", version)
 	case "help", "--help", "-h":

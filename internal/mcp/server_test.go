@@ -333,7 +333,7 @@ func TestAnApprovalPerformedByTheDeciderIsNotRunAgainByTheWaiter(t *testing.T) {
 		t.Fatal("nothing queued")
 	}
 
-	// The decider performs, as cmd/stk does for both the daemon and the UI.
+	// The decider performs, as internal/controlplane does for both the daemon and the UI.
 	var byDecider int
 	if _, err := r.q.DecideAndPerform(pend[0].ID, true, "web", func(e *approval.Effect) (string, error) {
 		byDecider++
