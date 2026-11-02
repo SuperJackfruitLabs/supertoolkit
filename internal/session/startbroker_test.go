@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/clitest"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/ledger"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/localstate"
 )
 
@@ -83,6 +84,10 @@ func TestStartBrokerDefaultHasNoKey(t *testing.T) {
 	if got := connectStatus(t, sess.Addr); strings.Contains(got, " 407") {
 		t.Fatalf("the default broker demanded a key: %q", got)
 	}
+	// The broker records the tunnel it tried once the dial to the .invalid host fails, which can
+	// be after the status line arrives; wait for that row so it is not written into a state
+	// directory the test is already removing.
+	waitForLedgerRow(t, dir)
 	if strings.Contains(envValue(sess.Env, "HTTPS_PROXY"), "@") {
 		t.Fatalf("default HTTPS_PROXY carries userinfo: %q", envValue(sess.Env, "HTTPS_PROXY"))
 	}
@@ -151,5 +156,24 @@ func TestServeProxyListenSubprocess(t *testing.T) {
 	}
 	if _, err := os.Stat(addrFile); err == nil {
 		t.Fatal("proxy.addr was left behind after a clean shutdown")
+	}
+}
+
+// waitForLedgerRow waits until the audit ledger in dir holds a row.
+func waitForLedgerRow(t *testing.T, dir string) {
+	t.Helper()
+	led, err := ledger.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if es, err := led.Read(1); err == nil && len(es) > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the broker never recorded the CONNECT")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
