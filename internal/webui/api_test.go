@@ -67,7 +67,7 @@ servers:
 	}
 	d := Deps{
 		Config: cfg, Store: store, Queue: q,
-		// The rig decides and performs, the way cmd/stk does, so the test
+		// The rig decides and performs, the way internal/controlplane does, so the test
 		// exercises the path a browser actually takes.
 		Decide: func(id string, allow bool, who string) (*approval.Effect, error) {
 			return q.DecideAndPerform(id, allow, who, func(e *approval.Effect) (string, error) {

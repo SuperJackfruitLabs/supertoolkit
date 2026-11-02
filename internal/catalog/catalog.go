@@ -8,6 +8,7 @@ package catalog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -819,7 +820,7 @@ func (e *Entry) Request(capability string, args map[string]string) (*http.Reques
 		}
 		reader = bytes.NewReader(encoded)
 	}
-	req, err := http.NewRequest(c.Method, u.String(), reader)
+	req, err := http.NewRequestWithContext(context.Background(), c.Method, u.String(), reader)
 	if err != nil {
 		return nil, err
 	}

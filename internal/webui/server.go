@@ -12,6 +12,7 @@
 package webui
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -129,7 +130,7 @@ func Listen(addr string, allowNonLoopback bool) (net.Listener, error) {
 			"webui: refusing to bind %s: it is not loopback, and this process holds credentials.\n"+
 				"      Use --bind with an address on a private network if you mean it.", addr)
 	}
-	return net.Listen("tcp", addr)
+	return (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 }
 
 func isLoopback(host string) bool {

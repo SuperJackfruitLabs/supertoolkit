@@ -101,13 +101,13 @@ func API(d Deps) http.Handler {
 
 func write(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v) // the status is sent; a failed body is the client's to see
 }
 
 func fail(w http.ResponseWriter, code int, format string, a ...any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf(format, a...)})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf(format, a...)}) // the status is sent
 }
 
 func (d Deps) status(w http.ResponseWriter, r *http.Request) {

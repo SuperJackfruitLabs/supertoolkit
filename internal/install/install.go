@@ -58,7 +58,7 @@ type ExecRunner struct{}
 
 // Run executes name with args and folds its output into the error.
 func (ExecRunner) Run(name string, args ...string) error {
-	out, err := exec.Command(name, args...).CombinedOutput()
+	out, err := exec.CommandContext(context.Background(), name, args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(string(out)))
 	}

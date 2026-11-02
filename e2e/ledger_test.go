@@ -17,7 +17,7 @@ import (
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
 
-// observer is the same mapping cmd/stk installs: a wire record becomes an audit
+// observer is the same mapping internal/audit installs: a wire record becomes an audit
 // entry, with the catalogue turning a method and a path into a capability name.
 type observer struct {
 	cfg *policy.Config

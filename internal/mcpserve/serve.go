@@ -85,7 +85,8 @@ func (s *Server) write(id json.RawMessage, result any, rerr *rpcError) {
 	b, _ := json.Marshal(msg)
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
-	s.out.Write(append(b, '\n'))
+	// A client that stopped reading has gone; there is nobody left to tell.
+	_, _ = s.out.Write(append(b, '\n'))
 }
 
 func (s *Server) handle(ctx context.Context, req request) (any, *rpcError) {
@@ -94,7 +95,8 @@ func (s *Server) handle(ctx context.Context, req request) (any, *rpcError) {
 		var p struct {
 			ProtocolVersion string `json:"protocolVersion"`
 		}
-		json.Unmarshal(req.Params, &p)
+		// Unreadable params leave the version empty, which picks protocols[0] below.
+		_ = json.Unmarshal(req.Params, &p)
 		v := protocols[0]
 		for _, x := range protocols {
 			if x == p.ProtocolVersion {
@@ -156,18 +158,21 @@ func (s *Server) call(ctx context.Context, name string, args json.RawMessage) an
 	}
 	raw, err := s.Child.CallToolRaw(ctx, name, args)
 	if err != nil {
-		s.Gate.Done(ctx, name, d.Rule, "failed: "+err.Error())
+		// The call failed either way; the decision was recorded before it ran.
+		_ = s.Gate.Done(ctx, name, d.Rule, "failed: "+err.Error())
 		return toolError("%s/%s failed: %v", s.Name, name, err)
 	}
 	var res struct {
 		IsError bool `json:"isError"`
 	}
-	json.Unmarshal(raw, &res)
+	// A result that is not an object has no isError, so it counts as completed.
+	_ = json.Unmarshal(raw, &res)
 	outcome := "completed"
 	if res.IsError {
 		outcome = "completed with a tool error"
 	}
-	s.Gate.Done(ctx, name, d.Rule, outcome)
+	// The result is returned either way; the decision was recorded before the call ran.
+	_ = s.Gate.Done(ctx, name, d.Rule, outcome)
 	return raw
 }
 

@@ -447,8 +447,9 @@ func (b *Broker) blindTunnel(ctx context.Context, client net.Conn, hostport stri
 	}
 	defer up.Close()
 	done := make(chan struct{})
-	go func() { io.Copy(up, client); close(done) }()
-	io.Copy(client, up)
+	// A tunnel's copy ends when either side closes; how it ended is nothing to act on.
+	go func() { _, _ = io.Copy(up, client); close(done) }()
+	_, _ = io.Copy(client, up)
 	<-done
 }
 
@@ -486,7 +487,8 @@ func (b *Broker) interceptTLS(client net.Conn, host, svcName string) {
 		return
 	}
 	b.h1.Add(1)
-	(&http.Server{Handler: h}).Serve(newSingleConnListener(tc))
+	// A one-connection server returns when its connection closes; that is its end, not a fault.
+	_ = (&http.Server{Handler: h}).Serve(newSingleConnListener(tc))
 }
 
 func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto, svcName string) {
