@@ -14,6 +14,7 @@ package ledger
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -169,7 +170,7 @@ func readFile(path string) ([]Entry, error) {
 		}
 		out = append(out, e)
 	}
-	if err := sc.Err(); err != nil && err != io.EOF {
+	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 	return out, nil

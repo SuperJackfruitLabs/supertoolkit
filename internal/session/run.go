@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -178,7 +179,9 @@ func Command(args []string) error {
 		fmt.Fprintf(os.Stderr, "     Some clients ignore proxy settings entirely. Run `stk doctor`.\n")
 	}
 	if runErr != nil {
-		if ee, ok := runErr.(*exec.ExitError); ok {
+		// Run returns an *exec.ExitError itself, never wrapped, so errors.As matches the same.
+		var ee *exec.ExitError
+		if errors.As(runErr, &ee) {
 			os.Exit(ee.ExitCode())
 		}
 		return runErr

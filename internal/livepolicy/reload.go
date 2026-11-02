@@ -68,7 +68,6 @@ type Result struct {
 // MarshalJSON always emits the three lists on success, empty rather than
 // absent, so a caller can index them without a nil check.
 func (r Result) MarshalJSON() ([]byte, error) {
-	type plain Result
 	if !r.OK {
 		return json.Marshal(struct {
 			OK    bool   `json:"ok"`

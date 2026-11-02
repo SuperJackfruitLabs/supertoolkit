@@ -3,6 +3,7 @@
 package netjail
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -90,7 +91,9 @@ run:
 		}
 	}()
 	err = cmd.Wait()
-	if ee, ok := err.(*exec.ExitError); ok {
+	// Wait returns an *exec.ExitError itself, never wrapped, so errors.As matches the same.
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
 		return ee.ExitCode(), nil
 	}
 	if err != nil {

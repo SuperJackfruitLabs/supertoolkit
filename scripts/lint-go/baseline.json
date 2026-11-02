@@ -1,11 +1,10 @@
 {
   "bodyclose": 21,
   "errcheck": 293,
-  "errorlint": 16,
+  "errorlint": 13,
   "gosec": 151,
   "misspell": 4,
   "nilerr": 7,
   "noctx": 145,
-  "staticcheck": 14,
-  "unused": 1
+  "staticcheck": 14
 }
