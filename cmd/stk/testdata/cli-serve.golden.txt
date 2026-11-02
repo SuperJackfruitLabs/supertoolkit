@@ -1,0 +1,148 @@
+$ stk init
+exit 0
+--- stdout
+  wrote $ROOT/work/supertoolkit.yaml — safe to commit, holds no secrets
+  local state in $ROOT/state (0700)
+  store key from STK_PASSPHRASE
+  CA certificate $ROOT/state/ca.pem
+
+  next: stk add github && stk connect github
+  no browser on this machine? stk connect github --device
+
+  about trusting the CA:
+    `stk run` sets SSL_CERT_FILE and friends, which covers Go, curl,
+    Python and Node on this platform. No system change needed.
+--- stderr
+
+
+$ stk add github
+exit 0
+--- stdout
+  github     api.github.com · 3 read→agent, 2 write→approval
+--- stderr
+
+
+$ stk connect github  <<< "ghp_characterization_fixture"
+exit 0
+--- stdout
+  github connected · substitute (token)
+  1 field(s) sealed in $ROOT/state: token
+  never in $ROOT/work/supertoolkit.yaml
+  the stored token is what goes on the wire, so treat it as long-lived
+--- stderr
+
+
+$ stk reload
+exit 0
+--- stdout
+  policy reloaded; no service changed
+--- stderr
+
+
+$ stk reload --json
+exit 0
+--- stdout
+{"ok":true,"removed":[],"added":[],"changed":[]}
+--- stderr
+
+
+$ stk approvals
+exit 0
+--- stdout
+  nothing is waiting on you.
+--- stderr
+
+
+$ stk approvals allow nosuch
+exit 1
+--- stdout
+--- stderr
+stk: no effect "nosuch" is waiting
+
+
+$ stk env
+exit 0
+--- stdout
+export CURL_CA_BUNDLE='$ROOT/state/ca.pem'
+export GH_TOKEN='stk:ref:github:v1'
+export HTTPS_PROXY='http://stk:$PROXY_KEY@$PROXY_ADDR'
+export HTTP_PROXY='http://stk:$PROXY_KEY@$PROXY_ADDR'
+export NODE_EXTRA_CA_CERTS='$ROOT/state/ca.pem'
+export NODE_USE_ENV_PROXY='1'
+export REQUESTS_CA_BUNDLE='$ROOT/state/ca.pem'
+export SSL_CERT_FILE='$ROOT/state/ca.pem'
+export STK_BROKERED='1'
+export http_proxy='http://stk:$PROXY_KEY@$PROXY_ADDR'
+export https_proxy='http://stk:$PROXY_KEY@$PROXY_ADDR'
+--- stderr
+
+
+$ stk env --json
+exit 0
+--- stdout
+{
+  "ca_path": "$ROOT/state/ca.pem",
+  "env": {
+    "CURL_CA_BUNDLE": "$ROOT/state/ca.pem",
+    "GH_TOKEN": "stk:ref:github:v1",
+    "HTTPS_PROXY": "http://stk:$PROXY_KEY@$PROXY_ADDR",
+    "HTTP_PROXY": "http://stk:$PROXY_KEY@$PROXY_ADDR",
+    "NODE_EXTRA_CA_CERTS": "$ROOT/state/ca.pem",
+    "NODE_USE_ENV_PROXY": "1",
+    "REQUESTS_CA_BUNDLE": "$ROOT/state/ca.pem",
+    "SSL_CERT_FILE": "$ROOT/state/ca.pem",
+    "STK_BROKERED": "1",
+    "http_proxy": "http://stk:$PROXY_KEY@$PROXY_ADDR",
+    "https_proxy": "http://stk:$PROXY_KEY@$PROXY_ADDR"
+  },
+  "proxy_url": "http://stk:$PROXY_KEY@$PROXY_ADDR"
+}
+--- stderr
+
+
+$ stk mcp serve nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown server "nosuch"; declared: 
+
+
+$ stk serve
+exit 1
+--- stdout
+--- stderr
+stk: $ROOT/state/stk.sock: a daemon is already listening
+
+
+$ stk serve --proxy-listen $PROXY_ADDR
+exit 0
+--- stdout
+  listening on $ROOT/state/stk.sock (0600, owner uid $UID)
+  workspace "default" · 1 service(s) · 0 profile(s)
+  proxy on $PROXY_ADDR (key required; `stk env` prints the settings)
+  4 meta-tools exposed to agents
+  ctrl-C to stop
+  SIGHUP: policy reloaded; no service changed
+
+  stopping
+--- stderr
+
+
+$ stk env
+exit 1
+--- stdout
+--- stderr
+stk: no fixed proxy is running; start `stk serve --proxy-listen <addr>`
+
+
+$ stk ui --no-open --bind 127.0.0.1:0
+exit 0
+--- stdout
+  supertoolkit is at $UI_URL
+  the link carries a one-time token; the browser keeps a cookie after that
+  ctrl-C to stop
+
+  stopped
+--- stderr
+
+

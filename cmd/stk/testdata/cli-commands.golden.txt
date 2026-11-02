@@ -1,0 +1,1353 @@
+$ stk 
+exit 2
+--- stdout
+--- stderr
+stk — supertoolkit
+
+  stk init                    create the local CA and a starter supertoolkit.yaml
+  stk add <service>...        add services, with safe default policy
+  stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
+  stk handover key|seal|open  move a credential to a broker that has no browser
+  stk run -- <command>        run a command with the broker in front of it
+  stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
+  stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
+  stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
+  stk revoke <service> [--local]
+                              withdraw a credential, here and at the provider
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
+  stk approvals [allow|refuse <id>]
+                              what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
+  stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
+  stk version
+
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+
+
+$ stk help
+exit 0
+--- stdout
+--- stderr
+stk — supertoolkit
+
+  stk init                    create the local CA and a starter supertoolkit.yaml
+  stk add <service>...        add services, with safe default policy
+  stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
+  stk handover key|seal|open  move a credential to a broker that has no browser
+  stk run -- <command>        run a command with the broker in front of it
+  stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
+  stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
+  stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
+  stk revoke <service> [--local]
+                              withdraw a credential, here and at the provider
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
+  stk approvals [allow|refuse <id>]
+                              what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
+  stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
+  stk version
+
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+
+
+$ stk -h
+exit 0
+--- stdout
+--- stderr
+stk — supertoolkit
+
+  stk init                    create the local CA and a starter supertoolkit.yaml
+  stk add <service>...        add services, with safe default policy
+  stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
+  stk handover key|seal|open  move a credential to a broker that has no browser
+  stk run -- <command>        run a command with the broker in front of it
+  stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
+  stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
+  stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
+  stk revoke <service> [--local]
+                              withdraw a credential, here and at the provider
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
+  stk approvals [allow|refuse <id>]
+                              what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
+  stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
+  stk version
+
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+
+
+$ stk --help
+exit 0
+--- stdout
+--- stderr
+stk — supertoolkit
+
+  stk init                    create the local CA and a starter supertoolkit.yaml
+  stk add <service>...        add services, with safe default policy
+  stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
+  stk handover key|seal|open  move a credential to a broker that has no browser
+  stk run -- <command>        run a command with the broker in front of it
+  stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
+  stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
+  stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
+  stk revoke <service> [--local]
+                              withdraw a credential, here and at the provider
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
+  stk approvals [allow|refuse <id>]
+                              what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
+  stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
+  stk version
+
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+
+
+$ stk version
+exit 0
+--- stdout
+stk 0.0.1-dev
+--- stderr
+
+
+$ stk --version
+exit 0
+--- stdout
+stk 0.0.1-dev
+--- stderr
+
+
+$ stk -v
+exit 0
+--- stdout
+stk 0.0.1-dev
+--- stderr
+
+
+$ stk bogus
+exit 2
+--- stdout
+--- stderr
+stk: unknown command "bogus"
+
+stk — supertoolkit
+
+  stk init                    create the local CA and a starter supertoolkit.yaml
+  stk add <service>...        add services, with safe default policy
+  stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
+  stk handover key|seal|open  move a credential to a broker that has no browser
+  stk run -- <command>        run a command with the broker in front of it
+  stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
+  stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
+  stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
+  stk revoke <service> [--local]
+                              withdraw a credential, here and at the provider
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
+  stk approvals [allow|refuse <id>]
+                              what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
+  stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
+  stk version
+
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+
+
+$ stk stk-netjail-bogus
+exit 2
+--- stdout
+--- stderr
+stk: unknown command "stk-netjail-bogus"
+
+stk — supertoolkit
+
+  stk init                    create the local CA and a starter supertoolkit.yaml
+  stk add <service>...        add services, with safe default policy
+  stk connect <service>       store a credential, read from stdin
+  stk connect <service> --device
+                              connect with no browser on this machine (RFC 8628)
+  stk connect <service> --browser
+                              connect via OAuth 2.0 authorization code + PKCE
+  stk handover key|seal|open  move a credential to a broker that has no browser
+  stk run -- <command>        run a command with the broker in front of it
+  stk serve                   run the broker daemon on a Unix socket
+  stk serve --proxy-listen <loopback host:port>
+                              also keep the egress proxy on a fixed port, key required
+  stk reload [--json]         re-read supertoolkit.yaml into the running serve (also SIGHUP)
+  stk env [--json]            print the proxy URL, CA and placeholders for that proxy
+  stk mcp [--profile <p>]     speak MCP on stdio, four meta-tools
+  stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+                              serve one fronted MCP server's own tools, each call
+                              decided and audited, its egress through the broker
+  stk install --user <name>    run stk as its own OS user under systemd (Linux)
+  stk mcp install <host>       print the client configuration (no secret in it)
+  stk verify <service> [--expect-login <login>] [--json]
+                              prove a stored credential works, and as whom
+  stk revoke <service> [--local]
+                              withdraw a credential, here and at the provider
+  stk audit [--limit n] [--json]
+                              what the broker actually did, newest first
+  stk approvals [allow|refuse <id>]
+                              what is waiting on you, and decide it
+  stk ui [--bind addr] [--no-open]
+                              the five screens, on a one-time link
+  stk doctor                  check the setup, and prove no credential leaks
+  stk doctor --probe          prove each client here actually goes through the broker
+                              (exit 1 on a bypass; --json for a machine-readable list;
+                              --with-proxy-key probes through a keyed broker)
+  stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
+  stk version
+
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+
+
+$ stk add
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk add <service>...  (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+
+
+$ stk add github
+exit 1
+--- stdout
+--- stderr
+stk: $ROOT/work/supertoolkit.yaml: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk connect
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk connect <service> [--device|--browser]   (the credential is read from stdin)
+
+
+$ stk connect github gitlab
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk connect <service> [--device|--browser]
+
+
+$ stk connect github --device --browser
+exit 1
+--- stdout
+--- stderr
+stk: --device and --browser are two different flows; pick one
+
+
+$ stk connect github --device
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk connect github --browser
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk run
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk run -- <command> [args...]
+
+
+$ stk run --
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk run -- <command> [args...]
+
+
+$ stk run -- true
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk serve --bogus
+exit 1
+--- stdout
+--- stderr
+stk: serve: unknown argument "--bogus" (usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--socket-mode 0600|0660] [--local-commands-socket <absolute path>] [--local-commands-mode 0600|0660])
+
+
+$ stk serve --proxy-listen
+exit 1
+--- stdout
+--- stderr
+stk: --proxy-listen needs a loopback host:port
+
+
+$ stk serve --proxy-listen 0.0.0.0:8899
+exit 1
+--- stdout
+--- stderr
+stk: --proxy-listen "0.0.0.0:8899": only loopback addresses (127.0.0.0/8, ::1) are accepted; 0.0.0.0 is reachable from other machines
+
+
+$ stk serve --proxy-listen 127.0.0.1:0
+exit 1
+--- stdout
+--- stderr
+stk: --proxy-listen "127.0.0.1:0": port 0 picks a random port; a fixed proxy needs a fixed one
+
+
+$ stk serve --proxy-listen=localhost:x
+exit 1
+--- stdout
+--- stderr
+stk: --proxy-listen "localhost:x": "x" is not a port number
+
+
+$ stk serve --allow-uid
+exit 1
+--- stdout
+--- stderr
+stk: --allow-uid needs a uid
+
+
+$ stk serve --allow-uid -1
+exit 1
+--- stdout
+--- stderr
+stk: --allow-uid wants a non-negative integer, got "-1"
+
+
+$ stk serve --allow-uid=x
+exit 1
+--- stdout
+--- stderr
+stk: --allow-uid wants a non-negative integer, got "x"
+
+
+$ stk serve --socket-mode 0644
+exit 1
+--- stdout
+--- stderr
+stk: --socket-mode must be 0600 or 0660, got "0644"
+
+
+$ stk serve --socket-mode=0777
+exit 1
+--- stdout
+--- stderr
+stk: --socket-mode must be 0600 or 0660, got "0777"
+
+
+$ stk serve --socket-mode
+exit 1
+--- stdout
+--- stderr
+stk: --socket-mode needs 0600 or 0660
+
+
+$ stk serve --local-commands-socket relative.sock
+exit 1
+--- stdout
+--- stderr
+stk: --local-commands-socket wants an absolute path, got "relative.sock"
+
+
+$ stk serve --local-commands-socket
+exit 1
+--- stdout
+--- stderr
+stk: --local-commands-socket needs an absolute socket path
+
+
+$ stk serve --local-commands-mode 0700
+exit 1
+--- stdout
+--- stderr
+stk: --local-commands-mode: --socket-mode must be 0600 or 0660, got "0700"
+
+
+$ stk serve --local-commands-mode
+exit 1
+--- stdout
+--- stderr
+stk: --local-commands-mode needs 0600 or 0660
+
+
+$ stk serve
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk reload --bogus
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk reload [--json]
+
+
+$ stk reload
+exit 1
+--- stdout
+  reload failed, the previous policy is still in force: no daemon is running: start `stk serve` first ($ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?)
+--- stderr
+stk: no daemon is running: start `stk serve` first ($ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?)
+
+
+$ stk reload --json
+exit 1
+--- stdout
+{"ok":false,"error":"no daemon is running: start `stk serve` first ($ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?)"}
+--- stderr
+stk: no daemon is running: start `stk serve` first ($ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?)
+
+
+$ stk env --bogus
+exit 1
+--- stdout
+--- stderr
+stk: env: unknown argument "--bogus" (usage: stk env [--json])
+
+
+$ stk env
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk env --json
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk mcp --profile
+exit 1
+--- stdout
+--- stderr
+stk: --profile needs a value
+
+
+$ stk mcp
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk mcp install
+exit 0
+--- stdout
+  configuration for generic — note there is no secret in it:
+
+{
+  "mcpServers": {
+    "supertoolkit": {
+      "args": [
+        "mcp"
+      ],
+      "command": "$STK"
+    }
+  }
+}
+
+  add it wherever your agent host keeps MCP servers
+--- stderr
+
+
+$ stk mcp install claude-code
+exit 0
+--- stdout
+  configuration for claude-code — note there is no secret in it:
+
+{
+  "mcpServers": {
+    "supertoolkit": {
+      "args": [
+        "mcp"
+      ],
+      "command": "$STK"
+    }
+  }
+}
+
+  add it to ~/.claude.json under mcpServers
+--- stderr
+
+
+$ stk mcp --profile reader install cursor
+exit 0
+--- stdout
+  configuration for cursor — note there is no secret in it:
+
+{
+  "mcpServers": {
+    "supertoolkit": {
+      "args": [
+        "mcp",
+        "--profile",
+        "reader"
+      ],
+      "command": "$STK"
+    }
+  }
+}
+
+  add it to ~/.cursor/mcp.json
+--- stderr
+
+
+$ stk mcp serve
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone]
+
+
+$ stk mcp serve --bogus
+exit 1
+--- stdout
+--- stderr
+stk: unknown argument "--bogus" (usage: stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone])
+
+
+$ stk mcp serve a b
+exit 1
+--- stdout
+--- stderr
+stk: unknown argument "b" (usage: stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone])
+
+
+$ stk mcp serve fetch --profile
+exit 1
+--- stdout
+--- stderr
+stk: --profile needs a value (usage: stk mcp serve <server> [--profile <p>] [--socket <path>] [--standalone])
+
+
+$ stk mcp serve fetch --standalone
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk mcp serve fetch
+exit 1
+--- stdout
+--- stderr
+stk: no broker daemon at $ROOT/state/stk.sock ($ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?); start `stk serve`, pass --socket, or run --standalone
+
+
+$ stk managed-mcp-v1
+exit 1
+--- stdout
+--- stderr
+stk: managed Toolkit invocation is unavailable
+
+
+$ stk managed-mcp-v1 --manifest m.json --sha256 00
+exit 1
+--- stdout
+--- stderr
+stk: managed Toolkit invocation is unavailable
+
+
+$ stk managed-control-v1
+exit 1
+--- stdout
+--- stderr
+stk: managed Toolkit invocation is unavailable
+
+
+$ stk managed-control-v1 --manifest m.json --sha256 00
+exit 1
+--- stdout
+--- stderr
+stk: managed Toolkit invocation is unavailable
+
+
+$ stk managed-evidence-v1
+exit 1
+--- stdout
+--- stderr
+stk: managed Toolkit invocation is unavailable
+
+
+$ stk managed-evidence-v1 --manifest m.json --sha256 00
+exit 1
+--- stdout
+--- stderr
+stk: managed Toolkit invocation is unavailable
+
+
+$ stk verify
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk verify <service> [--expect-login <login>] [--json]
+
+
+$ stk verify a b
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk verify <service> [--expect-login <login>] [--json]
+
+
+$ stk verify github --expect-login
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk verify <service> [--expect-login <login>] [--json]
+
+
+$ stk verify nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+
+
+$ stk revoke
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk revoke <service> [--local]   (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+
+
+$ stk revoke a b
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk revoke <service> [--local]
+
+
+$ stk revoke nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+
+
+$ stk forget
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk revoke <service> [--local]   (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+
+
+$ stk audit --bogus
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk audit [--limit n] [--json]
+
+
+$ stk audit --limit
+exit 1
+--- stdout
+--- stderr
+stk: --limit needs a number
+
+
+$ stk audit --limit 0
+exit 1
+--- stdout
+--- stderr
+stk: --limit wants a positive number, got "0"
+
+
+$ stk audit -n x
+exit 1
+--- stdout
+--- stderr
+stk: --limit wants a positive number, got "x"
+
+
+$ stk audit
+exit 0
+--- stdout
+  nothing recorded yet · $ROOT/state/audit.log
+  effects appear here once a brokered request runs: stk run -- <command>
+--- stderr
+
+
+$ stk audit --json
+exit 0
+--- stdout
+[]
+--- stderr
+
+
+$ stk approvals
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk approval bogus
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk ui
+exit 1
+--- stdout
+--- stderr
+stk: open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+
+$ stk ui --bind
+exit 1
+--- stdout
+--- stderr
+stk: --bind needs an address
+
+
+$ stk doctor --bogus
+exit 1
+--- stdout
+--- stderr
+stk: stk doctor: unknown argument "--bogus" (want --probe, --with-proxy-key, --json, --agent-uid <uid>)
+
+
+$ stk doctor --agent-uid
+exit 1
+--- stdout
+--- stderr
+stk: --agent-uid needs a uid
+
+
+$ stk doctor --agent-uid x
+exit 1
+--- stdout
+--- stderr
+stk: --agent-uid "x" is not a uid
+
+
+$ stk doctor --agent-uid=-3
+exit 1
+--- stdout
+--- stderr
+stk: --agent-uid "-3" is not a uid
+
+
+$ stk doctor
+exit 1
+--- stdout
+  ✓ local state directory  $ROOT/state mode 700
+  ✗ policy file  open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first
+
+  ! isolation  unknown — no agent uids configured
+    ACLs are examined only on Linux; elsewhere they are a reason, and an ACL can grant access mode bits do not show.
+
+--- stderr
+stk: 1 check(s) failed
+
+
+$ stk doctor --json
+exit 1
+--- stdout
+{
+  "checks": [
+    {
+      "name": "local state directory",
+      "ok": true,
+      "detail": "$ROOT/state mode 700"
+    },
+    {
+      "name": "policy file",
+      "ok": false,
+      "detail": "open $ROOT/work/supertoolkit.yaml: no such file or directory — run `stk init` first"
+    }
+  ],
+  "isolation": {
+    "level": "unknown",
+    "reasons": [
+      "no agent uids configured"
+    ]
+  }
+}
+--- stderr
+stk: 1 check(s) failed
+
+
+$ stk handover
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk handover key | stk handover open <service>
+
+
+$ stk handover bogus
+exit 1
+--- stdout
+--- stderr
+stk: stk handover: unknown subcommand "bogus": want key, seal or open
+
+
+$ stk handover seal
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk handover seal <service> --to <key>
+
+
+$ stk handover seal github
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk handover seal <service> --to <key>
+
+
+$ stk handover open
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk handover open <service>   (the envelope is read from stdin)
+
+
+$ stk handover open github extra
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk handover open <service>   (the envelope is read from stdin)
+
+
+$ stk init
+exit 0
+--- stdout
+  wrote $ROOT/work/supertoolkit.yaml — safe to commit, holds no secrets
+  local state in $ROOT/state (0700)
+  store key from STK_PASSPHRASE
+  CA certificate $ROOT/state/ca.pem
+
+  next: stk add github && stk connect github
+  no browser on this machine? stk connect github --device
+
+  about trusting the CA:
+    `stk run` sets SSL_CERT_FILE and friends, which covers Go, curl,
+    Python and Node on this platform. No system change needed.
+--- stderr
+
+
+$ stk init
+exit 0
+--- stdout
+  kept $ROOT/work/supertoolkit.yaml
+  local state in $ROOT/state (0700)
+  store key from STK_PASSPHRASE
+  CA certificate $ROOT/state/ca.pem
+
+  next: stk add github && stk connect github
+  no browser on this machine? stk connect github --device
+
+  about trusting the CA:
+    `stk run` sets SSL_CERT_FILE and friends, which covers Go, curl,
+    Python and Node on this platform. No system change needed.
+--- stderr
+
+
+$ stk add
+exit 1
+--- stdout
+--- stderr
+stk: usage: stk add <service>...  (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+
+
+$ stk add nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined by hand in the policy file with `kind: forge`
+
+
+$ stk add github slack
+exit 0
+--- stdout
+  github     api.github.com · 3 read→agent, 2 write→approval
+  slack      slack.com · 2 read→agent, 2 write→approval
+--- stderr
+
+
+$ stk add github
+exit 0
+--- stdout
+  github already present
+--- stderr
+
+
+$ stk handover key
+exit 0
+--- stdout
+$HANDOVER_KEY
+--- stderr
+
+  this broker's hand-over key. It is public: it can only seal, never open.
+
+  on a machine that has a browser, with stk installed there:
+    stk connect <service>            # or however you obtain the credential
+    stk handover seal <service> --to '<the key above>'
+
+  what this path costs, plainly: the credential exists on that machine for as
+  long as it takes to seal it. The device flow and the web UI do not have that
+  property, so prefer them when either is possible.
+
+
+$ stk handover key --json
+exit 0
+--- stdout
+{"public_key":"$HANDOVER_KEY"}
+--- stderr
+
+
+$ stk handover seal github --to
+exit 1
+--- stdout
+--- stderr
+stk: --to needs the broker's hand-over key, from `stk handover key`
+
+
+$ stk handover seal github --to not-a-key
+exit 1
+--- stdout
+--- stderr
+stk: that is not a supertoolkit hand-over key
+
+
+$ stk handover seal github --to $HANDOVER_KEY
+exit 1
+--- stdout
+--- stderr
+stk: github is not connected here, so there is nothing to seal: no credential stored for "github": run `stk connect github`
+
+
+$ stk handover seal github --stdin --to $HANDOVER_KEY  <<< "ghp_characterization_fixture"
+exit 0
+--- stdout
+$SEALED_ENVELOPE
+--- stderr
+
+  sealed to that broker and to nothing else. Pipe it there:
+    stk handover open github
+
+  it is safe in a paste buffer, a chat message or a file: only the broker
+  holding the matching private key can open it. The credential it carries,
+  however, still exists on this machine — in this store.
+
+
+$ stk handover open github  <<< "not an envelope"
+exit 1
+--- stdout
+--- stderr
+stk: that is not a supertoolkit hand-over envelope
+
+
+$ stk handover open nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+
+
+$ stk connect github
+exit 1
+--- stdout
+--- stderr
+stk: nothing was supplied on stdin
+
+  this service needs token. Either pipe one value per field as
+  `field=value` lines, or pipe a single value for a one-field service
+
+
+$ stk connect slack  <<< "token=a\nnot-a-field"
+exit 0
+--- stdout
+  slack connected · substitute (token)
+  1 field(s) sealed in $ROOT/state: token
+  never in $ROOT/work/supertoolkit.yaml
+  the stored token is what goes on the wire, so treat it as long-lived
+--- stderr
+
+
+$ stk connect github  <<< "ghp_characterization_fixture"
+exit 0
+--- stdout
+  github connected · substitute (token)
+  1 field(s) sealed in $ROOT/state: token
+  never in $ROOT/work/supertoolkit.yaml
+  the stored token is what goes on the wire, so treat it as long-lived
+--- stderr
+
+
+$ stk connect nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+
+
+$ stk verify slack
+exit 1
+--- stdout
+--- stderr
+stk: slack failed verification: unsupported
+
+
+$ stk verify slack --json
+exit 1
+--- stdout
+{"ok":false,"reason":"unsupported"}
+--- stderr
+stk: slack failed verification: unsupported
+
+
+$ stk env
+exit 1
+--- stdout
+--- stderr
+stk: no fixed proxy is running; start `stk serve --proxy-listen <addr>`
+
+
+$ stk run -- true
+exit 0
+--- stdout
+--- stderr
+
+stk: warning — true made no request through the broker.
+     Some clients ignore proxy settings entirely. Run `stk doctor`.
+
+
+$ stk run nosuchcommand
+exit 1
+--- stdout
+--- stderr
+stk: nosuchcommand: exec: "nosuchcommand": executable file not found in $PATH
+
+
+$ stk audit
+exit 0
+--- stdout
+  nothing recorded yet · $ROOT/state/audit.log
+  effects appear here once a brokered request runs: stk run -- <command>
+--- stderr
+
+
+$ stk audit --json --limit 5
+exit 0
+--- stdout
+[]
+--- stderr
+
+
+$ stk mcp --profile reader  <<< "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"characterization\",\"version\":\"0\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"discover_server_categories\",\"arguments\":{}}}\n{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"get_category_actions\",\"arguments\":{\"category\":\"github\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"execute_action\",\"arguments\":{\"category\":\"github\",\"action\":\"create_issue\",\"args\":\"{}\"}}}\n"
+exit 0
+--- stdout
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{}},"protocolVersion":"2025-06-18","serverInfo":{"name":"supertoolkit","version":"0.0.1"}}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"discover_server_categories","description":"List the service categories available to you. Start here.","inputSchema":{"properties":{},"required":null,"type":"object"}},{"name":"get_category_actions","description":"List the actions in one category, with a one-line summary and whether each needs human approval.","inputSchema":{"properties":{"category":{"description":"A category from discover_server_categories.","type":"string"}},"required":["category"],"type":"object"}},{"name":"get_action_details","description":"The full parameter schema for one action. Call this before execute_action.","inputSchema":{"properties":{"action":{"description":"The action.","type":"string"},"category":{"description":"The category.","type":"string"}},"required":["category","action"],"type":"object"}},{"name":"execute_action","description":"Run an action. Arguments are passed as a JSON object in `args`. Actions that change the world may require a human decision first.","inputSchema":{"properties":{"action":{"description":"The action.","type":"string"},"args":{"description":"A JSON object of the action's parameters.","type":"string"},"category":{"description":"The category.","type":"string"}},"required":["category","action"],"type":"object"}}]}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\n  \"categories\": [\n    {\n      \"category\": \"github\",\n      \"host\": \"api.github.com\",\n      \"actions\": 2,\n      \"kind\": \"service\"\n    }\n  ]\n}"}]}}
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"{\n  \"actions\": [\n    {\n      \"action\": \"get_user\",\n      \"summary\": \"The authenticated user.\",\n      \"policy\": \"agent\"\n    },\n    {\n      \"action\": \"list_repos\",\n      \"summary\": \"Repositories the authenticated user can see.\",\n      \"policy\": \"agent\"\n    }\n  ],\n  \"category\": \"github\"\n}"}]}}
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"no action \"create_issue\" is available to you in \"github\""}],"isError":true}}
+--- stderr
+
+
+$ stk mcp --profile nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown profile "nosuch"; declared: reader
+
+
+$ stk mcp serve nosuch --standalone
+exit 1
+--- stdout
+--- stderr
+stk: unknown server "nosuch"; declared: fetch
+
+
+$ stk mcp serve fetch --standalone --profile nosuch
+exit 1
+--- stdout
+--- stderr
+stk: unknown profile "nosuch"
+
+
+$ stk mcp serve fetch --socket $ROOT/absent.sock
+exit 1
+--- stdout
+--- stderr
+stk: no broker daemon at $ROOT/absent.sock ($ROOT/absent.sock: dial unix $ROOT/absent.sock: connect: no such file or directory — is `stk serve` running?); start `stk serve`, pass --socket, or run --standalone
+
+
+$ stk approvals
+exit 1
+--- stdout
+--- stderr
+stk: $ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?
+
+
+$ stk approvals allow
+exit 1
+--- stdout
+--- stderr
+stk: $ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?
+
+
+$ stk approvals refuse
+exit 1
+--- stdout
+--- stderr
+stk: $ROOT/state/stk.sock: dial unix $ROOT/state/stk.sock: connect: no such file or directory — is `stk serve` running?
+
+
+$ stk doctor
+exit 0
+--- stdout
+  ✓ local state directory  $ROOT/state mode 700
+  ✓ policy file  $ROOT/work/supertoolkit.yaml · 2 service(s)
+  ✓ credential for github  substitute (token) — the stored token is what goes on the wire, so treat it as long-lived
+  ✓ credential for slack  substitute (token) — the stored token is what goes on the wire, so treat it as long-lived
+  ✓ NO_PROXY is unset
+  ✓ credential store key  STK_PASSPHRASE
+  ✓ CA trust  SSL_CERT_FILE covers Go, curl, Python and Node here
+  ✓ meta-tools  4 exposed to agents: discover_server_categories, get_category_actions, get_action_details, execute_action
+  ✓ profiles  1 declared: reader
+  ✓ daemon socket  not running; `stk run` works without it
+  ✓ leak check  no credential reachable from a child's environment (2 checked)
+
+  ! isolation  unknown — no agent uids configured
+    ACLs are examined only on Linux; elsewhere they are a reason, and an ACL can grant access mode bits do not show.
+
+  isolation is not proven: 1 reason(s) above (level unknown).
+--- stderr
+
+
+$ stk doctor --json
+exit 0
+--- stdout
+{
+  "checks": [
+    {
+      "name": "local state directory",
+      "ok": true,
+      "detail": "$ROOT/state mode 700"
+    },
+    {
+      "name": "policy file",
+      "ok": true,
+      "detail": "$ROOT/work/supertoolkit.yaml · 2 service(s)"
+    },
+    {
+      "name": "credential for github",
+      "ok": true,
+      "detail": "substitute (token) — the stored token is what goes on the wire, so treat it as long-lived"
+    },
+    {
+      "name": "credential for slack",
+      "ok": true,
+      "detail": "substitute (token) — the stored token is what goes on the wire, so treat it as long-lived"
+    },
+    {
+      "name": "NO_PROXY is unset",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "credential store key",
+      "ok": true,
+      "detail": "STK_PASSPHRASE"
+    },
+    {
+      "name": "CA trust",
+      "ok": true,
+      "detail": "SSL_CERT_FILE covers Go, curl, Python and Node here"
+    },
+    {
+      "name": "meta-tools",
+      "ok": true,
+      "detail": "4 exposed to agents: discover_server_categories, get_category_actions, get_action_details, execute_action"
+    },
+    {
+      "name": "profiles",
+      "ok": true,
+      "detail": "1 declared: reader"
+    },
+    {
+      "name": "daemon socket",
+      "ok": true,
+      "detail": "not running; `stk run` works without it"
+    },
+    {
+      "name": "leak check",
+      "ok": true,
+      "detail": "no credential reachable from a child's environment (2 checked)"
+    }
+  ],
+  "isolation": {
+    "level": "unknown",
+    "reasons": [
+      "no agent uids configured"
+    ]
+  }
+}
+--- stderr
+
+
+$ stk doctor
+exit 1
+--- stdout
+  ✓ local state directory  $ROOT/state mode 700
+  ✓ policy file  $ROOT/work/supertoolkit.yaml · 2 service(s)
+  ✓ credential for github  substitute (token) — the stored token is what goes on the wire, so treat it as long-lived
+  ✓ credential for slack  substitute (token) — the stored token is what goes on the wire, so treat it as long-lived
+  ✓ NO_PROXY is unset
+  ✓ credential store key  STK_PASSPHRASE
+  ✓ CA trust  SSL_CERT_FILE covers Go, curl, Python and Node here
+  ✓ meta-tools  4 exposed to agents: discover_server_categories, get_category_actions, get_action_details, execute_action
+  ✓ profiles  1 declared: reader
+  ✓ daemon socket  not running; `stk run` works without it
+  ✓ leak check  no credential reachable from a child's environment (2 checked)
+  ✗ live probe  curl did not reach the broker — check HTTPS_PROXY handling
+
+  ! isolation  unknown — no agent uids configured
+    ACLs are examined only on Linux; elsewhere they are a reason, and an ACL can grant access mode bits do not show.
+
+--- stderr
+stk: 1 check(s) failed
+
+
+$ stk revoke github --local
+exit 0
+--- stdout
+
+  github forgotten here · removed from $ROOT/state
+  not sent to the provider, because you asked for --local
+
+  the credential may still be valid at github.
+  withdraw it there: https://github.com/settings/applications
+
+--- stderr
+
+
+$ stk revoke github
+exit 1
+--- stdout
+--- stderr
+stk: github is not connected here, so there is nothing to withdraw
+
+
+$ stk verify github
+exit 1
+--- stdout
+--- stderr
+stk: github has no stored credential: connect it first (`stk connect github`)
+
+

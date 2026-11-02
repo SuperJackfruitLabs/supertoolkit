@@ -1,0 +1,106 @@
+$ stk connect github --device
+exit 1
+--- stdout
+--- stderr
+stk: github offers the device flow, but no client id is configured.
+
+  the device grant identifies an OAuth app, and supertoolkit does not ship one —
+  a shared client id would make every installation look like the same app.
+  register your own, then add it to $ROOT/work/supertoolkit.yaml:
+
+    services:
+      github:
+        device:
+          client_id: <your app's client id>
+
+  a client id is public by OAuth's design: it names an app and authorises
+  nothing, so it is safe in a committed file. the stored token is what goes on the wire, so treat it as long-lived
+
+
+$ stk connect nosuch --device
+exit 1
+--- stdout
+--- stderr
+stk: "nosuch" is not configured: run `stk add nosuch` first, which is also where the device client id goes
+
+
+$ stk connect x --browser
+exit 1
+--- stdout
+--- stderr
+stk: x uses OAuth 2.0, but no client id is configured.
+
+  supertoolkit ships no client id: a shared one would make every installation
+  look like the same app. Register your own, add http://127.0.0.1:7837/callback as
+  a redirect URI, then name the client id in $ROOT/work/supertoolkit.yaml:
+
+    services:
+      x:
+        oauth2:
+          client_id: <your app's client id>
+
+  a client id is public by OAuth's design: it identifies an app and authorises
+  nothing, so it is safe in a committed file. The client secret is not, so
+  stk connect x --browser reads it from stdin.
+
+
+$ stk connect github --browser
+exit 1
+--- stdout
+--- stderr
+stk: github does not use the OAuth 2.0 authorization code flow.
+
+  it uses substitute (token) — connect it with:
+    stk connect github
+
+
+$ stk connect github --device
+exit 0
+--- stdout
+
+  connecting github without a browser on this machine
+    1. $PROVIDER/device/code issues a short code
+    2. you approve it in a browser, anywhere
+    3. the token comes back here, to this broker only
+    asking for: repo, read:org
+
+
+  supertoolkit is connecting github
+  code  WXYZ-1234
+  open  https://example.invalid/device
+  enter the code to approve it; it is useless to anyone who does not
+  expires in $MINUTES
+
+  waiting — checking every 1s, giving up at HH:MM UTC
+
+  github connected · acquire (OAuth 2.0 refresh)
+  sealed in $ROOT/state, never in $ROOT/work/supertoolkit.yaml
+  granted: repo
+  the access token expires YYYY-MM-DD HH:MM UTC
+  a refresh token was issued and stored, so this renews itself without you
+  the broker trades the stored refresh token for a short-lived access token; the refresh token only ever reaches the provider's token endpoint, never the API
+--- stderr
+
+
+$ stk doctor
+exit 1
+--- stdout
+  ✓ local state directory  $ROOT/state mode 700
+  ✓ policy file  $ROOT/work/supertoolkit.yaml · 2 service(s)
+  ✓ credential for github  acquire (OAuth 2.0 refresh) — the broker trades the stored refresh token for a short-lived access token; the refresh token only ever reaches the provider's token endpoint, never the API
+  ✗ credential for x  missing — run `stk connect x`
+  ✓ NO_PROXY is unset
+  ✓ credential store key  STK_PASSPHRASE
+  ✓ CA trust  SSL_CERT_FILE covers Go, curl, Python and Node here
+  ✓ meta-tools  4 exposed to agents: discover_server_categories, get_category_actions, get_action_details, execute_action
+  ✓ profiles  none declared, so every caller sees what policy allows
+  ✓ daemon socket  not running; `stk run` works without it
+  ✓ leak check  no credential reachable from a child's environment (1 checked)
+
+  ! isolation  unknown — no agent uids configured
+    ACLs are examined only on Linux; elsewhere they are a reason, and an ACL can grant access mode bits do not show.
+
+--- stderr
+stk: 1 check(s) failed
+
+

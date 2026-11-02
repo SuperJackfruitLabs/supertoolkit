@@ -1,0 +1,168 @@
+$ stk doctor --probe
+exit 1
+--- stdout
+
+  probing the brokered path with a local stand-in for probe.supertoolkit.invalid
+  the host is in .invalid and can never resolve, so a DNS failure proves a bypass
+
+  ✓ curl               honoured    the provider received the substituted credential
+  ! python3 urllib     bypassed    it resolved the host itself, so it never asked the broker
+  ✗ node fetch         refused-ca  it would not trust the broker's certificate — fails loudly, so safe
+  – go net/http        missing     no toolchain here
+
+  the broker saw 0 request(s) and substituted 0 credential(s)
+
+  ! a client reached past the broker. This is the one failure mode that is silent:
+  such a client sends the placeholder to the provider and gets a plausible 401,
+  which looks like a credential problem rather than a routing one.
+  Do not broker that client. See docs/limitations.md.
+--- stderr
+stk: probe: a client bypassed the broker
+
+
+$ stk doctor --probe --json
+exit 1
+--- stdout
+[
+  {
+    "client": "curl",
+    "outcome": "honoured",
+    "detail": "the provider received the substituted credential"
+  },
+  {
+    "client": "python3 urllib",
+    "outcome": "bypassed",
+    "detail": "it resolved the host itself, so it never asked the broker"
+  },
+  {
+    "client": "node fetch",
+    "outcome": "refused-ca",
+    "detail": "it would not trust the broker's certificate — fails loudly, so safe"
+  },
+  {
+    "client": "go net/http",
+    "outcome": "missing",
+    "detail": "no toolchain here"
+  }
+]
+--- stderr
+
+  probing the brokered path with a local stand-in for probe.supertoolkit.invalid
+  the host is in .invalid and can never resolve, so a DNS failure proves a bypass
+
+  ✓ curl               honoured    the provider received the substituted credential
+  ! python3 urllib     bypassed    it resolved the host itself, so it never asked the broker
+  ✗ node fetch         refused-ca  it would not trust the broker's certificate — fails loudly, so safe
+  – go net/http        missing     no toolchain here
+
+  the broker saw 0 request(s) and substituted 0 credential(s)
+
+  ! a client reached past the broker. This is the one failure mode that is silent:
+  such a client sends the placeholder to the provider and gets a plausible 401,
+  which looks like a credential problem rather than a routing one.
+  Do not broker that client. See docs/limitations.md.
+stk: probe: a client bypassed the broker
+
+
+$ stk doctor --probe --with-proxy-key
+exit 1
+--- stdout
+
+  probing the brokered path with a local stand-in for probe.supertoolkit.invalid
+  the host is in .invalid and can never resolve, so a DNS failure proves a bypass
+  the broker under probe requires a proxy key, sent in the proxy URL
+
+  ✓ curl               honoured    the provider received the substituted credential
+  ! python3 urllib     bypassed    it resolved the host itself, so it never asked the broker
+  ✗ node fetch         refused-ca  it would not trust the broker's certificate — fails loudly, so safe
+  – go net/http        missing     no toolchain here
+
+  the broker saw 0 request(s) and substituted 0 credential(s)
+
+  ! a client reached past the broker. This is the one failure mode that is silent:
+  such a client sends the placeholder to the provider and gets a plausible 401,
+  which looks like a credential problem rather than a routing one.
+  Do not broker that client. See docs/limitations.md.
+--- stderr
+stk: probe: a client bypassed the broker
+
+
+$ stk doctor --probe
+exit 0
+--- stdout
+
+  probing the brokered path with a local stand-in for probe.supertoolkit.invalid
+  the host is in .invalid and can never resolve, so a DNS failure proves a bypass
+
+  ✓ curl               honoured    the provider received the substituted credential
+  ✓ python3 urllib     honoured    the provider received the substituted credential
+  ✓ node fetch         honoured    the provider received the substituted credential
+  – go net/http        missing     no toolchain here
+
+  the broker saw 0 request(s) and substituted 0 credential(s)
+
+  every client present here goes through the broker.
+--- stderr
+
+
+$ stk doctor --probe --with-proxy-key --json
+exit 1
+--- stdout
+[
+  {
+    "client": "curl",
+    "outcome": "failed",
+    "detail": "proxy credential not honoured"
+  },
+  {
+    "client": "python3 urllib",
+    "outcome": "honoured",
+    "detail": "the provider received the substituted credential"
+  },
+  {
+    "client": "node fetch",
+    "outcome": "honoured",
+    "detail": "the provider received the substituted credential"
+  },
+  {
+    "client": "go net/http",
+    "outcome": "missing",
+    "detail": "no toolchain here"
+  }
+]
+--- stderr
+
+  probing the brokered path with a local stand-in for probe.supertoolkit.invalid
+  the host is in .invalid and can never resolve, so a DNS failure proves a bypass
+  the broker under probe requires a proxy key, sent in the proxy URL
+
+  ✗ curl               failed      proxy credential not honoured
+  ✓ python3 urllib     honoured    the provider received the substituted credential
+  ✓ node fetch         honoured    the provider received the substituted credential
+  – go net/http        missing     no toolchain here
+
+  the broker saw 0 request(s) and substituted 0 credential(s)
+
+  a client failed in a way that is neither a bypass nor a CA refusal; see the detail above.
+stk: probe: a client failed
+
+
+$ stk doctor --probe
+exit 1
+--- stdout
+
+  probing the brokered path with a local stand-in for probe.supertoolkit.invalid
+  the host is in .invalid and can never resolve, so a DNS failure proves a bypass
+
+  – curl               missing     not installed here
+  – python3 urllib     missing     not installed here
+  – node fetch         missing     not installed here
+  – go net/http        missing     no toolchain here
+
+  the broker saw 0 request(s) and substituted 0 credential(s)
+
+  no client was exercised; nothing is proven.
+--- stderr
+stk: no client was exercised; nothing is proven
+
+
