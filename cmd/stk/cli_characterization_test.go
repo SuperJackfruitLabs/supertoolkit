@@ -579,6 +579,10 @@ func TestCLICharacterizationServe(t *testing.T) {
 
 	ui := r.start("ui", "--no-open", "--bind", "127.0.0.1:0")
 	ui.waitFor("ctrl-C to stop")
+	// ui installs its signal handler after it starts serving, and a SIGTERM before that would
+	// kill it rather than stop it: wait until it answers, then a moment more.
+	waitServing(t, uiURL.FindString(ui.stdout.String()))
+	time.Sleep(250 * time.Millisecond)
 	b.WriteString(ui.stop() + "\n")
 	compareGolden(t, "cli-serve.golden.txt", b.String())
 }
@@ -626,4 +630,24 @@ func TestCLICharacterizationInstall(t *testing.T) {
 		}
 	}
 	compareGolden(t, "cli-install.golden.txt", b.String())
+}
+
+// waitServing waits until url answers HTTP at all.
+func waitServing(t *testing.T, url string) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s never answered", url)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
