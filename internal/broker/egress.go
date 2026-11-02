@@ -149,7 +149,8 @@ func (b *Broker) egressIntercept(client net.Conn, host, addr, rule string, pol *
 		return
 	}
 	b.h1.Add(1)
-	(&http.Server{Handler: h}).Serve(newSingleConnListener(tc))
+	// A one-connection server returns when its connection closes; that is its end, not a fault.
+	_ = (&http.Server{Handler: h}).Serve(newSingleConnListener(tc))
 }
 
 // egressPlain decides and forwards one absolute-form http:// request.

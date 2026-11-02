@@ -124,7 +124,8 @@ func (h Webhook) Send(ctx context.Context, m Message) error {
 		return err
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	// Drained only so the connection can be reused; the status decides.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("the endpoint answered %s", resp.Status)
 	}

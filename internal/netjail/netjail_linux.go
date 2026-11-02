@@ -77,7 +77,7 @@ run:
 	go relayTo(ln, sock)
 
 	// The child gains nothing from this namespace's root: no new privileges.
-	unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
+	_ = unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) // best effort, as it has always been
 	cmd := exec.CommandContext(context.Background(), args[i], args[i+1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
@@ -88,7 +88,7 @@ run:
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	go func() {
 		for s := range sig {
-			cmd.Process.Signal(s)
+			_ = cmd.Process.Signal(s) // a child that has exited needs no signal
 		}
 	}()
 	err = cmd.Wait()

@@ -259,7 +259,8 @@ func ListenAt(port int, path, state string) (*Receiver, string, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(path, r.callback)
 	r.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go r.srv.Serve(ln)
+	// It serves until Close shuts it; that ending is the only error it returns.
+	go func() { _ = r.srv.Serve(ln) }()
 	return r, "http://" + ln.Addr().String() + path, nil
 }
 

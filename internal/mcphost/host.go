@@ -161,7 +161,8 @@ func (h *Host) startLocked(ctx context.Context) error {
 	}
 	// A notification needs no reply, so it is written directly.
 	notice, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
-	h.stdin.Write(append(notice, '\n'))
+	// A child that cannot read this fails the next request, which reports it.
+	_, _ = h.stdin.Write(append(notice, '\n'))
 	return nil
 }
 
@@ -248,7 +249,8 @@ func (h *Host) ListTools(ctx context.Context) ([]Tool, error) {
 	var rawOut struct {
 		Tools []json.RawMessage `json:"tools"`
 	}
-	json.Unmarshal(raw, &rawOut)
+	// raw already decoded into out above, so this second view of the same bytes decodes too.
+	_ = json.Unmarshal(raw, &rawOut)
 	h.tools, h.rawTools, h.toolsValid = out.Tools, rawOut.Tools, true
 	return h.tools, nil
 }
@@ -288,7 +290,8 @@ func (h *Host) Kill(why error) {
 	defer h.procMu.Unlock()
 	h.killed = why
 	if h.proc != nil {
-		h.proc.Kill()
+		// Already exited is the outcome Kill wants.
+		_ = h.proc.Kill()
 	}
 }
 
@@ -351,7 +354,8 @@ func (h *Host) Close() error {
 		h.stdin.Close()
 	}
 	if h.cmd != nil && h.cmd.Process != nil {
-		h.cmd.Process.Kill()
+		// Already exited is the outcome Kill wants.
+		_ = h.cmd.Process.Kill()
 	}
 	h.started = false
 	h.toolsValid = false

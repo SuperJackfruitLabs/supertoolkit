@@ -234,7 +234,8 @@ func newProbeRigKeyed(home string, keyed bool) (*probeRig, error) {
 		return nil, err
 	}
 	r.provider = &http.Server{Handler: mux, TLSConfig: &tls.Config{Certificates: []tls.Certificate{*leaf}}}
-	go r.provider.ServeTLS(r.provLn, "", "")
+	// It serves until close() shuts it; that ending is the only error it returns.
+	go func() { _ = r.provider.ServeTLS(r.provLn, "", "") }()
 
 	// A config holding one service, which exists only in memory.
 	cfgPath := filepath.Join(dir, "probe.yaml")
@@ -281,7 +282,8 @@ func newProbeRigKeyed(home string, keyed bool) (*probeRig, error) {
 	if err != nil {
 		return nil, err
 	}
-	go r.b.Serve(r.proxyLn)
+	// It serves until close() closes the listener; that ending is the only error it returns.
+	go func() { _ = r.b.Serve(r.proxyLn) }()
 	r.proxyURL = "http://" + r.proxyLn.Addr().String()
 	if keyed {
 		r.proxyURL = broker.ProxyURL(r.proxyLn.Addr().String(), proxyKey)
@@ -451,8 +453,9 @@ func main(){
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return probeResult{"go net/http", "failed", err.Error()}
 	}
-	os.WriteFile(filepath.Join(path, "main.go"), []byte(src), 0o600)
-	os.WriteFile(filepath.Join(path, "go.mod"), []byte("module probe\n\ngo 1.21\n"), 0o600)
+	// A file that could not be written makes `go run` fail, which classify reports.
+	_ = os.WriteFile(filepath.Join(path, "main.go"), []byte(src), 0o600)
+	_ = os.WriteFile(filepath.Join(path, "go.mod"), []byte("module probe\n\ngo 1.21\n"), 0o600)
 	env := append(r.env(), "GOCACHE="+filepath.Join(r.dir, "gocache"), "GOFLAGS=-mod=mod")
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

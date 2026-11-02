@@ -62,7 +62,8 @@ func verifyStkProxy(addr string, pid int) error {
 		return err
 	}
 	defer c.Close()
-	c.SetDeadline(time.Now().Add(3 * time.Second))
+	// Without a deadline the read below could wait longer; it still fails closed on no answer.
+	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
 	if _, err := io.WriteString(c, "CONNECT stk.invalid:443 HTTP/1.1\r\nHost: stk.invalid:443\r\n\r\n"); err != nil {
 		return err
 	}

@@ -198,7 +198,8 @@ func Command(args []string, version string) error {
 			return err
 		}
 		defer func() { lc.Close(); os.Remove(sa.localCommandsSocket) }()
-		go sess.Broker.ServeAs(lc, broker.LocalCommandsIdentity)
+		// It serves until the deferred Close; that ending is the only error it returns.
+		go func() { _ = sess.Broker.ServeAs(lc, broker.LocalCommandsIdentity) }()
 		fmt.Printf("  local-commands proxy on %s (%04o; every connection is local-commands)\n", sa.localCommandsSocket, sa.localCommandsMode)
 	}
 

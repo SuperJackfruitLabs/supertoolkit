@@ -159,7 +159,8 @@ func cmdMCPServe(args []string, version string) error {
 		}
 		caller := fmt.Sprintf("pid:%d mcp serve", os.Getpid())
 		gate = &mcpserve.Local{Config: func() *policy.Config { return cfg }, Profile: profile, Server: server, Caller: caller, Ledger: led}
-		violation = func(remote string) { led.Append(controlplane.ViolationEntry(server, caller, remote)) }
+		// The child is stopped whether or not the row is written; stopping it is what matters.
+		violation = func(remote string) { _ = led.Append(controlplane.ViolationEntry(server, caller, remote)) }
 	}
 
 	host, cleanup, err := launchFronted(ctx, server, spec, violation)

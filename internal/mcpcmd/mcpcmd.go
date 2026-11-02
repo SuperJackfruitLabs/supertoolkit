@@ -170,7 +170,8 @@ func decideApproval(c localstate.DaemonClient, id string, allow bool) error {
 		return err
 	}
 	var out map[string]string
-	json.Unmarshal(resp, &out)
+	// An unreadable answer prints empty fields; the decision was already made by the daemon.
+	_ = json.Unmarshal(resp, &out)
 	fmt.Printf("  %s %s by %s\n", out["id"], out["state"], who)
 	return nil
 }

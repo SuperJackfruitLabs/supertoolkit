@@ -84,9 +84,9 @@ func (j *Jail) Close() error {
 func pipe(a, b net.Conn) {
 	done := make(chan struct{}, 2)
 	cp := func(dst, src net.Conn) {
-		io.Copy(dst, src)
+		_, _ = io.Copy(dst, src) // a relay ends when either side closes
 		if cw, ok := dst.(interface{ CloseWrite() error }); ok {
-			cw.CloseWrite()
+			_ = cw.CloseWrite() // a half-close of a side that already closed changes nothing
 		}
 		done <- struct{}{}
 	}

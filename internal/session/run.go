@@ -99,7 +99,8 @@ func StartWith(cfg *policy.Config, store *credential.Store, dir string, o Option
 	if err != nil {
 		return nil, err
 	}
-	go b.Serve(ln)
+	// It serves until Stop closes the listener; that ending is the only error it returns.
+	go func() { _ = b.Serve(ln) }()
 
 	proxy := "http://" + ln.Addr().String()
 	if o.Key != "" {

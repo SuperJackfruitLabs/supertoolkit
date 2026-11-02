@@ -1,8 +1,8 @@
 {
   "bodyclose": 21,
-  "errcheck": 293,
+  "errcheck": 261,
   "errorlint": 13,
-  "gosec": 150,
+  "gosec": 152,
   "misspell": 4,
   "nilerr": 7,
   "noctx": 121,

@@ -183,7 +183,8 @@ func (s *Service) Handle(uid int, r daemon.Request) daemon.Response {
 			Allow bool   `json:"allow"`
 			Who   string `json:"who"`
 		}
-		json.Unmarshal(r.Params, &p)
+		// Unreadable params leave p zero: an empty id, which matches no waiting effect.
+		_ = json.Unmarshal(r.Params, &p)
 		e, err := s.decideAndPerformCtx(audit.WithCallerUID(context.Background(), uid), p.ID, p.Allow, p.Who)
 		if err != nil && e == nil {
 			return daemon.Response{Error: err.Error()}
@@ -246,7 +247,8 @@ func (s *Service) performApproved(ctx context.Context, e *approval.Effect) (stri
 		return "", err
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
+	// Drained only so the connection can be reused; the status is the outcome.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
 	return resp.Status, nil
 }
 
