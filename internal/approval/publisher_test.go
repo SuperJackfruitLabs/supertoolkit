@@ -521,6 +521,160 @@ func TestXHTTPProviderDoesNotCorrelateUnknownSendFromIdenticalTextAlone(t *testi
 	}
 }
 
+func TestAutomaticXPublishingUploadsFrozenMediaInOrderAndVerifiesIt(t *testing.T) {
+	media := [][]byte{
+		append([]byte("\x89PNG\r\n\x1a\n"), []byte("first-image")...),
+		append([]byte("\x89PNG\r\n\x1a\n"), []byte("second-image")...),
+	}
+	var initialized, appended, finalized, posts, reads int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/2/media/upload/initialize":
+			initialized++
+			var body struct {
+				MediaType     string `json:"media_type"`
+				TotalBytes    int    `json:"total_bytes"`
+				MediaCategory string `json:"media_category"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.MediaType != "image/png" || body.TotalBytes != len(media[initialized-1]) || body.MediaCategory != "tweet_image" {
+				t.Fatalf("initialize %d = %+v, %v", initialized, body, err)
+			}
+			_, _ = fmt.Fprintf(w, `{"data":{"id":"media-%d"}}`, initialized)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/append"):
+			appended++
+			if err := r.ParseMultipartForm(6 << 20); err != nil {
+				t.Fatal(err)
+			}
+			if r.FormValue("segment_index") != "0" {
+				t.Fatalf("segment index = %q", r.FormValue("segment_index"))
+			}
+			file, _, err := r.FormFile("media")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, _ := io.ReadAll(file)
+			_ = file.Close()
+			if string(got) != string(media[appended-1]) {
+				t.Fatalf("append %d changed frozen bytes", appended)
+			}
+			_, _ = w.Write([]byte(`{"data":{"expires_at":1}}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/finalize"):
+			finalized++
+			_, _ = fmt.Fprintf(w, `{"data":{"id":"media-%d"}}`, finalized)
+		case r.Method == http.MethodPost && r.URL.Path == "/2/tweets":
+			posts++
+			var body struct {
+				Text  string `json:"text"`
+				Media struct {
+					IDs []string `json:"media_ids"`
+				} `json:"media"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Text != "media fixture" || fmt.Sprint(body.Media.IDs) != "[media-1 media-2]" {
+				t.Fatalf("post body = %+v", body)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"data":{"id":"post-media"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/2/tweets/post-media":
+			reads++
+			_, _ = w.Write([]byte(`{"data":{"id":"post-media","text":"media fixture","attachments":{"media_keys":["3_media-1","3_media-2"]}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	q, e, req := gatedFixture(t)
+	req.URL, req.Body, req.Media = server.URL+"/2/tweets", []byte(`{"text":"media fixture"}`), media
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_media"}}
+	x := &XHTTPProvider{Username: "fixture", Do: func(ctx context.Context, request *http.Request) (*http.Response, error) {
+		return server.Client().Do(request.WithContext(ctx))
+	}}
+	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
+	if err != nil || got.Outcome != "delivered" || got.LiveURL != "https://x.com/fixture/status/post-media" {
+		t.Fatalf("effect = %+v, %v", got, err)
+	}
+	if initialized != 2 || appended != 2 || finalized != 2 || posts != 1 || reads != 1 {
+		t.Fatalf("init/append/finalize/post/read = %d/%d/%d/%d/%d", initialized, appended, finalized, posts, reads)
+	}
+}
+
+func TestAutomaticXPublishingMediaFailuresNeverCreateAPost(t *testing.T) {
+	for _, failPath := range []string{"initialize", "append", "finalize"} {
+		t.Run(failPath, func(t *testing.T) {
+			posts := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, failPath) {
+					http.Error(w, "fixture failure", http.StatusBadGateway)
+					return
+				}
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/initialize"):
+					_, _ = w.Write([]byte(`{"data":{"id":"media-1"}}`))
+				case strings.HasSuffix(r.URL.Path, "/append"):
+					_, _ = w.Write([]byte(`{"data":{"expires_at":1}}`))
+				case strings.HasSuffix(r.URL.Path, "/finalize"):
+					_, _ = w.Write([]byte(`{"data":{"id":"media-1"}}`))
+				case r.URL.Path == "/2/tweets":
+					posts++
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"data":{"id":"must-not-exist"}}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			q, e, req := gatedFixture(t)
+			req.URL = server.URL + "/2/tweets"
+			req.Body = []byte(`{"text":"media failure"}`)
+			req.Media = [][]byte{append([]byte("\x89PNG\r\n\x1a\n"), []byte("image")...)}
+			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_media"}}
+			x := &XHTTPProvider{Username: "fixture", Do: func(ctx context.Context, request *http.Request) (*http.Response, error) {
+				return server.Client().Do(request.WithContext(ctx))
+			}}
+			got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
+			if err == nil || got.Outcome != "provider_error" || posts != 0 || !strings.Contains(got.Error, failPath) {
+				t.Fatalf("effect = %+v, err=%v, posts=%d", got, err, posts)
+			}
+		})
+	}
+}
+
+func TestAutomaticXPublishingMediaReadBackMismatchStaysFenced(t *testing.T) {
+	posts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/initialize"):
+			_, _ = w.Write([]byte(`{"data":{"id":"media-1"}}`))
+		case strings.HasSuffix(r.URL.Path, "/append"):
+			_, _ = w.Write([]byte(`{"data":{"expires_at":1}}`))
+		case strings.HasSuffix(r.URL.Path, "/finalize"):
+			_, _ = w.Write([]byte(`{"data":{"id":"media-1"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/2/tweets":
+			posts++
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"data":{"id":"post-media"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/2/tweets/post-media":
+			_, _ = w.Write([]byte(`{"data":{"id":"post-media","text":"media mismatch","attachments":{"media_keys":["3_other-media"]}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	q, e, req := gatedFixture(t)
+	req.URL = server.URL + "/2/tweets"
+	req.Body = []byte(`{"text":"media mismatch"}`)
+	req.Media = [][]byte{append([]byte("\x89PNG\r\n\x1a\n"), []byte("image")...)}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_media"}}
+	x := &XHTTPProvider{Username: "fixture", Do: func(ctx context.Context, request *http.Request) (*http.Response, error) {
+		return server.Client().Do(request.WithContext(ctx))
+	}}
+	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
+	if err == nil || got.Outcome != "outcome_unknown" || posts != 1 || len(gate.recorded) != 0 || !strings.Contains(got.Error, "media") {
+		t.Fatalf("effect = %+v, err=%v, posts=%d, card=%v", got, err, posts, gate.recorded)
+	}
+}
+
 func TestPublisherPathStillRefusesLocalApproval(t *testing.T) {
 	q, e, _ := gatedFixture(t)
 	sends := 0
