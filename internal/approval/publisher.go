@@ -198,6 +198,15 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (*
 	if p.Queue == nil || p.Gate == nil || p.X == nil {
 		return nil, errors.New("publisher requires queue, gate and X provider")
 	}
+	if !validID(id) {
+		return nil, fmt.Errorf("no effect %q is waiting", id)
+	}
+	unlock, err := p.Queue.lockPublication(id)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
 	e, ok := p.Queue.Get(id)
 	if !ok {
 		return nil, fmt.Errorf("no effect %q is waiting", id)
