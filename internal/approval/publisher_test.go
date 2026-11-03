@@ -55,7 +55,7 @@ func (x *xStub) Send(_ context.Context, req GatedRequest) (SendResult, error) {
 	}
 	return result, err
 }
-func (x *xStub) ReadBack(_ context.Context, _ GatedRequest) (ReadBackResult, error) {
+func (x *xStub) ReadBack(_ context.Context, _ GatedRequest, _ SendResult) (ReadBackResult, error) {
 	i := x.readCalls
 	x.readCalls++
 	var result ReadBackResult
@@ -109,9 +109,9 @@ func TestHTTPClientsJoinSuperPipelineGateToXAndCardRecord(t *testing.T) {
 			sends++
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"data":{"id":"123"}}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/2/tweets/search/recent":
+		case r.Method == http.MethodGet && r.URL.Path == "/2/tweets/123":
 			reads++
-			_, _ = w.Write([]byte(`{"data":[{"id":"123","text":"http fixture"}]}`))
+			_, _ = w.Write([]byte(`{"data":{"id":"123","text":"http fixture"}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -337,7 +337,7 @@ type concurrentRecoveryX struct {
 	once     sync.Once
 }
 
-func (x *concurrentRecoveryX) ReadBack(context.Context, GatedRequest) (ReadBackResult, error) {
+func (x *concurrentRecoveryX) ReadBack(context.Context, GatedRequest, SendResult) (ReadBackResult, error) {
 	if x.readers.Add(1) == 2 {
 		x.once.Do(func() { close(x.bothRead) })
 	}
@@ -462,10 +462,10 @@ func TestXHTTPProviderSendsExactBytesAndReadsCanonicalURL(t *testing.T) {
 			}
 			return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader(`{"data":{"id":"123"}}`))}, nil
 		}
-		if got.Method != http.MethodGet || got.URL.Path != "/2/tweets/search/recent" {
+		if got.Method != http.MethodGet || got.URL.Path != "/2/tweets/123" {
 			t.Fatalf("unexpected read-back request: %s %s", got.Method, got.URL)
 		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"123","text":"Exact approved fixture text."}]}`))}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":{"id":"123","text":"Exact approved fixture text."}}`))}, nil
 	}}
 	if result, err := provider.Send(context.Background(), request); err != nil || result.StatusCode != 201 {
 		t.Fatalf("send = %+v, %v", result, err)
@@ -473,7 +473,7 @@ func TestXHTTPProviderSendsExactBytesAndReadsCanonicalURL(t *testing.T) {
 	if request.Digest() != "sha256:1c9763d267117f796b38ee41266eb01ebc2ece548dc13ef9b96ac6ffd8aed7ca" {
 		t.Fatalf("cross-product digest = %s", request.Digest())
 	}
-	read, err := provider.ReadBack(context.Background(), request)
+	read, err := provider.ReadBack(context.Background(), request, SendResult{PostID: "123"})
 	if err != nil || read.Status != ReadBackFound || read.LiveURL != "https://x.com/fixture/status/123" {
 		t.Fatalf("read-back = %+v, %v", read, err)
 	}
@@ -515,7 +515,7 @@ func TestXHTTPProviderDoesNotCorrelateUnknownSendFromIdenticalTextAlone(t *testi
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"older-post","text":"repeated copy"}]}`))}, nil
 	}}
-	read, err := provider.ReadBack(context.Background(), request)
+	read, err := provider.ReadBack(context.Background(), request, SendResult{})
 	if err == nil || read.Status != ReadBackInconclusive {
 		t.Fatalf("read-back = %+v, %v; identical text without create id must stay fenced", read, err)
 	}

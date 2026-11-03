@@ -60,7 +60,11 @@ type GateClient interface {
 	RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error
 }
 
-type SendResult struct{ StatusCode int }
+type SendResult struct {
+	StatusCode int
+	PostID     string
+	MediaIDs   []string
+}
 
 type ReadBackStatus string
 
@@ -77,7 +81,7 @@ type ReadBackResult struct {
 
 type XProvider interface {
 	Send(context.Context, GatedRequest) (SendResult, error)
-	ReadBack(context.Context, GatedRequest) (ReadBackResult, error)
+	ReadBack(context.Context, GatedRequest, SendResult) (ReadBackResult, error)
 }
 
 type unknownOutcomeError struct{ error }
@@ -93,15 +97,17 @@ func isUnknownOutcome(err error) bool {
 }
 
 type publicationRecord struct {
-	Outcome        string `json:"outcome"`
-	Error          string `json:"error,omitempty"`
-	ApprovedDigest string `json:"approved_digest,omitempty"`
-	RequestDigest  string `json:"request_digest,omitempty"`
-	GateID         string `json:"gate_id,omitempty"`
-	LiveURL        string `json:"live_url,omitempty"`
-	ReadBack       string `json:"read_back,omitempty"`
-	Attempts       int    `json:"attempts"`
-	CardRecorded   bool   `json:"card_recorded,omitempty"`
+	Outcome        string   `json:"outcome"`
+	Error          string   `json:"error,omitempty"`
+	ApprovedDigest string   `json:"approved_digest,omitempty"`
+	RequestDigest  string   `json:"request_digest,omitempty"`
+	GateID         string   `json:"gate_id,omitempty"`
+	LiveURL        string   `json:"live_url,omitempty"`
+	ReadBack       string   `json:"read_back,omitempty"`
+	Attempts       int      `json:"attempts"`
+	CardRecorded   bool     `json:"card_recorded,omitempty"`
+	PostID         string   `json:"post_id,omitempty"`
+	MediaIDs       []string `json:"media_ids,omitempty"`
 }
 
 func (q *Queue) pubPath(id string) string   { return filepath.Join(q.dir, id+".pub") }
@@ -311,7 +317,12 @@ func (p *Publisher) send(ctx context.Context, e *Effect, req GatedRequest, rec p
 		p.apply(e, rec)
 		return e, err
 	}
-	read, readErr := p.X.ReadBack(ctx, req)
+	rec.PostID = result.PostID
+	rec.MediaIDs = append([]string(nil), result.MediaIDs...)
+	if err := p.Queue.writePublication(e.ID, rec); err != nil {
+		return e, err
+	}
+	read, readErr := p.X.ReadBack(ctx, req, result)
 	if readErr == nil && read.Status == ReadBackFound && read.LiveURL != "" {
 		return p.deliver(ctx, e, req, rec, read.LiveURL)
 	}
@@ -327,7 +338,7 @@ func (p *Publisher) send(ctx context.Context, e *Effect, req GatedRequest, rec p
 }
 
 func (p *Publisher) resolveUnknown(ctx context.Context, e *Effect, req GatedRequest, rec publicationRecord) (*Effect, error) {
-	read, err := p.X.ReadBack(ctx, req)
+	read, err := p.X.ReadBack(ctx, req, SendResult{PostID: rec.PostID, MediaIDs: append([]string(nil), rec.MediaIDs...)})
 	if err != nil {
 		read.Status = ReadBackInconclusive
 		rec.Error = err.Error()
@@ -505,11 +516,24 @@ func (x *XHTTPProvider) Send(ctx context.Context, request GatedRequest) (SendRes
 		return SendResult{}, UnknownOutcome(err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256<<10))
-	return SendResult{StatusCode: resp.StatusCode}, nil
+	result := SendResult{StatusCode: resp.StatusCode}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256<<10))
+		return result, nil
+	}
+	var created struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&created); err != nil || strings.TrimSpace(created.Data.ID) == "" {
+		return result, UnknownOutcome(errors.New("x create response has no post id"))
+	}
+	result.PostID = created.Data.ID
+	return result, nil
 }
 
-func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest) (ReadBackResult, error) {
+func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent SendResult) (ReadBackResult, error) {
 	if x.Do == nil || strings.TrimSpace(x.Username) == "" {
 		return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back identity is not configured")
 	}
@@ -523,6 +547,36 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest) (Rea
 	if err != nil {
 		return ReadBackResult{Status: ReadBackInconclusive}, err
 	}
+	if sent.PostID != "" {
+		base.Path = "/2/tweets/" + url.PathEscape(sent.PostID)
+		base.RawQuery = url.Values{"tweet.fields": {"attachments"}}.Encode()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+		resp, doErr := x.Do(ctx, req)
+		if doErr != nil {
+			return ReadBackResult{Status: ReadBackInconclusive}, doErr
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return ReadBackResult{Status: ReadBackNotFound}, nil
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return ReadBackResult{Status: ReadBackInconclusive}, fmt.Errorf("x read-back returned HTTP %d", resp.StatusCode)
+		}
+		var exact struct {
+			Data struct {
+				ID   string `json:"id"`
+				Text string `json:"text"`
+			} `json:"data"`
+		}
+		if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&exact); decodeErr != nil {
+			return ReadBackResult{Status: ReadBackInconclusive}, decodeErr
+		}
+		if exact.Data.ID != sent.PostID || exact.Data.Text != post.Text {
+			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back did not match the created post id and exact text")
+		}
+		return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/" + url.PathEscape(x.Username) + "/status/" + url.PathEscape(sent.PostID)}, nil
+	}
+
 	base.Path = "/2/tweets/search/recent"
 	base.RawQuery = url.Values{
 		"query":        {fmt.Sprintf("from:%s %q", x.Username, post.Text)},
@@ -556,8 +610,5 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest) (Rea
 	if len(matches) == 0 {
 		return ReadBackResult{Status: ReadBackNotFound}, nil
 	}
-	if len(matches) != 1 {
-		return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back found multiple exact candidates")
-	}
-	return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/" + url.PathEscape(x.Username) + "/status/" + url.PathEscape(matches[0])}, nil
+	return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back found identical text but cannot correlate it to an unknown create outcome")
 }

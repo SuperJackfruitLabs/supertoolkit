@@ -45,7 +45,7 @@ func (x *commandX) Send(_ context.Context, _ approval.GatedRequest) (approval.Se
 	return approval.SendResult{StatusCode: http.StatusCreated}, nil
 }
 
-func (x *commandX) ReadBack(_ context.Context, _ approval.GatedRequest) (approval.ReadBackResult, error) {
+func (x *commandX) ReadBack(_ context.Context, _ approval.GatedRequest, _ approval.SendResult) (approval.ReadBackResult, error) {
 	x.reads++
 	if x.reads == 1 {
 		return approval.ReadBackResult{Status: approval.ReadBackInconclusive}, nil
