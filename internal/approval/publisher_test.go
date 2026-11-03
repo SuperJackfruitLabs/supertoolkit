@@ -331,10 +331,7 @@ func (*concurrentRecoveryGate) RecordDelivered(context.Context, string, string, 
 }
 
 type concurrentRecoveryX struct {
-	readers  atomic.Int32
-	sends    atomic.Int32
-	bothRead chan struct{}
-	once     sync.Once
+	sends atomic.Int32
 }
 
 type slowInFlightX struct {
@@ -365,11 +362,7 @@ func (x *slowInFlightX) ReadBack(context.Context, GatedRequest, SendResult) (Rea
 	return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/fixture/status/slow"}, nil
 }
 
-func (x *concurrentRecoveryX) ReadBack(context.Context, GatedRequest, SendResult) (ReadBackResult, error) {
-	if x.readers.Add(1) == 2 {
-		x.once.Do(func() { close(x.bothRead) })
-	}
-	<-x.bothRead
+func (*concurrentRecoveryX) ReadBack(context.Context, GatedRequest, SendResult) (ReadBackResult, error) {
 	return ReadBackResult{Status: ReadBackNotFound}, nil
 }
 
@@ -405,7 +398,7 @@ func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	x := &concurrentRecoveryX{bothRead: make(chan struct{})}
+	x := &concurrentRecoveryX{}
 	gate := &concurrentRecoveryGate{digest: req.Digest()}
 	publishers := []*Publisher{{Queue: q1, Gate: gate, X: x}, {Queue: q2, Gate: gate, X: x}}
 	start := make(chan struct{})
@@ -486,8 +479,12 @@ func TestRecoveryDuringSlowSendDoesNotPostAgain(t *testing.T) {
 	}
 	x.released.Store(true)
 	close(x.release)
-	<-firstDone
-	<-recoveryDone
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first publisher: %v", err)
+	}
+	if err := <-recoveryDone; err != nil {
+		t.Fatalf("recovery publisher: %v", err)
+	}
 
 	if duplicate || x.sends.Load() != 1 {
 		t.Fatalf("provider sends while the original send was in flight = %d; want 1", x.sends.Load())

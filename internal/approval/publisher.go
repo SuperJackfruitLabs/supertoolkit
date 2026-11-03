@@ -194,7 +194,7 @@ type Publisher struct {
 	X     XProvider
 }
 
-func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (*Effect, error) {
+func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (effect *Effect, err error) {
 	if p.Queue == nil || p.Gate == nil || p.X == nil {
 		return nil, errors.New("publisher requires queue, gate and X provider")
 	}
@@ -205,7 +205,11 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	defer unlock()
+	defer func() {
+		if unlockErr := unlock(); err == nil && unlockErr != nil {
+			err = unlockErr
+		}
+	}()
 
 	e, ok := p.Queue.Get(id)
 	if !ok {
