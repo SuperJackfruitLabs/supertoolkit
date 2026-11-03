@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // GatedRequest is the complete provider request bound by a SuperPipeline gate.
@@ -55,6 +56,7 @@ type GateConfirmation struct {
 	DeliveryMode string `json:"deliveryMode"`
 	Digest       string `json:"digest"`
 	GateID       string `json:"gateId"`
+	ExpiresAt    string `json:"expiresAt"`
 }
 
 type GateClient interface {
@@ -177,13 +179,27 @@ func (q *Queue) writePublication(id string, r publicationRecord) error {
 	if err = f.Chmod(0o600); err == nil {
 		_, err = f.Write(b)
 	}
+	if err == nil {
+		err = f.Sync()
+	}
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		return err
 	}
-	return os.Rename(name, q.pubPath(id))
+	if err := os.Rename(name, q.pubPath(id)); err != nil {
+		return err
+	}
+	dir, err := os.Open(q.dir)
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	if closeErr := dir.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // Publisher is the automatic path. Gate holds stk's service-authenticated
@@ -225,6 +241,9 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 		current := req.Digest()
 		if current != rec.RequestDigest {
 			err := fmt.Errorf("approved digest %s does not match request digest %s", rec.ApprovedDigest, current)
+			if rec.Outcome == "delivered" || rec.Outcome == "sending" || rec.Outcome == "outcome_unknown" {
+				return e, err
+			}
 			rec.Outcome, rec.Error, rec.RequestDigest = "refused", err.Error(), current
 			if writeErr := p.Queue.writePublication(id, rec); writeErr != nil {
 				return e, writeErr
@@ -251,13 +270,18 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 			rec.Outcome, rec.Error = "outcome_unknown", "publisher stopped after the write began; provider read-back required"
 			_ = p.Queue.writePublication(id, rec)
 			return p.resolveUnknown(ctx, e, req, rec)
+		case "retry_allowed":
+			return e, errors.New("publisher retry was authorized but not completed; manual recovery is required")
 		}
+	}
+	if e.State == Approved {
+		return e, errors.New("automatic delivery was approved but no durable sending marker exists; manual recovery is required")
 	}
 
 	requestDigest := req.Digest()
 	confirmation, err := p.Gate.Confirm(ctx, req.BoardID, req.SubjectID, requestDigest)
 	if err != nil {
-		return p.refuse(e, publicationRecord{Outcome: "refused", RequestDigest: requestDigest}, err)
+		return e, err
 	}
 	rec = publicationRecord{ApprovedDigest: confirmation.Digest, RequestDigest: requestDigest, GateID: confirmation.GateID}
 	if !confirmation.Approved || confirmation.DeliveryMode != "automatic" {
@@ -265,6 +289,15 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 	}
 	if confirmation.Digest != requestDigest {
 		return p.refuse(e, rec, fmt.Errorf("approved digest %s does not match request digest %s", confirmation.Digest, requestDigest))
+	}
+	if confirmation.ExpiresAt != "" {
+		expires, parseErr := time.Parse(time.RFC3339, confirmation.ExpiresAt)
+		if parseErr != nil || !expires.After(p.Queue.now()) {
+			return p.refuse(e, rec, errors.New("SuperPipeline approval expiry is invalid or elapsed"))
+		}
+		if err := p.Queue.setGateExpiry(id, expires); err != nil {
+			return e, err
+		}
 	}
 	claimed, err := p.Queue.decide(id, true, "superpipeline:"+confirmation.GateID, true)
 	if err != nil {
@@ -367,29 +400,9 @@ func (p *Publisher) resolveUnknown(ctx context.Context, e *Effect, req GatedRequ
 		}
 		return p.deliver(ctx, e, req, rec, read.LiveURL)
 	case ReadBackNotFound:
-		if rec.PostID != "" {
-			rec.Error = "X acknowledged post id " + rec.PostID + " but exact-id read-back did not find it; retry remains fenced"
-			break
-		}
-		if rec.Attempts == 1 {
-			claim, _ := json.Marshal(map[string]any{"request_digest": rec.RequestDigest, "claimed_at": p.Queue.now().UTC()})
-			if err := writeNew(p.Queue.retryPath(e.ID), claim); err != nil {
-				if errors.Is(err, os.ErrExist) {
-					latest, readErr := p.Queue.readPublication(e.ID)
-					if readErr == nil {
-						p.apply(e, latest)
-					}
-					return e, errors.New("the single permitted retry was already claimed by another recovery process")
-				}
-				return e, err
-			}
-			rec.Outcome, rec.Error = "retry_allowed", ""
-			if err := p.Queue.writePublication(e.ID, rec); err != nil {
-				return e, err
-			}
-			return p.send(ctx, e, req, rec, true)
-		}
-		rec.Error = "negative read-back after the single permitted retry"
+		// X's exact-id and recent-search indexes are eventually consistent. A
+		// miss cannot prove the create failed, so it never authorizes a retry.
+		rec.Error = "X read-back has not found the post yet; search/index lag is inconclusive and retry remains fenced"
 	default:
 		if rec.Error == "" {
 			rec.Error = "X read-back was inconclusive"
@@ -641,7 +654,10 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 	if err := requireFrozenDigest(request, frozenDigest, "media initialize"); err != nil {
 		return "", err
 	}
-	initReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), bytes.NewReader(initialize))
+	initReq, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), bytes.NewReader(initialize))
+	if err != nil {
+		return "", err
+	}
 	initReq.Header.Set("Content-Type", "application/json")
 	initResp, err := x.Do(ctx, initReq)
 	if err != nil {
@@ -684,7 +700,10 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 	if err := requireFrozenDigest(request, frozenDigest, "media append"); err != nil {
 		return "", err
 	}
-	appendReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), &appendBody)
+	appendReq, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), &appendBody)
+	if err != nil {
+		return "", err
+	}
 	appendReq.Header.Set("Content-Type", writer.FormDataContentType())
 	appendResp, err := x.Do(ctx, appendReq)
 	if err != nil {
@@ -698,7 +717,10 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 	if err := requireFrozenDigest(request, frozenDigest, "media finalize"); err != nil {
 		return "", err
 	}
-	finalizeReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), nil)
+	finalizeReq, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), nil)
+	if err != nil {
+		return "", err
+	}
 	finalizeResp, err := x.Do(ctx, finalizeReq)
 	if err != nil {
 		return "", fmt.Errorf("x media finalize [%d]: %w", index, err)
@@ -707,7 +729,8 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 		Data struct {
 			ID             string `json:"id"`
 			ProcessingInfo struct {
-				State string `json:"state"`
+				State          string `json:"state"`
+				CheckAfterSecs int    `json:"check_after_secs"`
 			} `json:"processing_info"`
 		} `json:"data"`
 	}
@@ -717,8 +740,39 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 	if finalized.Data.ID != mediaID {
 		return "", fmt.Errorf("x media finalize [%d]: media id changed from %s to %s", index, mediaID, finalized.Data.ID)
 	}
+	for attempts := 0; finalized.Data.ProcessingInfo.State == "pending" || finalized.Data.ProcessingInfo.State == "in_progress"; attempts++ {
+		if attempts >= 20 {
+			return "", fmt.Errorf("x media finalize [%d]: processing did not finish", index)
+		}
+		delay := time.Duration(finalized.Data.ProcessingInfo.CheckAfterSecs) * time.Second
+		if delay <= 0 {
+			delay = 100 * time.Millisecond
+		}
+		if delay > 2*time.Second {
+			delay = 2 * time.Second
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+		base.Path = "/2/media/upload/" + url.PathEscape(mediaID)
+		statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+		if err != nil {
+			return "", err
+		}
+		statusResp, err := x.Do(ctx, statusReq)
+		if err != nil {
+			return "", fmt.Errorf("x media status [%d]: %w", index, err)
+		}
+		if err := decodeXMediaResponse(statusResp, "status", index, &finalized); err != nil {
+			return "", err
+		}
+	}
 	if state := finalized.Data.ProcessingInfo.State; state != "" && state != "succeeded" {
-		return "", fmt.Errorf("x media finalize [%d]: processing state %s is not ready", index, state)
+		return "", fmt.Errorf("x media finalize [%d]: processing state %s failed", index, state)
 	}
 	return mediaID, nil
 }
@@ -776,7 +830,10 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 			"media.fields": {"media_key"},
 			"tweet.fields": {"attachments"},
 		}.Encode()
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+		if err != nil {
+			return ReadBackResult{Status: ReadBackInconclusive}, err
+		}
 		resp, doErr := x.Do(ctx, req)
 		if doErr != nil {
 			return ReadBackResult{Status: ReadBackInconclusive}, doErr
@@ -800,8 +857,11 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&exact); decodeErr != nil {
 			return ReadBackResult{Status: ReadBackInconclusive}, decodeErr
 		}
-		if exact.Data.ID != sent.PostID || exact.Data.Text != post.Text {
-			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back did not match the created post id and exact text")
+		// The provider-assigned id is the correlation key. X legitimately
+		// rewrites links in text to t.co, so exact text is not evidence against a
+		// known id.
+		if exact.Data.ID != sent.PostID {
+			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back did not match the created post id")
 		}
 		if !xMediaKeysMatch(exact.Data.Attachments.MediaKeys, sent.MediaIDs) {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back media does not match the uploaded media ids")
@@ -811,11 +871,16 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 
 	base.Path = "/2/tweets/search/recent"
 	base.RawQuery = url.Values{
-		"query":        {fmt.Sprintf("from:%s %q", x.Username, post.Text)},
-		"tweet.fields": {"author_id,created_at"},
+		// Search only by the authenticated author. Quoting the entire post both
+		// exceeds X's 512-character query limit and misses t.co rewrites.
+		"query":        {"from:" + x.Username},
+		"tweet.fields": {"author_id,created_at,entities"},
 		"max_results":  {"10"},
 	}.Encode()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
+	if err != nil {
+		return ReadBackResult{Status: ReadBackInconclusive}, err
+	}
 	resp, err := x.Do(ctx, req)
 	if err != nil {
 		return ReadBackResult{Status: ReadBackInconclusive}, err
@@ -826,8 +891,14 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 	}
 	var result struct {
 		Data []struct {
-			ID   string `json:"id"`
-			Text string `json:"text"`
+			ID       string `json:"id"`
+			Text     string `json:"text"`
+			Entities struct {
+				URLs []struct {
+					URL         string `json:"url"`
+					ExpandedURL string `json:"expanded_url"`
+				} `json:"urls"`
+			} `json:"entities"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&result); err != nil {
@@ -835,12 +906,18 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 	}
 	matches := make([]string, 0, 1)
 	for _, item := range result.Data {
-		if item.Text == post.Text && item.ID != "" {
+		normalized := item.Text
+		for _, entity := range item.Entities.URLs {
+			if entity.URL != "" && entity.ExpandedURL != "" {
+				normalized = strings.ReplaceAll(normalized, entity.URL, entity.ExpandedURL)
+			}
+		}
+		if normalized == post.Text && item.ID != "" {
 			matches = append(matches, item.ID)
 		}
 	}
 	if len(matches) == 0 {
-		return ReadBackResult{Status: ReadBackNotFound}, nil
+		return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x recent search has not indexed an exact normalized match yet")
 	}
-	return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back found identical text but cannot correlate it to an unknown create outcome")
+	return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back found normalized text but cannot correlate it to an unknown create outcome")
 }

@@ -77,11 +77,10 @@ func gatedFixture(t *testing.T) (*Queue, *Effect, GatedRequest) {
 		Method: "POST", URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"frozen copy"}`),
 		Media: [][]byte{[]byte("first"), []byte("second")},
 	}
-	e := q.Submit("x", "post_tweet", "Publish frozen copy", map[string]string{
-		"_approval_authority": "superpipeline",
-		"_approval_board":     req.BoardID,
-		"_approval_subject":   req.SubjectID,
-	})
+	e, err := q.SubmitGated(req, "Publish frozen copy")
+	if err != nil {
+		t.Fatal(err)
+	}
 	return q, e, req
 }
 
@@ -243,7 +242,7 @@ func TestNonAutomaticGateOutcomesNeverSend(t *testing.T) {
 	for _, outcome := range []string{"manual", "rejected", "changes_requested", "expired"} {
 		t.Run(outcome, func(t *testing.T) {
 			q, e, req := gatedFixture(t)
-			gate := &gateStub{err: fmt.Errorf("gate %s", outcome)}
+			gate := &gateStub{confirmation: GateConfirmation{Approved: false, DeliveryMode: outcome, Digest: req.Digest(), GateID: "gate_fixture"}}
 			x := &xStub{}
 			got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
 			if err == nil || got.State != Refused {
@@ -253,6 +252,15 @@ func TestNonAutomaticGateOutcomesNeverSend(t *testing.T) {
 				t.Fatalf("%s gate sent %d times", outcome, x.sendCalls)
 			}
 		})
+	}
+}
+
+func TestTransientGateErrorLeavesEffectPending(t *testing.T) {
+	q, e, req := gatedFixture(t)
+	gate := &gateStub{err: errors.New("temporary SuperPipeline outage")}
+	got, err := (&Publisher{Queue: q, Gate: gate, X: &xStub{}}).Perform(context.Background(), e.ID, req)
+	if err == nil || got.State != Pending || got.Outcome != "" {
+		t.Fatalf("got %+v, %v; want untouched pending effect", got, err)
 	}
 }
 
@@ -287,7 +295,7 @@ func TestUnknownOutcomeReadBackFoundDeliversWithoutRetry(t *testing.T) {
 	}
 }
 
-func TestNegativeReadBackAllowsExactlyOneUnchangedRetry(t *testing.T) {
+func TestNegativeReadBackRemainsFencedWithoutRetry(t *testing.T) {
 	q, e, req := gatedFixture(t)
 	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
 	x := &xStub{
@@ -296,23 +304,11 @@ func TestNegativeReadBackAllowsExactlyOneUnchangedRetry(t *testing.T) {
 		reads:    []ReadBackResult{{Status: ReadBackNotFound}, {Status: ReadBackFound, LiveURL: "https://x.com/a/status/10"}},
 	}
 	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
-	if err != nil || got.Outcome != "delivered" {
+	if err == nil || got.Outcome != "outcome_unknown" || got.Attempts != 1 {
 		t.Fatalf("got %+v, %v", got, err)
 	}
-	if x.sendCalls != 2 || gate.confirms != 2 {
-		t.Fatalf("send/confirm = %d/%d, want 2/2", x.sendCalls, gate.confirms)
-	}
-	if x.digests[0] != x.digests[1] || x.digests[0] != req.Digest() {
-		t.Fatalf("retry digests = %v", x.digests)
-	}
-	if got.Attempts != 2 {
-		t.Fatalf("attempts = %d, want 2", got.Attempts)
-	}
-	if _, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req); err != nil {
-		t.Fatal(err)
-	}
-	if x.sendCalls != 2 {
-		t.Fatalf("delivered effect sent %d times", x.sendCalls)
+	if x.sendCalls != 1 || gate.confirms != 1 {
+		t.Fatalf("send/confirm = %d/%d, want 1/1", x.sendCalls, gate.confirms)
 	}
 }
 
@@ -371,11 +367,9 @@ func (x *concurrentRecoveryX) Send(context.Context, GatedRequest) (SendResult, e
 	return SendResult{StatusCode: http.StatusServiceUnavailable}, nil
 }
 
-// Regression guarded: two recovery processes must not both turn the same
-// negative read-back into the one permitted retry. Separate Queue values model
-// separate processes; the claim therefore has to live in the filesystem, not a
-// process-local mutex or a rename-based last-writer-wins record update.
-func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
+// Regression guarded: a search miss is inconclusive, so even concurrent
+// recovery processes must keep the fence and perform no retry.
+func TestConcurrentRecoveriesKeepNegativeReadBackFenced(t *testing.T) {
 	dir := t.TempDir()
 	q1, err := Open(dir, time.Minute)
 	if err != nil {
@@ -386,9 +380,10 @@ func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"one retry"}`)}
-	e := q1.Submit("x", "post_tweet", "concurrent recovery", map[string]string{
-		"_approval_authority": "superpipeline", "_approval_board": req.BoardID, "_approval_subject": req.SubjectID,
-	})
+	e, err := q1.SubmitGated(req, "concurrent recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := q1.decide(e.ID, true, "superpipeline:gate_fixture", true); err != nil {
 		t.Fatal(err)
 	}
@@ -421,12 +416,12 @@ func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
 			t.Error("recovery unexpectedly succeeded against fixture 503")
 		}
 	}
-	if got := x.sends.Load(); got != 1 {
-		t.Fatalf("provider retries = %d, want exactly 1", got)
+	if got := x.sends.Load(); got != 0 {
+		t.Fatalf("provider retries = %d, want 0", got)
 	}
 	stored, _ := q1.Get(e.ID)
-	if stored.Attempts != 2 {
-		t.Fatalf("durable attempts = %d, want 2", stored.Attempts)
+	if stored.Attempts != 1 {
+		t.Fatalf("durable attempts = %d, want 1", stored.Attempts)
 	}
 }
 
@@ -540,11 +535,11 @@ func TestChangedRequestAfterUnknownOutcomeIsRefusedBeforeReadBackOrRetry(t *test
 	approved := req.Digest()
 	req.Body = append(req.Body, ' ')
 	got, err := p.Perform(context.Background(), e.ID, req)
-	if err == nil || got.Outcome != "refused" {
-		t.Fatalf("changed request = %+v, %v; want refused", got, err)
+	if err == nil || got.Outcome != "outcome_unknown" {
+		t.Fatalf("changed request = %+v, %v; want preserved outcome_unknown fence", got, err)
 	}
-	if got.ApprovedDigest != approved || got.RequestDigest != req.Digest() {
-		t.Fatalf("record = %+v, want both digests", got)
+	if got.ApprovedDigest != approved || got.RequestDigest != approved {
+		t.Fatalf("record was overwritten: %+v", got)
 	}
 	if x.sendCalls != 1 || x.readCalls != 1 {
 		t.Fatalf("changed request caused send/read-back: %d/%d", x.sendCalls, x.readCalls)
@@ -739,6 +734,59 @@ func TestAutomaticXPublishingMediaFailuresNeverCreateAPost(t *testing.T) {
 	}
 }
 
+func TestGatedEffectUsesGateExpiryAndKeepsUnknownFenceDuringCleanup(t *testing.T) {
+	q, e, req := gatedFixture(t)
+	originalNow := q.now()
+	q.now = func() time.Time { return originalNow.Add(2 * time.Minute) }
+	gate := &gateStub{confirmation: GateConfirmation{
+		Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture",
+		ExpiresAt: originalNow.Add(time.Hour).UTC().Format(time.RFC3339),
+	}}
+	x := &xStub{sends: []SendResult{{StatusCode: http.StatusCreated, PostID: "late"}}, reads: []ReadBackResult{{Status: ReadBackFound, LiveURL: "https://x.com/fixture/status/late"}}}
+	if got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req); err != nil || got.Outcome != "delivered" {
+		t.Fatalf("late approved gate = %+v, %v", got, err)
+	}
+
+	q2, fenced, req2 := gatedFixture(t)
+	if _, err := q2.decide(fenced.ID, true, "superpipeline:gate_fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := q2.writePublication(fenced.ID, publicationRecord{Outcome: "outcome_unknown", RequestDigest: req2.Digest(), ApprovedDigest: req2.Digest(), Attempts: 1}); err != nil {
+		t.Fatal(err)
+	}
+	q2.now = func() time.Time { return fenced.Submitted.Add(48 * time.Hour) }
+	if got := q2.List(); len(got) != 1 || got[0].Outcome != "outcome_unknown" {
+		t.Fatalf("cleanup removed unknown-outcome fence: %+v", got)
+	}
+}
+
+func TestXReadBackNormalizesLinksWithAndWithoutKnownPostID(t *testing.T) {
+	request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"read https://example.com/story"}`)}
+	for _, tc := range []struct {
+		name       string
+		sent       SendResult
+		path       string
+		body       string
+		wantStatus ReadBackStatus
+	}{
+		{name: "known id", sent: SendResult{PostID: "known"}, path: "/2/tweets/known", body: `{"data":{"id":"known","text":"read https://t.co/a"}}`, wantStatus: ReadBackFound},
+		{name: "recent search", path: "/2/tweets/search/recent", body: `{"data":[{"id":"searched","text":"read https://t.co/a","entities":{"urls":[{"url":"https://t.co/a","expanded_url":"https://example.com/story"}]}}]}`, wantStatus: ReadBackInconclusive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := &XHTTPProvider{Username: "fixture", Do: func(_ context.Context, got *http.Request) (*http.Response, error) {
+				if got.URL.Path != tc.path {
+					t.Fatalf("path = %s, want %s", got.URL.Path, tc.path)
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+			}}
+			result, err := provider.ReadBack(context.Background(), request, tc.sent)
+			if result.Status != tc.wantStatus || (tc.wantStatus == ReadBackFound && (err != nil || !strings.Contains(result.LiveURL, "/status/"))) {
+				t.Fatalf("read-back = %+v, %v", result, err)
+			}
+		})
+	}
+}
+
 func TestAutomaticXPublishingMediaReadBackMismatchStaysFenced(t *testing.T) {
 	posts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -778,7 +826,7 @@ func TestPublisherPathStillRefusesLocalApproval(t *testing.T) {
 	q, e, _ := gatedFixture(t)
 	sends := 0
 	got, err := q.DecideAndPerform(e.ID, true, "shell-agent", func(*Effect) (string, error) { sends++; return "201 Created", nil })
-	if sends != 0 || err == nil || (got != nil && got.State != Refused) {
+	if sends != 0 || err == nil || (got != nil && got.State != Pending) {
 		t.Fatalf("got %+v, err %v, sends %d", got, err, sends)
 	}
 	if !strings.Contains(err.Error(), "direct SuperPipeline") {

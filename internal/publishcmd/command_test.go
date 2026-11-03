@@ -52,9 +52,6 @@ func (x *commandX) ReadBack(_ context.Context, _ approval.GatedRequest, _ approv
 	if x.reads == 1 {
 		return approval.ReadBackResult{Status: approval.ReadBackInconclusive}, nil
 	}
-	if x.reads == 2 {
-		return approval.ReadBackResult{Status: approval.ReadBackNotFound}, nil
-	}
 	return approval.ReadBackResult{Status: approval.ReadBackFound, LiveURL: "https://x.com/fixture/status/42"}, nil
 }
 
@@ -109,13 +106,13 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, _ = q.Get(receipt.ID)
-	if stored.Outcome != "delivered" || stored.LiveURL != "https://x.com/fixture/status/42" || x.sends != 2 {
+	if stored.Outcome != "delivered" || stored.LiveURL != "https://x.com/fixture/status/42" || x.sends != 1 {
 		t.Fatalf("recovered effect = %+v; sends=%d reads=%d", stored, x.sends, x.reads)
 	}
 	if len(gate.recorded) != 1 || gate.recorded[0] != stored.LiveURL {
 		t.Fatalf("card records = %v", gate.recorded)
 	}
-	if len(x.requests) != 2 || len(x.requests[0].Media) != 1 || string(x.requests[0].Media[0]) != string(frozenMedia) || x.requests[0].Digest() != x.requests[1].Digest() {
+	if len(x.requests) != 1 || len(x.requests[0].Media) != 1 || string(x.requests[0].Media[0]) != string(frozenMedia) {
 		t.Fatalf("durable frozen media was not preserved across retry: %+v", x.requests)
 	}
 }

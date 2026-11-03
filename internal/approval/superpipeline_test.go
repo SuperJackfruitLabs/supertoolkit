@@ -12,27 +12,26 @@ import (
 // allow` and publish without SuperPipeline ever approving the frozen digest for
 // automatic delivery.
 func TestSuperPipelineGatedEffectRefusesLocalApproval(t *testing.T) {
-	q := mustOpen(t, time.Minute)
-	e := q.Submit("x", "post_tweet", "Publish the frozen X post.", map[string]string{
-		"text":                     "frozen copy",
-		"_approval_authority":      "superpipeline",
-		"_approval_gate":           "gate-fixture",
-		"_approval_subject_digest": strings.Repeat("a", 64),
-	})
-
-	sends := 0
-	got, err := q.DecideAndPerform(e.ID, true, "shell-agent", func(*Effect) (string, error) {
-		sends++
-		return "201 Created", nil
-	})
-	if sends != 0 {
-		t.Errorf("local approval performed the SuperPipeline-gated effect %d time(s); want 0", sends)
-	}
-	if err == nil {
-		t.Error("local approval was accepted; want stk approvals allow to be refused for a SuperPipeline-gated effect")
-	}
-	if got != nil && got.State != Refused {
-		t.Errorf("recorded state = %q; want %q", got.State, Refused)
+	for _, allow := range []bool{true, false} {
+		t.Run(map[bool]string{true: "allow", false: "deny"}[allow], func(t *testing.T) {
+			q := mustOpen(t, time.Minute)
+			req := GatedRequest{BoardID: "brd_fixture", SubjectID: "aps_fixture", Method: "POST", URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"frozen copy"}`)}
+			e, err := q.SubmitGated(req, "Publish the frozen X post.")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sends := 0
+			got, err := q.DecideAndPerform(e.ID, allow, "shell-agent", func(*Effect) (string, error) {
+				sends++
+				return "201 Created", nil
+			})
+			if sends != 0 || err == nil {
+				t.Fatalf("local decision: sends=%d, err=%v; want refusal without a send", sends, err)
+			}
+			if got != nil && got.State != Pending {
+				t.Errorf("recorded state = %q; want unchanged %q", got.State, Pending)
+			}
+		})
 	}
 }
 
@@ -59,10 +58,17 @@ func TestConnectionLossIsRecordedAsOutcomeUnknown(t *testing.T) {
 		t.Fatalf("outcome = %q, error = %q; want outcome_unknown pending provider read-back", got.Outcome, got.Error)
 	}
 
-	_, _ = q.DecideAndPerform(e.ID, true, "retry", func(*Effect) (string, error) {
+	_, retryErr := q.DecideAndPerform(e.ID, true, "retry", func(*Effect) (string, error) {
 		sends++
 		return "201 Created", nil
 	})
+	if retryErr == nil || !strings.Contains(retryErr.Error(), "already approved") {
+		t.Fatalf("retry error = %v; want durable decision fence", retryErr)
+	}
+	stored, ok := q.Get(e.ID)
+	if !ok || stored.Outcome != "outcome_unknown" {
+		t.Fatalf("stored outcome after retry = %+v; want outcome_unknown", stored)
+	}
 	if sends != 1 {
 		t.Fatalf("provider send count = %d; want exactly 1 before read-back permits a retry", sends)
 	}

@@ -620,15 +620,18 @@ func Parse(path string, raw []byte) (*Config, error) {
 		cfg.services[name] = svc
 	}
 
-	// The proxy maps a host to one service, so two services on one host would
-	// have one silently win. Checked across every service, built-in or forge,
-	// and after the whole file is read so the order they are written in cannot
-	// hide it.
+	// Shared hosts are safe only when method/path allow-lists are disjoint.
+	// Otherwise one credential could silently reach another service's route.
 	owner := map[string]string{}
 	for _, name := range cfg.Services() {
 		for _, h := range cfg.services[name].entry.Hosts() {
 			if other, taken := owner[h]; taken {
-				return nil, fmt.Errorf("%s: services %q and %q both use host %s: one service per host", path, other, name, h)
+				sharedPublisherHost := (other == "superpipeline-approvals-read" && name == "superpipeline-approvals-write") ||
+					(other == "superpipeline-approvals-write" && name == "superpipeline-approvals-read")
+				if !sharedPublisherHost || !serviceRoutesDisjoint(cfg.services[other], cfg.services[name]) {
+					return nil, fmt.Errorf("%s: services %q and %q both use host %s: one service per host unless publisher routes are disjoint", path, other, name, h)
+				}
+				continue
 			}
 			owner[h] = name
 		}
@@ -655,6 +658,33 @@ func Parse(path string, raw []byte) (*Config, error) {
 		cfg.profiles[pname] = allow
 	}
 	return cfg, nil
+}
+
+func serviceRoutesDisjoint(left, right *Service) bool {
+	for _, a := range left.entry.Capabilities {
+		for _, b := range right.entry.Capabilities {
+			if strings.EqualFold(a.Method, b.Method) && routePatternsOverlap(a.Path, b.Path) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func routePatternsOverlap(a, b string) bool {
+	left := strings.Split(strings.Trim(a, "/"), "/")
+	right := strings.Split(strings.Trim(b, "/"), "/")
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		leftParam := strings.HasPrefix(left[i], "{") && strings.HasSuffix(left[i], "}")
+		rightParam := strings.HasPrefix(right[i], "{") && strings.HasSuffix(right[i], "}")
+		if !leftParam && !rightParam && left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // AgentUIDs returns the OS uids agents run as, from the top-level

@@ -197,15 +197,30 @@ func New(o Options) (*Broker, error) {
 type snapshot struct {
 	cfg    *policy.Config
 	byHost map[string]*policy.Service
+	routes map[string][]*policy.Service
 }
 
 // build makes a snapshot from cfg, including the extra intercepted hosts.
 func (b *Broker) build(cfg *policy.Config) (*snapshot, error) {
-	s := &snapshot{cfg: cfg, byHost: map[string]*policy.Service{}}
+	s := &snapshot{cfg: cfg, byHost: map[string]*policy.Service{}, routes: map[string][]*policy.Service{}}
 	for _, name := range cfg.Services() {
 		svc, _ := cfg.Service(name)
 		for _, h := range svc.Entry().Hosts() {
-			s.byHost[h] = svc
+			for _, existing := range s.routes[h] {
+				for _, left := range existing.Entry().Capabilities {
+					for _, right := range svc.Entry().Capabilities {
+						if strings.EqualFold(left.Method, right.Method) && left.Path == right.Path {
+							return nil, fmt.Errorf("broker: services %s and %s ambiguously share %s %s on %s", existing.Name, svc.Name, left.Method, left.Path, h)
+						}
+					}
+				}
+			}
+			s.routes[h] = append(s.routes[h], svc)
+			if len(s.routes[h]) == 1 {
+				s.byHost[h] = svc
+			} else {
+				s.byHost[h] = nil
+			}
 		}
 	}
 	if len(b.extra) > 0 {
@@ -216,6 +231,7 @@ func (b *Broker) build(cfg *policy.Config) (*snapshot, error) {
 		svc, _ := cfg.Service(names[0])
 		for _, h := range b.extra {
 			s.byHost[h] = svc
+			s.routes[h] = []*policy.Service{svc}
 		}
 	}
 	return s, nil
@@ -433,7 +449,11 @@ func (b *Broker) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b.intercept.Add(1)
-	b.interceptTLS(client, host, svc.Name)
+	svcName := ""
+	if svc != nil {
+		svcName = svc.Name
+	}
+	b.interceptTLS(client, host, svcName)
 }
 
 // blindTunnel copies bytes without looking at them. A host outside policy is
@@ -491,11 +511,50 @@ func (b *Broker) interceptTLS(client net.Conn, host, svcName string) {
 	_ = (&http.Server{Handler: h}).Serve(newSingleConnListener(tc))
 }
 
+func serviceForRequest(services []*policy.Service, method, path string) (*policy.Service, bool) {
+	var matched *policy.Service
+	for _, svc := range services {
+		for _, capability := range svc.Entry().Capabilities {
+			if strings.EqualFold(capability.Method, method) && routePathMatches(capability.Path, path) {
+				if matched != nil && matched != svc {
+					return nil, false
+				}
+				matched = svc
+			}
+		}
+	}
+	return matched, matched != nil
+}
+
+func routePathMatches(pattern, path string) bool {
+	left := strings.Split(strings.Trim(pattern, "/"), "/")
+	right := strings.Split(strings.Trim(path, "/"), "/")
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if strings.HasPrefix(left[i], "{") && strings.HasSuffix(left[i], "}") {
+			if right[i] == "" {
+				return false
+			}
+			continue
+		}
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto, svcName string) {
-	// The one read of the policy for this request. Everything below — the
-	// service, its rules, its labels — comes from this snapshot.
-	svc, ok := b.snap.Load().byHost[host]
-	if !ok || svc.Name != svcName {
+	// The one read of the policy for this request. Everything below — which
+	// service credential, its rules and labels — comes from this snapshot.
+	snap := b.snap.Load()
+	svc, ok := snap.byHost[host]
+	if ok && svc == nil {
+		svc, ok = serviceForRequest(snap.routes[host], r.Method, r.URL.Path)
+	}
+	if !ok || svc == nil || (svcName != "" && svc.Name != svcName) {
 		// The tunnel was opened for a service a reload has since removed or
 		// moved. Its credential and rules no longer apply here, so nothing is
 		// sent; a fresh CONNECT gets whatever the current policy says.

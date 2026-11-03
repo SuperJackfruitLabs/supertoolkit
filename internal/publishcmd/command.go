@@ -143,11 +143,11 @@ func perform(ctx context.Context, id string, runtime Runtime) (*approval.Effect,
 func recover(ctx context.Context, out io.Writer, runtime Runtime) error {
 	var first error
 	for _, effect := range runtime.Queue.List() {
-		if effect.Args["_approval_authority"] != "superpipeline" {
+		if _, err := runtime.Queue.GatedRequest(effect.ID); err != nil {
 			continue
 		}
 		switch effect.Outcome {
-		case "outcome_unknown", "sending", "delivered":
+		case "outcome_unknown", "sending", "delivered", "retry_allowed", "":
 		default:
 			continue
 		}
@@ -197,7 +197,10 @@ func productionRuntime(version string) (Runtime, func(), error) {
 type nativeExecutor = func(context.Context, string, *http.Request) (*http.Response, error)
 
 func xUsername(ctx context.Context, execute nativeExecutor) (string, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.x.com/2/users/me", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.x.com/2/users/me", nil)
+	if err != nil {
+		return "", err
+	}
 	resp, err := execute(ctx, "x", req)
 	if err != nil {
 		return "", err
