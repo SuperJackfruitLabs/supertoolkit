@@ -479,6 +479,48 @@ func TestXHTTPProviderSendsExactBytesAndReadsCanonicalURL(t *testing.T) {
 	}
 }
 
+func TestXHTTPProviderVerifiesTheCreatedPostIDNotAnOlderIdenticalPost(t *testing.T) {
+	request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"repeated copy"}`)}
+	provider := &XHTTPProvider{Username: "fixture", Do: func(_ context.Context, got *http.Request) (*http.Response, error) {
+		switch {
+		case got.Method == http.MethodPost && got.URL.Path == "/2/tweets":
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(`{"data":{"id":"new-post"}}`))}, nil
+		case got.Method == http.MethodGet && got.URL.Path == "/2/tweets/new-post":
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":{"id":"new-post","text":"repeated copy"}}`))}, nil
+		case got.Method == http.MethodGet && got.URL.Path == "/2/tweets/search/recent":
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"older-post","text":"repeated copy"}]}`))}, nil
+		default:
+			t.Fatalf("unexpected X request: %s %s", got.Method, got.URL)
+			return nil, nil
+		}
+	}}
+
+	q, e, gated := gatedFixture(t)
+	gated.Method, gated.URL, gated.Body, gated.Media = request.Method, request.URL, request.Body, nil
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: gated.Digest(), GateID: "gate_fixture"}}
+	got, err := (&Publisher{Queue: q, Gate: gate, X: provider}).Perform(context.Background(), e.ID, gated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LiveURL != "https://x.com/fixture/status/new-post" {
+		t.Fatalf("recorded live URL = %q, want the id returned by create", got.LiveURL)
+	}
+}
+
+func TestXHTTPProviderDoesNotCorrelateUnknownSendFromIdenticalTextAlone(t *testing.T) {
+	request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"repeated copy"}`)}
+	provider := &XHTTPProvider{Username: "fixture", Do: func(_ context.Context, got *http.Request) (*http.Response, error) {
+		if got.Method != http.MethodGet || got.URL.Path != "/2/tweets/search/recent" {
+			t.Fatalf("unexpected X request: %s %s", got.Method, got.URL)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"older-post","text":"repeated copy"}]}`))}, nil
+	}}
+	read, err := provider.ReadBack(context.Background(), request)
+	if err == nil || read.Status != ReadBackInconclusive {
+		t.Fatalf("read-back = %+v, %v; identical text without create id must stay fenced", read, err)
+	}
+}
+
 func TestPublisherPathStillRefusesLocalApproval(t *testing.T) {
 	q, e, _ := gatedFixture(t)
 	sends := 0
