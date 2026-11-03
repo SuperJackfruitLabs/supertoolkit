@@ -328,6 +328,8 @@ func (q *Queue) List() []*Effect {
 			os.Remove(q.decPath(id))
 			os.Remove(q.outPath(id))
 			os.Remove(q.pubPath(id))
+			os.Remove(q.gatedPath(id))
+			os.Remove(q.retryPath(id))
 			continue
 		}
 		out = append(out, e)

@@ -104,7 +104,48 @@ type publicationRecord struct {
 	CardRecorded   bool   `json:"card_recorded,omitempty"`
 }
 
-func (q *Queue) pubPath(id string) string { return filepath.Join(q.dir, id+".pub") }
+func (q *Queue) pubPath(id string) string   { return filepath.Join(q.dir, id+".pub") }
+func (q *Queue) gatedPath(id string) string { return filepath.Join(q.dir, id+".gated") }
+func (q *Queue) retryPath(id string) string { return filepath.Join(q.dir, id+".retry") }
+
+// SubmitGated durably joins an approval queue entry to the exact provider
+// request. A later executor needs only the id; request bytes never have to be
+// supplied again after approval.
+func (q *Queue) SubmitGated(req GatedRequest, summary string) (*Effect, error) {
+	e := q.Submit("x", "post_tweet", summary, map[string]string{
+		"_approval_authority": "superpipeline",
+		"_approval_board":     req.BoardID,
+		"_approval_subject":   req.SubjectID,
+	})
+	if e.State != Pending {
+		return e, errors.New("could not persist gated effect")
+	}
+	body, err := json.Marshal(req)
+	if err == nil {
+		err = writeNew(q.gatedPath(e.ID), body)
+	}
+	if err != nil {
+		_ = os.Remove(q.reqPath(e.ID))
+		return e, err
+	}
+	return e, nil
+}
+
+// GatedRequest returns the immutable request stored at ingress.
+func (q *Queue) GatedRequest(id string) (GatedRequest, error) {
+	var req GatedRequest
+	if !validID(id) {
+		return req, fmt.Errorf("no effect %q is waiting", id)
+	}
+	raw, err := os.ReadFile(q.gatedPath(id))
+	if err != nil {
+		return req, err
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return req, err
+	}
+	return req, nil
+}
 func (q *Queue) readPublication(id string) (publicationRecord, error) {
 	var r publicationRecord
 	b, err := os.ReadFile(q.pubPath(id))
@@ -301,6 +342,17 @@ func (p *Publisher) resolveUnknown(ctx context.Context, e *Effect, req GatedRequ
 		return p.deliver(ctx, e, req, rec, read.LiveURL)
 	case ReadBackNotFound:
 		if rec.Attempts == 1 {
+			claim, _ := json.Marshal(map[string]any{"request_digest": rec.RequestDigest, "claimed_at": p.Queue.now().UTC()})
+			if err := writeNew(p.Queue.retryPath(e.ID), claim); err != nil {
+				if errors.Is(err, os.ErrExist) {
+					latest, readErr := p.Queue.readPublication(e.ID)
+					if readErr == nil {
+						p.apply(e, latest)
+					}
+					return e, errors.New("the single permitted retry was already claimed by another recovery process")
+				}
+				return e, err
+			}
 			rec.Outcome, rec.Error = "retry_allowed", ""
 			if err := p.Queue.writePublication(e.ID, rec); err != nil {
 				return e, err
@@ -363,28 +415,37 @@ type SuperPipelineHTTPClient struct {
 	HTTP          *http.Client
 	ApprovalToken func(context.Context) (string, error)
 	DeliveryToken func(context.Context) (string, error)
+	// Production uses broker-owned transports so a token is never returned to
+	// this package (or to the command caller). Token suppliers remain a test seam.
+	ApprovalDo func(context.Context, *http.Request) (*http.Response, error)
+	DeliveryDo func(context.Context, *http.Request) (*http.Response, error)
 }
 
-func (c *SuperPipelineHTTPClient) post(ctx context.Context, path string, body any, token func(context.Context) (string, error), out any) error {
-	if token == nil {
+func (c *SuperPipelineHTTPClient) post(ctx context.Context, path string, body any, token func(context.Context) (string, error), do func(context.Context, *http.Request) (*http.Response, error), out any) error {
+	if token == nil && do == nil {
 		return errors.New("stk service credential is not configured")
-	}
-	secret, err := token(ctx)
-	if err != nil {
-		return err
 	}
 	payload, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Content-Type", "application/json")
-	client := c.HTTP
-	if client == nil {
-		client = http.DefaultClient
+	var resp *http.Response
+	if do != nil {
+		resp, err = do(ctx, req)
+	} else {
+		secret, tokenErr := token(ctx)
+		if tokenErr != nil {
+			return tokenErr
+		}
+		req.Header.Set("Authorization", "Bearer "+secret)
+		client := c.HTTP
+		if client == nil {
+			client = http.DefaultClient
+		}
+		resp, err = client.Do(req)
 	}
-	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -400,7 +461,7 @@ func (c *SuperPipelineHTTPClient) post(ctx context.Context, path string, body an
 }
 func (c *SuperPipelineHTTPClient) Confirm(ctx context.Context, boardID, subjectID, digest string) (GateConfirmation, error) {
 	var out GateConfirmation
-	err := c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(subjectID)+"/verify", map[string]string{"expectedDigest": digest}, c.ApprovalToken, &out)
+	err := c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(subjectID)+"/verify", map[string]string{"expectedDigest": digest}, c.ApprovalToken, c.ApprovalDo, &out)
 	return out, err
 }
 func (c *SuperPipelineHTTPClient) RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error {
@@ -415,7 +476,7 @@ type SubjectBoundGate struct {
 }
 
 func (c *SubjectBoundGate) RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error {
-	return c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(c.SubjectID)+"/delivery", map[string]string{"expectedDigest": digest, "gateId": gateID, "liveUrl": liveURL}, c.DeliveryToken, nil)
+	return c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(c.SubjectID)+"/delivery", map[string]string{"expectedDigest": digest, "gateId": gateID, "liveUrl": liveURL}, c.DeliveryToken, c.DeliveryDo, nil)
 }
 
 // XHTTPProvider performs the deterministic X write and exact-text read-back

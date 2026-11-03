@@ -17,6 +17,7 @@ import (
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcpcmd"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/netjail"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/proxyenv"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/publishcmd"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/serve"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/session"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/setup"
@@ -60,6 +61,8 @@ func usage() {
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -127,6 +130,8 @@ func main() {
 		err = audit.Command(os.Args[2:])
 	case "approvals", "approval":
 		err = mcpcmd.Approvals(os.Args[2:])
+	case "publish":
+		err = publishcmd.Command(os.Args[2:], version)
 	case "ui":
 		err = uicmd.Command(os.Args[2:], version)
 	case "doctor":

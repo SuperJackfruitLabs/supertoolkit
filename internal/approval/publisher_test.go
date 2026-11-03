@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -311,6 +313,99 @@ func TestNegativeReadBackAllowsExactlyOneUnchangedRetry(t *testing.T) {
 	}
 	if x.sendCalls != 2 {
 		t.Fatalf("delivered effect sent %d times", x.sendCalls)
+	}
+}
+
+type concurrentRecoveryGate struct {
+	digest   string
+	confirms atomic.Int32
+}
+
+func (g *concurrentRecoveryGate) Confirm(_ context.Context, _, _, _ string) (GateConfirmation, error) {
+	g.confirms.Add(1)
+	return GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: g.digest, GateID: "gate_fixture"}, nil
+}
+
+func (*concurrentRecoveryGate) RecordDelivered(context.Context, string, string, string, string) error {
+	return nil
+}
+
+type concurrentRecoveryX struct {
+	readers  atomic.Int32
+	sends    atomic.Int32
+	bothRead chan struct{}
+	once     sync.Once
+}
+
+func (x *concurrentRecoveryX) ReadBack(context.Context, GatedRequest) (ReadBackResult, error) {
+	if x.readers.Add(1) == 2 {
+		x.once.Do(func() { close(x.bothRead) })
+	}
+	<-x.bothRead
+	return ReadBackResult{Status: ReadBackNotFound}, nil
+}
+
+func (x *concurrentRecoveryX) Send(context.Context, GatedRequest) (SendResult, error) {
+	x.sends.Add(1)
+	return SendResult{StatusCode: http.StatusServiceUnavailable}, nil
+}
+
+// Regression guarded: two recovery processes must not both turn the same
+// negative read-back into the one permitted retry. Separate Queue values model
+// separate processes; the claim therefore has to live in the filesystem, not a
+// process-local mutex or a rename-based last-writer-wins record update.
+func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
+	dir := t.TempDir()
+	q1, err := Open(dir, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q2, err := Open(dir, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"one retry"}`)}
+	e := q1.Submit("x", "post_tweet", "concurrent recovery", map[string]string{
+		"_approval_authority": "superpipeline", "_approval_board": req.BoardID, "_approval_subject": req.SubjectID,
+	})
+	if _, err := q1.decide(e.ID, true, "superpipeline:gate_fixture", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := q1.writePublication(e.ID, publicationRecord{
+		Outcome: "outcome_unknown", ApprovedDigest: req.Digest(), RequestDigest: req.Digest(), GateID: "gate_fixture", Attempts: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	x := &concurrentRecoveryX{bothRead: make(chan struct{})}
+	gate := &concurrentRecoveryGate{digest: req.Digest()}
+	publishers := []*Publisher{{Queue: q1, Gate: gate, X: x}, {Queue: q2, Gate: gate, X: x}}
+	start := make(chan struct{})
+	errs := make(chan error, len(publishers))
+	var wg sync.WaitGroup
+	for _, publisher := range publishers {
+		wg.Add(1)
+		go func(p *Publisher) {
+			defer wg.Done()
+			<-start
+			_, runErr := p.Perform(context.Background(), e.ID, req)
+			errs <- runErr
+		}(publisher)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for runErr := range errs {
+		if runErr == nil {
+			t.Error("recovery unexpectedly succeeded against fixture 503")
+		}
+	}
+	if got := x.sends.Load(); got != 1 {
+		t.Fatalf("provider retries = %d, want exactly 1", got)
+	}
+	stored, _ := q1.Get(e.ID)
+	if stored.Attempts != 2 {
+		t.Fatalf("durable attempts = %d, want 2", stored.Attempts)
 	}
 }
 

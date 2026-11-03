@@ -312,6 +312,33 @@ var builtin = map[string]*Entry{
 			},
 		},
 	},
+	// --- SuperPipeline publisher service credentials ---
+	//
+	// Separate catalogue identities keep the gate-confirmation credential
+	// read-scoped even though delivery recording needs approvals:write. Both
+	// stay inside stk's native transport and are never returned to the command.
+	"superpipeline-approvals-read": {
+		RevokeAt: "https://accounts.superjackfruit.com",
+		Name:     "superpipeline-approvals-read", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_READ_TOKEN",
+		Placement: BearerHeader, Auth: AuthToken,
+		Capabilities: []Capability{{
+			Name: "verify_approval", Kind: Read, Method: "POST",
+			Path:    "/v1/boards/{board}/approval-subjects/{subject}/verify",
+			Summary: "Confirm an automatic approval and its exact outbound request digest.",
+			Params:  []Param{{Name: "board", Required: true}, {Name: "subject", Required: true}},
+		}},
+	},
+	"superpipeline-approvals-write": {
+		RevokeAt: "https://accounts.superjackfruit.com",
+		Name:     "superpipeline-approvals-write", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_WRITE_TOKEN",
+		Placement: BearerHeader, Auth: AuthToken,
+		Capabilities: []Capability{{
+			Name: "record_delivery", Kind: Write, Method: "POST",
+			Path:    "/v1/boards/{board}/approval-subjects/{subject}/delivery",
+			Summary: "Record a provider-verified automatic delivery URL.",
+			Params:  []Param{{Name: "board", Required: true}, {Name: "subject", Required: true}},
+		}},
+	},
 	// --- X ---
 	//
 	// Checked against docs.x.com on 2026-10-15, because X's API changes often

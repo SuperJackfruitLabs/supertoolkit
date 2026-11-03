@@ -38,7 +38,7 @@ next release follows the latest `v` tag. `scripts/release.sh vX.Y.Z` stamps the 
   reload), `audit` (the ledger observer, `stk audit`), `native` (one direct request outside the
   proxy), `session` (start a broker and a child's environment; `stk run`), `controlplane` (what
   the daemon serves)
-- Commands: `serve`, `mcpcmd` (`stk mcp`, `stk approvals`), `managedtoolkit` (the managed-* commands),
+- Commands: `serve`, `mcpcmd` (`stk mcp`, `stk approvals`), `publishcmd` (`stk publish`), `managedtoolkit` (the managed-* commands),
   `setup` (`stk init`, `add`, `connect`, `handover`), `credcmd` (`stk verify`, `revoke`), `doctor`,
   `proxyenv` (`stk env`), `uicmd` (`stk ui`)
 - `internal/clitest`: fixtures the command packages' tests share; only tests import it

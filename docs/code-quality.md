@@ -32,6 +32,7 @@ per seam:
 | `controlplane` | what the daemon serves: its methods, approving and performing an effect, fronted MCP servers, the daemon side of `stk mcp serve` |
 | `serve` | `stk serve` |
 | `mcpcmd` | `stk mcp`, `stk mcp install`, `stk mcp serve`, `stk approvals` |
+| `publishcmd` | durable ingress, execution and recovery for `stk publish` |
 | `managedtoolkit` | `managed-mcp-v1`, `managed-control-v1`, `managed-evidence-v1` |
 | `setup` | `stk init`, `stk add`, `stk connect` (stdin, `--device`, `--browser`), `stk handover` |
 | `credcmd` | `stk verify`, `stk revoke` |
