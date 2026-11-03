@@ -351,6 +351,13 @@ func (q *Queue) Pending() []*Effect {
 // claimed, so it runs exactly once however many processes are deciding, and its
 // result is recorded against the effect. A refusal performs nothing.
 func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Effect) (string, error)) (*Effect, error) {
+	if current, ok := q.Get(id); ok && allow && current.Args["_approval_authority"] == "superpipeline" {
+		e, err := q.decide(id, false, "supertoolkit", false)
+		if err != nil {
+			return nil, err
+		}
+		return e, fmt.Errorf("effect %q requires direct SuperPipeline approval confirmation and cannot be approved locally", id)
+	}
 	e, err := q.decide(id, allow, who, allow)
 	if err != nil {
 		return nil, err
@@ -359,6 +366,9 @@ func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Eff
 		return e, nil
 	}
 	status, perr := do(e)
+	if perr != nil && outcomeMayBeUnknown(perr) {
+		status = "outcome_unknown"
+	}
 	if rerr := q.RecordOutcome(id, status, perr); rerr != nil {
 		return e, rerr
 	}
@@ -367,6 +377,15 @@ func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Eff
 		e.Error = perr.Error()
 	}
 	return e, perr
+}
+
+func outcomeMayBeUnknown(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "connection dropped") ||
+		strings.Contains(message, "timeout") ||
+		strings.Contains(message, "timed out") ||
+		strings.Contains(message, "unexpected eof")
 }
 
 // Decide records a decision and performs nothing.
