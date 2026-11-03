@@ -337,6 +337,34 @@ type concurrentRecoveryX struct {
 	once     sync.Once
 }
 
+type slowInFlightX struct {
+	sends      atomic.Int32
+	released   atomic.Bool
+	entered    chan struct{}
+	release    chan struct{}
+	secondSend chan struct{}
+	enterOnce  sync.Once
+	secondOnce sync.Once
+}
+
+func (x *slowInFlightX) Send(context.Context, GatedRequest) (SendResult, error) {
+	call := x.sends.Add(1)
+	if call == 1 {
+		x.enterOnce.Do(func() { close(x.entered) })
+		<-x.release
+	} else {
+		x.secondOnce.Do(func() { close(x.secondSend) })
+	}
+	return SendResult{StatusCode: http.StatusCreated, PostID: fmt.Sprintf("post-%d", call)}, nil
+}
+
+func (x *slowInFlightX) ReadBack(context.Context, GatedRequest, SendResult) (ReadBackResult, error) {
+	if !x.released.Load() {
+		return ReadBackResult{Status: ReadBackNotFound}, nil
+	}
+	return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/fixture/status/slow"}, nil
+}
+
 func (x *concurrentRecoveryX) ReadBack(context.Context, GatedRequest, SendResult) (ReadBackResult, error) {
 	if x.readers.Add(1) == 2 {
 		x.once.Do(func() { close(x.bothRead) })
@@ -406,6 +434,63 @@ func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
 	stored, _ := q1.Get(e.ID)
 	if stored.Attempts != 2 {
 		t.Fatalf("durable attempts = %d, want 2", stored.Attempts)
+	}
+}
+
+// Regression guarded: a recovery process that observes the durable sending
+// marker while the original provider call is still in flight must not interpret
+// that marker as an abandoned publisher and issue a duplicate post.
+func TestRecoveryDuringSlowSendDoesNotPostAgain(t *testing.T) {
+	dir := t.TempDir()
+	q1, err := Open(dir, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q2, err := Open(dir, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"slow send"}`)}
+	e := q1.Submit("x", "post_tweet", "slow in-flight send", map[string]string{
+		"_approval_authority": "superpipeline", "_approval_board": req.BoardID, "_approval_subject": req.SubjectID,
+	})
+
+	x := &slowInFlightX{
+		entered:    make(chan struct{}),
+		release:    make(chan struct{}),
+		secondSend: make(chan struct{}),
+	}
+	gate := &concurrentRecoveryGate{digest: req.Digest()}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, runErr := (&Publisher{Queue: q1, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
+		firstDone <- runErr
+	}()
+	select {
+	case <-x.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first publisher never entered the provider send")
+	}
+
+	recoveryDone := make(chan error, 1)
+	go func() {
+		_, runErr := (&Publisher{Queue: q2, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
+		recoveryDone <- runErr
+	}()
+
+	duplicate := false
+	select {
+	case <-x.secondSend:
+		duplicate = true
+	case <-time.After(200 * time.Millisecond):
+	}
+	x.released.Store(true)
+	close(x.release)
+	<-firstDone
+	<-recoveryDone
+
+	if duplicate || x.sends.Load() != 1 {
+		t.Fatalf("provider sends while the original send was in flight = %d; want 1", x.sends.Load())
 	}
 }
 
