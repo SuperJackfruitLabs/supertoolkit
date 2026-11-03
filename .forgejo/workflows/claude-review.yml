@@ -1,0 +1,75 @@
+# Shared kit file (claude-ci), Forgejo Actions. A forge-primary product carries this
+# byte-identical as claude-review.yml in the folder its CI runs from (.forgejo/workflows, or
+# .github/workflows when the product has no .forgejo/workflows); do not edit a copy, change the
+# master and sync it.
+#
+# An advisory Claude review of each pull request, against the repo's REVIEW.md. It posts or
+# updates one comment and never approves, blocks or requests changes. It is a no-op until the
+# repository has a CLAUDE_CI_API_KEY secret. Pull request code is never checked out or run: the
+# script and REVIEW.md come from the base branch, and the diff is read through the API.
+# Forgejo gives `pull_request` runs from forks no secrets and a read-only token, so they skip.
+# The job token comments as forgejo-actions. Forgejo does not narrow the token by
+# `permissions:` (checked on Forgejo 16); the block records what the job needs. A draft is a
+# title starting with WIP: or [WIP]; push again or reopen to review once it is ready.
+# On a GitHub mirror of the product this workflow does nothing.
+name: claude-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    if: github.server_url != 'https://github.com' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Is a key set
+        id: gate
+        env:
+          KEY: ${{ secrets.CLAUDE_CI_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::notice::skipped: no CLAUDE_CI_API_KEY"
+            echo "on=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "on=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Fetch the review script from the base branch
+        id: kit
+        if: steps.gate.outputs.on == 'true'
+        continue-on-error: true
+        env:
+          TOKEN: ${{ github.token }}
+          API: ${{ github.server_url }}/api/v1
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          code=$(curl -sS -o "$RUNNER_TEMP/claude-ci.mjs" -w '%{http_code}' \
+            -H "Authorization: token $TOKEN" \
+            "$API/repos/$REPO/raw/.github/claude/claude-ci.mjs?ref=$BASE" || true)
+          if [ "$code" = 200 ]; then
+            echo "on=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::skipped: the base branch has no .github/claude/claude-ci.mjs (HTTP $code)"
+            echo "on=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Review
+        if: steps.kit.outputs.on == 'true'
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          CLAUDE_CI_API_KEY: ${{ secrets.CLAUDE_CI_API_KEY }}
+          CLAUDE_CI_MODEL: ${{ vars.CLAUDE_CI_MODEL }}
+          CLAUDE_CI_BASE_URL: ${{ vars.CLAUDE_CI_BASE_URL }}
+          CLAUDE_CI_MAX_DIFF_KB: ${{ vars.CLAUDE_CI_MAX_DIFF_KB }}
+          CI_HOST: forgejo
+          CI_API_URL: ${{ github.server_url }}/api/v1
+          CI_TOKEN: ${{ github.token }}
+          CI_REPO: ${{ github.repository }}
+          CI_PR: ${{ github.event.pull_request.number }}
+          CI_BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: node "$RUNNER_TEMP/claude-ci.mjs" review
