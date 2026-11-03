@@ -82,7 +82,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, runtim
 }
 
 func submit(in io.Reader, out io.Writer, queue *approval.Queue) error {
-	dec := json.NewDecoder(io.LimitReader(in, 16<<20))
+	dec := json.NewDecoder(io.LimitReader(in, 32<<20))
 	dec.DisallowUnknownFields()
 	var input submission
 	if err := dec.Decode(&input); err != nil {

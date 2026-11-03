@@ -33,12 +33,14 @@ func (g *commandGate) RecordDelivered(_ context.Context, _, _, _, liveURL string
 }
 
 type commandX struct {
-	sends int
-	reads int
+	sends    int
+	reads    int
+	requests []approval.GatedRequest
 }
 
-func (x *commandX) Send(_ context.Context, _ approval.GatedRequest) (approval.SendResult, error) {
+func (x *commandX) Send(_ context.Context, req approval.GatedRequest) (approval.SendResult, error) {
 	x.sends++
+	x.requests = append(x.requests, req)
 	if x.sends == 1 {
 		return approval.SendResult{}, approval.UnknownOutcome(errors.New("fixture connection dropped"))
 	}
@@ -70,13 +72,14 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
 	}}
 
+	frozenMedia := append([]byte("\x89PNG\r\n\x1a\n"), []byte("command-image")...)
 	payload, _ := json.Marshal(map[string]any{
 		"boardId":     "brd_0123456789abcdef",
 		"subjectId":   "aps_0123456789abcdef",
 		"method":      http.MethodPost,
 		"url":         "https://api.x.com/2/tweets",
 		"bodyBase64":  base64.StdEncoding.EncodeToString([]byte(`{"text":"frozen command path"}`)),
-		"mediaBase64": []string{},
+		"mediaBase64": []string{base64.StdEncoding.EncodeToString(frozenMedia)},
 		"summary":     "Publish the frozen command-path fixture",
 	})
 	var submitted bytes.Buffer
@@ -111,5 +114,8 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 	}
 	if len(gate.recorded) != 1 || gate.recorded[0] != stored.LiveURL {
 		t.Fatalf("card records = %v", gate.recorded)
+	}
+	if len(x.requests) != 2 || len(x.requests[0].Media) != 1 || string(x.requests[0].Media[0]) != string(frozenMedia) || x.requests[0].Digest() != x.requests[1].Digest() {
+		t.Fatalf("durable frozen media was not preserved across retry: %+v", x.requests)
 	}
 }

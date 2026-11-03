@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -299,6 +301,8 @@ func (p *Publisher) send(ctx context.Context, e *Effect, req GatedRequest, rec p
 		return e, err
 	}
 	result, err := p.X.Send(ctx, req)
+	rec.PostID = result.PostID
+	rec.MediaIDs = append([]string(nil), result.MediaIDs...)
 	if err != nil {
 		if isUnknownOutcome(err) {
 			rec.Outcome, rec.Error = "outcome_unknown", err.Error()
@@ -317,8 +321,6 @@ func (p *Publisher) send(ctx context.Context, e *Effect, req GatedRequest, rec p
 		p.apply(e, rec)
 		return e, err
 	}
-	rec.PostID = result.PostID
-	rec.MediaIDs = append([]string(nil), result.MediaIDs...)
 	if err := p.Queue.writePublication(e.ID, rec); err != nil {
 		return e, err
 	}
@@ -352,6 +354,10 @@ func (p *Publisher) resolveUnknown(ctx context.Context, e *Effect, req GatedRequ
 		}
 		return p.deliver(ctx, e, req, rec, read.LiveURL)
 	case ReadBackNotFound:
+		if rec.PostID != "" {
+			rec.Error = "X acknowledged post id " + rec.PostID + " but exact-id read-back did not find it; retry remains fenced"
+			break
+		}
 		if rec.Attempts == 1 {
 			claim, _ := json.Marshal(map[string]any{"request_digest": rec.RequestDigest, "claimed_at": p.Queue.now().UTC()})
 			if err := writeNew(p.Queue.retryPath(e.ID), claim); err != nil {
@@ -417,6 +423,7 @@ func (p *Publisher) refuse(e *Effect, rec publicationRecord, cause error) (*Effe
 func (p *Publisher) apply(e *Effect, r publicationRecord) {
 	e.Outcome, e.Error, e.ApprovedDigest, e.RequestDigest = r.Outcome, r.Error, r.ApprovedDigest, r.RequestDigest
 	e.LiveURL, e.ReadBack, e.Attempts = r.LiveURL, r.ReadBack, r.Attempts
+	e.PostID, e.MediaIDs = r.PostID, append([]string(nil), r.MediaIDs...)
 }
 
 // SuperPipelineHTTPClient authenticates with stk-owned token suppliers. Tokens
@@ -502,21 +509,44 @@ func (x *XHTTPProvider) Send(ctx context.Context, request GatedRequest) (SendRes
 	if x.Do == nil {
 		return SendResult{}, errors.New("x credentialed transport is not configured")
 	}
-	req, err := http.NewRequestWithContext(ctx, request.Method, request.URL, bytes.NewReader(request.Body))
+	frozenDigest := request.Digest()
+	mediaTypes, postBody, err := prepareXMedia(request)
 	if err != nil {
 		return SendResult{}, err
 	}
-	if len(request.Body) > 0 {
+	result := SendResult{}
+	for i, media := range request.Media {
+		mediaID, uploadErr := x.uploadMedia(ctx, request, frozenDigest, i, mediaTypes[i], media)
+		if uploadErr != nil {
+			return result, uploadErr
+		}
+		result.MediaIDs = append(result.MediaIDs, mediaID)
+	}
+	if len(result.MediaIDs) > 0 {
+		postBody, err = attachXMedia(postBody, result.MediaIDs)
+		if err != nil {
+			return result, err
+		}
+	}
+	if err := requireFrozenDigest(request, frozenDigest, "create post"); err != nil {
+		return result, err
+	}
+	req, err := http.NewRequestWithContext(ctx, request.Method, request.URL, bytes.NewReader(postBody))
+	if err != nil {
+		return result, err
+	}
+	if len(postBody) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := x.Do(ctx, req)
 	if err != nil {
-		// Once handed to a transport, an error cannot prove that no request bytes
-		// reached X. Conservatively fence it until read-back resolves the outcome.
-		return SendResult{}, UnknownOutcome(err)
+		// Once the public-post write reaches a transport, an error cannot prove
+		// that no request bytes reached X. Media-only writes are handled above
+		// and do not make a public post.
+		return result, UnknownOutcome(err)
 	}
 	defer resp.Body.Close()
-	result := SendResult{StatusCode: resp.StatusCode}
+	result.StatusCode = resp.StatusCode
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256<<10))
 		return result, nil
@@ -531,6 +561,184 @@ func (x *XHTTPProvider) Send(ctx context.Context, request GatedRequest) (SendRes
 	}
 	result.PostID = created.Data.ID
 	return result, nil
+}
+
+func prepareXMedia(request GatedRequest) ([]string, []byte, error) {
+	if len(request.Media) > 4 {
+		return nil, nil, errors.New("x media validation: a post accepts at most four images")
+	}
+	var post map[string]json.RawMessage
+	if err := json.Unmarshal(request.Body, &post); err != nil || len(post) == 0 {
+		return nil, nil, errors.New("x post body must be a JSON object")
+	}
+	if len(request.Media) > 0 {
+		if _, exists := post["media"]; exists {
+			return nil, nil, errors.New("x post body media must come from the frozen media bytes")
+		}
+	}
+	mediaTypes := make([]string, len(request.Media))
+	for i, media := range request.Media {
+		if len(media) == 0 || len(media) > 5<<20 {
+			return nil, nil, fmt.Errorf("x media validation [%d]: image must contain 1 byte through 5 MiB", i)
+		}
+		mediaType := http.DetectContentType(media)
+		switch mediaType {
+		case "image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp":
+			mediaTypes[i] = mediaType
+		default:
+			return nil, nil, fmt.Errorf("x media validation [%d]: unsupported image type %s", i, mediaType)
+		}
+	}
+	return mediaTypes, append([]byte(nil), request.Body...), nil
+}
+
+func attachXMedia(body []byte, mediaIDs []string) ([]byte, error) {
+	var post map[string]json.RawMessage
+	if err := json.Unmarshal(body, &post); err != nil {
+		return nil, err
+	}
+	media, err := json.Marshal(struct {
+		IDs []string `json:"media_ids"`
+	}{IDs: mediaIDs})
+	if err != nil {
+		return nil, err
+	}
+	post["media"] = media
+	return json.Marshal(post)
+}
+
+func requireFrozenDigest(request GatedRequest, frozenDigest, operation string) error {
+	if current := request.Digest(); current != frozenDigest {
+		return fmt.Errorf("x %s refused: frozen request digest changed from %s to %s", operation, frozenDigest, current)
+	}
+	return nil
+}
+
+func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, frozenDigest string, index int, mediaType string, media []byte) (string, error) {
+	base, err := url.Parse(request.URL)
+	if err != nil {
+		return "", err
+	}
+	base.Path, base.RawQuery = "/2/media/upload/initialize", ""
+	initialize, _ := json.Marshal(struct {
+		MediaCategory string `json:"media_category"`
+		MediaType     string `json:"media_type"`
+		TotalBytes    int    `json:"total_bytes"`
+	}{MediaCategory: "tweet_image", MediaType: mediaType, TotalBytes: len(media)})
+	if err := requireFrozenDigest(request, frozenDigest, "media initialize"); err != nil {
+		return "", err
+	}
+	initReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), bytes.NewReader(initialize))
+	initReq.Header.Set("Content-Type", "application/json")
+	initResp, err := x.Do(ctx, initReq)
+	if err != nil {
+		return "", fmt.Errorf("x media initialize [%d]: %w", index, err)
+	}
+	var initialized struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := decodeXMediaResponse(initResp, "initialize", index, &initialized); err != nil {
+		return "", err
+	}
+	mediaID := strings.TrimSpace(initialized.Data.ID)
+	if mediaID == "" {
+		return "", fmt.Errorf("x media initialize [%d]: response has no media id", index)
+	}
+
+	var appendBody bytes.Buffer
+	writer := multipart.NewWriter(&appendBody)
+	boundary := "stk-" + strings.TrimPrefix(frozenDigest, "sha256:")[:32] + "-" + strconv.Itoa(index)
+	if err := writer.SetBoundary(boundary); err != nil {
+		return "", err
+	}
+	if err := writer.WriteField("segment_index", "0"); err != nil {
+		return "", err
+	}
+	part, err := writer.CreateFormFile("media", "media")
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(media); err != nil {
+		return "", err
+	}
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+	base.Path = "/2/media/upload/" + url.PathEscape(mediaID) + "/append"
+	if err := requireFrozenDigest(request, frozenDigest, "media append"); err != nil {
+		return "", err
+	}
+	appendReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), &appendBody)
+	appendReq.Header.Set("Content-Type", writer.FormDataContentType())
+	appendResp, err := x.Do(ctx, appendReq)
+	if err != nil {
+		return "", fmt.Errorf("x media append [%d]: %w", index, err)
+	}
+	if err := decodeXMediaResponse(appendResp, "append", index, nil); err != nil {
+		return "", err
+	}
+
+	base.Path = "/2/media/upload/" + url.PathEscape(mediaID) + "/finalize"
+	if err := requireFrozenDigest(request, frozenDigest, "media finalize"); err != nil {
+		return "", err
+	}
+	finalizeReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, base.String(), nil)
+	finalizeResp, err := x.Do(ctx, finalizeReq)
+	if err != nil {
+		return "", fmt.Errorf("x media finalize [%d]: %w", index, err)
+	}
+	var finalized struct {
+		Data struct {
+			ID             string `json:"id"`
+			ProcessingInfo struct {
+				State string `json:"state"`
+			} `json:"processing_info"`
+		} `json:"data"`
+	}
+	if err := decodeXMediaResponse(finalizeResp, "finalize", index, &finalized); err != nil {
+		return "", err
+	}
+	if finalized.Data.ID != mediaID {
+		return "", fmt.Errorf("x media finalize [%d]: media id changed from %s to %s", index, mediaID, finalized.Data.ID)
+	}
+	if state := finalized.Data.ProcessingInfo.State; state != "" && state != "succeeded" {
+		return "", fmt.Errorf("x media finalize [%d]: processing state %s is not ready", index, state)
+	}
+	return mediaID, nil
+}
+
+func decodeXMediaResponse(resp *http.Response, operation string, index int, out any) error {
+	if resp == nil {
+		return fmt.Errorf("x media %s [%d]: empty response", operation, index)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256<<10))
+		return fmt.Errorf("x media %s [%d] returned HTTP %d", operation, index, resp.StatusCode)
+	}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256<<10))
+		return nil
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(out); err != nil {
+		return fmt.Errorf("x media %s [%d]: %w", operation, index, err)
+	}
+	return nil
+}
+
+func xMediaKeysMatch(keys, mediaIDs []string) bool {
+	if len(keys) != len(mediaIDs) {
+		return false
+	}
+	for i, key := range keys {
+		prefix, id, found := strings.Cut(key, "_")
+		if !found || prefix == "" || id != mediaIDs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent SendResult) (ReadBackResult, error) {
@@ -549,7 +757,11 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 	}
 	if sent.PostID != "" {
 		base.Path = "/2/tweets/" + url.PathEscape(sent.PostID)
-		base.RawQuery = url.Values{"tweet.fields": {"attachments"}}.Encode()
+		base.RawQuery = url.Values{
+			"expansions":   {"attachments.media_keys"},
+			"media.fields": {"media_key"},
+			"tweet.fields": {"attachments"},
+		}.Encode()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
 		resp, doErr := x.Do(ctx, req)
 		if doErr != nil {
@@ -564,8 +776,11 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		}
 		var exact struct {
 			Data struct {
-				ID   string `json:"id"`
-				Text string `json:"text"`
+				ID          string `json:"id"`
+				Text        string `json:"text"`
+				Attachments struct {
+					MediaKeys []string `json:"media_keys"`
+				} `json:"attachments"`
 			} `json:"data"`
 		}
 		if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&exact); decodeErr != nil {
@@ -573,6 +788,9 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		}
 		if exact.Data.ID != sent.PostID || exact.Data.Text != post.Text {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back did not match the created post id and exact text")
+		}
+		if !xMediaKeysMatch(exact.Data.Attachments.MediaKeys, sent.MediaIDs) {
+			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back media does not match the uploaded media ids")
 		}
 		return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/" + url.PathEscape(x.Username) + "/status/" + url.PathEscape(sent.PostID)}, nil
 	}

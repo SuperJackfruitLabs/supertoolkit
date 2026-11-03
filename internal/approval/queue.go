@@ -68,13 +68,15 @@ type Effect struct {
 	// operator reading the trail would reasonably believe the thing had
 	// happened. A record that says what a person authorised but not what
 	// occurred is worse than no record.
-	Outcome        string `json:"outcome,omitempty"`
-	Error          string `json:"error,omitempty"`
-	ApprovedDigest string `json:"approved_digest,omitempty"`
-	RequestDigest  string `json:"request_digest,omitempty"`
-	LiveURL        string `json:"live_url,omitempty"`
-	ReadBack       string `json:"read_back,omitempty"`
-	Attempts       int    `json:"attempts,omitempty"`
+	Outcome        string   `json:"outcome,omitempty"`
+	Error          string   `json:"error,omitempty"`
+	ApprovedDigest string   `json:"approved_digest,omitempty"`
+	RequestDigest  string   `json:"request_digest,omitempty"`
+	LiveURL        string   `json:"live_url,omitempty"`
+	ReadBack       string   `json:"read_back,omitempty"`
+	Attempts       int      `json:"attempts,omitempty"`
+	PostID         string   `json:"post_id,omitempty"`
+	MediaIDs       []string `json:"media_ids,omitempty"`
 
 	// Performs says the decider is carrying the effect out, so a waiter must
 	// report the result rather than act on it. Exactly one party performs.

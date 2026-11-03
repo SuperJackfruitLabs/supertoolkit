@@ -409,6 +409,23 @@ func TestConcurrentRecoveriesClaimTheSingleRetryOnce(t *testing.T) {
 	}
 }
 
+func TestAcknowledgedPostIDIsNeverRetriedWhenExactReadBackIsNotFound(t *testing.T) {
+	q, e, req := gatedFixture(t)
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+	x := &xStub{
+		sends: []SendResult{{StatusCode: http.StatusCreated, PostID: "acknowledged-post"}},
+		reads: []ReadBackResult{{Status: ReadBackNotFound}, {Status: ReadBackNotFound}},
+	}
+	publisher := &Publisher{Queue: q, Gate: gate, X: x}
+	if got, err := publisher.Perform(context.Background(), e.ID, req); err == nil || got.Outcome != "outcome_unknown" {
+		t.Fatalf("first read-back = %+v, %v", got, err)
+	}
+	got, err := publisher.Perform(context.Background(), e.ID, req)
+	if err == nil || got.Outcome != "outcome_unknown" || x.sendCalls != 1 || got.PostID != "acknowledged-post" || !strings.Contains(got.Error, "retry remains fenced") {
+		t.Fatalf("recovery = %+v, %v; sends=%d", got, err, x.sendCalls)
+	}
+}
+
 func TestInconclusiveReadBackRemainsFenced(t *testing.T) {
 	q, e, req := gatedFixture(t)
 	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
@@ -502,7 +519,7 @@ func TestXHTTPProviderVerifiesTheCreatedPostIDNotAnOlderIdenticalPost(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.LiveURL != "https://x.com/fixture/status/new-post" {
+	if got.LiveURL != "https://x.com/fixture/status/new-post" || got.PostID != "new-post" {
 		t.Fatalf("recorded live URL = %q, want the id returned by create", got.LiveURL)
 	}
 }
@@ -591,7 +608,7 @@ func TestAutomaticXPublishingUploadsFrozenMediaInOrderAndVerifiesIt(t *testing.T
 		return server.Client().Do(request.WithContext(ctx))
 	}}
 	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
-	if err != nil || got.Outcome != "delivered" || got.LiveURL != "https://x.com/fixture/status/post-media" {
+	if err != nil || got.Outcome != "delivered" || got.LiveURL != "https://x.com/fixture/status/post-media" || got.PostID != "post-media" || fmt.Sprint(got.MediaIDs) != "[media-1 media-2]" {
 		t.Fatalf("effect = %+v, %v", got, err)
 	}
 	if initialized != 2 || appended != 2 || finalized != 2 || posts != 1 || reads != 1 {
