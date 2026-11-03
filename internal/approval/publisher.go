@@ -649,7 +649,8 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 
 	var appendBody bytes.Buffer
 	writer := multipart.NewWriter(&appendBody)
-	boundary := "stk-" + strings.TrimPrefix(frozenDigest, "sha256:")[:32] + "-" + strconv.Itoa(index)
+	boundaryHash := sha256.Sum256([]byte(frozenDigest))
+	boundary := "stk-" + hex.EncodeToString(boundaryHash[:16]) + "-" + strconv.Itoa(index)
 	if err := writer.SetBoundary(boundary); err != nil {
 		return "", err
 	}
