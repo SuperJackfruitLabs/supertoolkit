@@ -68,8 +68,13 @@ type Effect struct {
 	// operator reading the trail would reasonably believe the thing had
 	// happened. A record that says what a person authorised but not what
 	// occurred is worse than no record.
-	Outcome string `json:"outcome,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Outcome        string `json:"outcome,omitempty"`
+	Error          string `json:"error,omitempty"`
+	ApprovedDigest string `json:"approved_digest,omitempty"`
+	RequestDigest  string `json:"request_digest,omitempty"`
+	LiveURL        string `json:"live_url,omitempty"`
+	ReadBack       string `json:"read_back,omitempty"`
+	Attempts       int    `json:"attempts,omitempty"`
 
 	// Performs says the decider is carrying the effect out, so a waiter must
 	// report the result rather than act on it. Exactly one party performs.
@@ -233,6 +238,11 @@ func (q *Queue) read(id string) (*Effect, error) {
 		if o, err := q.readOutcome(id); err == nil {
 			e.Outcome, e.Error = o.Outcome, o.Error
 		}
+		if p, err := q.readPublication(id); err == nil {
+			e.Outcome, e.Error = p.Outcome, p.Error
+			e.ApprovedDigest, e.RequestDigest = p.ApprovedDigest, p.RequestDigest
+			e.LiveURL, e.ReadBack, e.Attempts = p.LiveURL, p.ReadBack, p.Attempts
+		}
 		return &e, nil
 	}
 	// Undecided: expiry is a function of the clock, not of a write, so a
@@ -316,6 +326,8 @@ func (q *Queue) List() []*Effect {
 		if e.State != Pending && e.Submitted.Before(cutoff) {
 			os.Remove(q.reqPath(id))
 			os.Remove(q.decPath(id))
+			os.Remove(q.outPath(id))
+			os.Remove(q.pubPath(id))
 			continue
 		}
 		out = append(out, e)
