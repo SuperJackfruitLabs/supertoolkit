@@ -62,8 +62,8 @@ func TestConnectionLossIsRecordedAsOutcomeUnknown(t *testing.T) {
 		sends++
 		return "201 Created", nil
 	})
-	if retryErr == nil || !strings.Contains(retryErr.Error(), "already approved") {
-		t.Fatalf("retry error = %v; want durable decision fence", retryErr)
+	if retryErr == nil || !strings.Contains(retryErr.Error(), "fenced by outcome_unknown") {
+		t.Fatalf("retry error = %v; want durable outcome fence", retryErr)
 	}
 	stored, ok := q.Get(e.ID)
 	if !ok || stored.Outcome != "outcome_unknown" {

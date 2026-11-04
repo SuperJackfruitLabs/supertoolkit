@@ -146,8 +146,12 @@ func recover(ctx context.Context, out io.Writer, runtime Runtime) error {
 		if _, err := runtime.Queue.GatedRequest(effect.ID); err != nil {
 			continue
 		}
+		// A pending gated effect is waiting on a person, not on recovery.
+		if effect.State == approval.Pending {
+			continue
+		}
 		switch effect.Outcome {
-		case "outcome_unknown", "sending", "delivered", "retry_allowed", "":
+		case "outcome_unknown", "sending", "delivered", "retry_allowed":
 		default:
 			continue
 		}

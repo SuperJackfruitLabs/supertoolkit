@@ -112,6 +112,11 @@ const pollInterval = 250 * time.Millisecond
 // `stk approvals` can show what was just answered before it is tidied away.
 const keepDecided = 24 * time.Hour
 
+// gatedBackstopTTL bounds a gate that was never confirmed by SuperPipeline.
+// It is deliberately much longer than the ordinary intake TTL so human review
+// can finish, but an abandoned undecided request cannot remain forever.
+const gatedBackstopTTL = 7 * 24 * time.Hour
+
 // outcomeGrace is how long a waiter gives the decider to record what happened
 // before reporting an approval without its result.
 const outcomeGrace = 30 * time.Second
@@ -199,7 +204,22 @@ func writeNew(path string, body []byte) error {
 		f.Close()
 		return err
 	}
-	return f.Close()
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	if closeErr := dir.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func (q *Queue) setGateExpiry(id string, expires time.Time) error {
@@ -300,11 +320,10 @@ func (q *Queue) read(id string) (*Effect, error) {
 	// Undecided: expiry is a function of the clock, not of a write, so a
 	// process that was not running when the effect expired still sees it
 	// expired.
-	// A gated effect does not inherit the local queue TTL. Until confirmation
-	// supplies the gate expiry it remains pending; afterwards that expiry is
-	// authoritative.
+	// Before confirmation, a gated effect gets a long backstop rather than the
+	// ordinary queue TTL. Confirmation replaces it with the gate's own expiry.
 	_, gatedErr := os.Stat(q.gatedPath(id))
-	if gatedErr == nil && !e.GateExpirySet {
+	if gatedErr == nil && !e.GateExpirySet && !q.now().After(e.Expires) {
 		e.State = Pending
 	} else if q.now().After(e.Expires) {
 		e.State = Expired
@@ -395,6 +414,7 @@ func (q *Queue) List() []*Effect {
 			os.Remove(q.pubPath(id))
 			os.Remove(q.gatedPath(id))
 			os.Remove(q.retryPath(id))
+			os.Remove(filepath.Join(q.dir, id+".pub.lock"))
 			continue
 		}
 		out = append(out, e)
@@ -431,6 +451,9 @@ func (q *Queue) Pending() []*Effect {
 // result is recorded against the effect. A refusal performs nothing.
 func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Effect) (string, error)) (*Effect, error) {
 	if current, ok := q.Get(id); ok {
+		if current.Outcome == "outcome_unknown" || current.Outcome == "sending" {
+			return current, fmt.Errorf("effect %q is fenced by %s pending provider read-back", id, current.Outcome)
+		}
 		if _, err := os.Stat(q.gatedPath(id)); err == nil {
 			return current, fmt.Errorf("effect %q requires direct SuperPipeline approval confirmation and cannot be decided locally", id)
 		}

@@ -102,12 +102,19 @@ func (s *Service) CloseHosts() {
 //
 // version is stk's own, sent as the User-Agent of every effect performed here.
 func New(cfg *policy.Config, store *credential.Store, dir, caller, version string) (*Service, error) {
-	return NewWith(livepolicy.New(cfg, store, native.ManagedClient()), store, dir, caller, version)
+	return NewWith(livepolicy.New(cfg, store, &http.Client{Timeout: 60 * time.Second}), store, dir, caller, version)
+}
+
+func effectHTTPClient(caller string) *http.Client {
+	if caller == "publish" {
+		return native.ManagedClient()
+	}
+	return &http.Client{Timeout: 60 * time.Second}
 }
 
 // NewWith wires a service over a shared, reloadable policy holder.
 func NewWith(live *livepolicy.Config, store *credential.Store, dir, caller, version string) (*Service, error) {
-	client := native.ManagedClient()
+	client := effectHTTPClient(caller)
 	queue, err := approval.Open(dir, approvalTTL)
 	if err != nil {
 		return nil, err

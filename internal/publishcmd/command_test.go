@@ -24,6 +24,9 @@ func (g *commandGate) Confirm(_ context.Context, _, _, digest string) (approval.
 	if out.Digest == "" {
 		out.Digest = digest
 	}
+	if out.Approved && out.ExpiresAt == "" {
+		out.ExpiresAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	}
 	return out, nil
 }
 
@@ -33,15 +36,16 @@ func (g *commandGate) RecordDelivered(_ context.Context, _, _, _, liveURL string
 }
 
 type commandX struct {
-	sends    int
-	reads    int
-	requests []approval.GatedRequest
+	sends      int
+	reads      int
+	requests   []approval.GatedRequest
+	successful bool
 }
 
 func (x *commandX) Send(_ context.Context, req approval.GatedRequest) (approval.SendResult, error) {
 	x.sends++
 	x.requests = append(x.requests, req)
-	if x.sends == 1 {
+	if x.sends == 1 && !x.successful {
 		return approval.SendResult{}, approval.UnknownOutcome(errors.New("fixture connection dropped"))
 	}
 	return approval.SendResult{StatusCode: http.StatusCreated}, nil
@@ -49,6 +53,9 @@ func (x *commandX) Send(_ context.Context, req approval.GatedRequest) (approval.
 
 func (x *commandX) ReadBack(_ context.Context, _ approval.GatedRequest, _ approval.SendResult) (approval.ReadBackResult, error) {
 	x.reads++
+	if x.successful {
+		return approval.ReadBackResult{Status: approval.ReadBackFound, LiveURL: "https://x.com/fixture/status/42"}, nil
+	}
 	if x.reads == 1 {
 		return approval.ReadBackResult{Status: approval.ReadBackInconclusive}, nil
 	}
@@ -114,5 +121,41 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 	}
 	if len(x.requests) != 1 || len(x.requests[0].Media) != 1 || string(x.requests[0].Media[0]) != string(frozenMedia) {
 		t.Fatalf("durable frozen media was not preserved across retry: %+v", x.requests)
+	}
+}
+
+func TestRecoverSkipsUndecidedGateAndLaterApprovalPostsOnce(t *testing.T) {
+	q, err := approval.Open(t.TempDir(), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := approval.GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"wait for review"}`)}
+	e, err := q.SubmitGated(req, "wait for review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "pending", GateID: "gate_fixture", Digest: req.Digest()}}
+	x := &commandX{successful: true}
+	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
+		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
+	}}
+	if err := recover(context.Background(), &bytes.Buffer{}, runtime); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := q.Get(e.ID); got.State != approval.Pending || x.sends != 0 {
+		t.Fatalf("recover changed undecided effect: %+v; sends=%d", got, x.sends)
+	}
+	if _, err := perform(context.Background(), e.ID, runtime); err == nil {
+		t.Fatal("undecided gate was accepted")
+	}
+	if got, _ := q.Get(e.ID); got.State != approval.Pending || got.Outcome != "" {
+		t.Fatalf("undecided perform changed state: %+v", got)
+	}
+	gate.confirmation = approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_fixture", Digest: req.Digest(), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
+	if _, err := perform(context.Background(), e.ID, runtime); err != nil {
+		t.Fatal(err)
+	}
+	if x.sends != 1 {
+		t.Fatalf("provider sends = %d, want 1", x.sends)
 	}
 }

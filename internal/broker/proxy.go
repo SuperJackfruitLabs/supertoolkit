@@ -204,6 +204,11 @@ type snapshot struct {
 func (b *Broker) build(cfg *policy.Config) (*snapshot, error) {
 	s := &snapshot{cfg: cfg, byHost: map[string]*policy.Service{}, routes: map[string][]*policy.Service{}}
 	for _, name := range cfg.Services() {
+		// Publisher approval credentials are native-only. A proxy-authenticated
+		// agent must never be able to make stk inject either service token.
+		if name == "superpipeline-approvals-read" || name == "superpipeline-approvals-write" {
+			continue
+		}
 		svc, _ := cfg.Service(name)
 		for _, h := range svc.Entry().Hosts() {
 			for _, existing := range s.routes[h] {
@@ -533,6 +538,9 @@ func routePathMatches(pattern, path string) bool {
 		return false
 	}
 	for i := range left {
+		if right[i] == "." || right[i] == ".." {
+			return false
+		}
 		if strings.HasPrefix(left[i], "{") && strings.HasSuffix(left[i], "}") {
 			if right[i] == "" {
 				return false
@@ -546,13 +554,29 @@ func routePathMatches(pattern, path string) bool {
 	return true
 }
 
+func hasDotPathSegment(path string) bool {
+	for _, segment := range strings.Split(path, "/") {
+		if segment == "." || segment == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func routeRestricted(svc *policy.Service) bool {
+	return svc != nil && (svc.Name == "superpipeline-approvals-read" || svc.Name == "superpipeline-approvals-write")
+}
+
 func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto, svcName string) {
 	// The one read of the policy for this request. Everything below — which
 	// service credential, its rules and labels — comes from this snapshot.
 	snap := b.snap.Load()
 	svc, ok := snap.byHost[host]
-	if ok && svc == nil {
+	if ok && (svc == nil || routeRestricted(svc)) {
 		svc, ok = serviceForRequest(snap.routes[host], r.Method, r.URL.Path)
+		if r.URL.RawPath != "" || hasDotPathSegment(r.URL.Path) {
+			svc, ok = nil, false
+		}
 	}
 	if !ok || svc == nil || (svcName != "" && svc.Name != svcName) {
 		// The tunnel was opened for a service a reload has since removed or

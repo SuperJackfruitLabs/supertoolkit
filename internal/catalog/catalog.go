@@ -395,6 +395,10 @@ var builtin = map[string]*Entry{
 				Params:  []Param{{Name: "id", Required: true}},
 			},
 			{
+				Name: "media_status", Kind: Read, Method: "GET", Path: "/2/media/upload",
+				Summary: "Poll media processing with command=STATUS and media_id.",
+			},
+			{
 				Name: "media_finalize", Kind: Write, Method: "POST", Path: "/2/media/upload/{id}/finalize",
 				Summary: "Complete a media upload.",
 				Params:  []Param{{Name: "id", Required: true}},

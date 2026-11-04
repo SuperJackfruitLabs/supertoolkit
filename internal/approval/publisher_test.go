@@ -24,7 +24,11 @@ type gateStub struct {
 
 func (g *gateStub) Confirm(_ context.Context, _, _, _ string) (GateConfirmation, error) {
 	g.confirms++
-	return g.confirmation, g.err
+	out := g.confirmation
+	if out.Approved && out.ExpiresAt == "" {
+		out.ExpiresAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	}
+	return out, g.err
 }
 func (g *gateStub) RecordDelivered(_ context.Context, _, _, _, liveURL string) error {
 	g.recorded = append(g.recorded, liveURL)
@@ -97,7 +101,7 @@ func TestHTTPClientsJoinSuperPipelineGateToXAndCardRecord(t *testing.T) {
 				ExpectedDigest string `json:"expectedDigest"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			_ = json.NewEncoder(w).Encode(GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: body.ExpectedDigest, GateID: "gate_http"})
+			_ = json.NewEncoder(w).Encode(GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: body.ExpectedDigest, GateID: "gate_http", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 		case strings.HasSuffix(r.URL.Path, "/delivery"):
 			cardWrites++
 			if r.Header.Get("Authorization") != "Bearer approvals-write" {
@@ -319,7 +323,7 @@ type concurrentRecoveryGate struct {
 
 func (g *concurrentRecoveryGate) Confirm(_ context.Context, _, _, _ string) (GateConfirmation, error) {
 	g.confirms.Add(1)
-	return GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: g.digest, GateID: "gate_fixture"}, nil
+	return GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: g.digest, GateID: "gate_fixture", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}, nil
 }
 
 func (*concurrentRecoveryGate) RecordDelivered(context.Context, string, string, string, string) error {
@@ -758,6 +762,12 @@ func TestGatedEffectUsesGateExpiryAndKeepsUnknownFenceDuringCleanup(t *testing.T
 	if got := q2.List(); len(got) != 1 || got[0].Outcome != "outcome_unknown" {
 		t.Fatalf("cleanup removed unknown-outcome fence: %+v", got)
 	}
+
+	q3, abandoned, _ := gatedFixture(t)
+	q3.now = func() time.Time { return abandoned.Submitted.Add(gatedBackstopTTL + time.Second) }
+	if got, ok := q3.Get(abandoned.ID); !ok || got.State != Expired {
+		t.Fatalf("unconfirmed gated backstop = %+v, %v; want expired", got, ok)
+	}
 }
 
 func TestXReadBackNormalizesLinksWithAndWithoutKnownPostID(t *testing.T) {
@@ -769,7 +779,7 @@ func TestXReadBackNormalizesLinksWithAndWithoutKnownPostID(t *testing.T) {
 		body       string
 		wantStatus ReadBackStatus
 	}{
-		{name: "known id", sent: SendResult{PostID: "known"}, path: "/2/tweets/known", body: `{"data":{"id":"known","text":"read https://t.co/a"}}`, wantStatus: ReadBackFound},
+		{name: "known id", sent: SendResult{PostID: "known"}, path: "/2/tweets/known", body: `{"data":{"id":"known","text":"read https://t.co/a","entities":{"urls":[{"url":"https://t.co/a","expanded_url":"https://example.com/story"}]}}}`, wantStatus: ReadBackFound},
 		{name: "recent search", path: "/2/tweets/search/recent", body: `{"data":[{"id":"searched","text":"read https://t.co/a","entities":{"urls":[{"url":"https://t.co/a","expanded_url":"https://example.com/story"}]}}]}`, wantStatus: ReadBackInconclusive},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -831,5 +841,61 @@ func TestPublisherPathStillRefusesLocalApproval(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "direct SuperPipeline") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecentSearchMissRemainsInconclusive(t *testing.T) {
+	request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"approved text"}`)}
+	provider := &XHTTPProvider{Username: "fixture", Do: func(context.Context, *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":[]}`))}, nil
+	}}
+	result, err := provider.ReadBack(context.Background(), request, SendResult{})
+	if result.Status != ReadBackInconclusive || err == nil || !strings.Contains(err.Error(), "not indexed") {
+		t.Fatalf("read-back = %+v, %v; search miss must stay fenced", result, err)
+	}
+}
+
+func TestKnownPostIDStillRequiresApprovedContent(t *testing.T) {
+	request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"approved text"}`)}
+	provider := &XHTTPProvider{Username: "fixture", Do: func(_ context.Context, got *http.Request) (*http.Response, error) {
+		if got.URL.Query().Get("tweet.fields") != "attachments,entities" {
+			t.Fatalf("tweet.fields = %q", got.URL.Query().Get("tweet.fields"))
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":{"id":"planted","text":"someone else's post"}}`))}, nil
+	}}
+	result, err := provider.ReadBack(context.Background(), request, SendResult{PostID: "planted"})
+	if result.Status != ReadBackInconclusive || err == nil || !strings.Contains(err.Error(), "content") {
+		t.Fatalf("read-back = %+v, %v", result, err)
+	}
+}
+
+func TestMissingApprovalExpiryNeverSends(t *testing.T) {
+	q, e, req := gatedFixture(t)
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture", ExpiresAt: "invalid"}}
+	x := &xStub{}
+	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
+	if err == nil || got.State != Refused || x.sendCalls != 0 {
+		t.Fatalf("got %+v, %v; sends=%d", got, err, x.sendCalls)
+	}
+}
+
+func TestManualRecoveryStatesAreSurfacedWithoutSending(t *testing.T) {
+	for _, outcome := range []string{"retry_allowed", ""} {
+		t.Run(outcome, func(t *testing.T) {
+			q, e, req := gatedFixture(t)
+			if _, err := q.decide(e.ID, true, "superpipeline:gate_fixture", true); err != nil {
+				t.Fatal(err)
+			}
+			if outcome != "" {
+				if err := q.writePublication(e.ID, publicationRecord{Outcome: outcome, ApprovedDigest: req.Digest(), RequestDigest: req.Digest(), GateID: "gate_fixture"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			x := &xStub{}
+			got, err := (&Publisher{Queue: q, Gate: &gateStub{}, X: x}).Perform(context.Background(), e.ID, req)
+			if err == nil || got.State != Approved || x.sendCalls != 0 || !strings.Contains(err.Error(), "manual recovery") {
+				t.Fatalf("got %+v, %v; sends=%d", got, err, x.sendCalls)
+			}
+		})
 	}
 }

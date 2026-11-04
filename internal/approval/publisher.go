@@ -57,6 +57,7 @@ type GateConfirmation struct {
 	Digest       string `json:"digest"`
 	GateID       string `json:"gateId"`
 	ExpiresAt    string `json:"expiresAt"`
+	GateStatus   string `json:"gateStatus"`
 }
 
 type GateClient interface {
@@ -122,20 +123,32 @@ func (q *Queue) retryPath(id string) string { return filepath.Join(q.dir, id+".r
 // request. A later executor needs only the id; request bytes never have to be
 // supplied again after approval.
 func (q *Queue) SubmitGated(req GatedRequest, summary string) (*Effect, error) {
-	e := q.Submit("x", "post_tweet", summary, map[string]string{
-		"_approval_authority": "superpipeline",
-		"_approval_board":     req.BoardID,
-		"_approval_subject":   req.SubjectID,
-	})
-	if e.State != Pending {
-		return e, errors.New("could not persist gated effect")
+	now := q.now()
+	e := &Effect{
+		ID: newID(), Service: "x", Capability: "post_tweet", Summary: summary,
+		Args: map[string]string{
+			"_approval_authority": "superpipeline",
+			"_approval_board":     req.BoardID,
+			"_approval_subject":   req.SubjectID,
+		},
+		Submitted: now, Expires: now.Add(gatedBackstopTTL), State: Pending,
 	}
-	body, err := json.Marshal(req)
-	if err == nil {
-		err = writeNew(q.gatedPath(e.ID), body)
-	}
+	gatedBody, err := json.Marshal(req)
 	if err != nil {
-		_ = os.Remove(q.reqPath(e.ID))
+		return e, err
+	}
+	requestBody, err := json.Marshal(e)
+	if err != nil {
+		return e, err
+	}
+	// Publish the immutable authority marker before the request becomes visible,
+	// so a concurrent local approvals command can never mistake it for an
+	// ordinary effect. A partial gated marker is harmless and collectible.
+	if err := writeNew(q.gatedPath(e.ID), gatedBody); err != nil {
+		return e, err
+	}
+	if err := writeNew(q.reqPath(e.ID), requestBody); err != nil {
+		_ = os.Remove(q.gatedPath(e.ID))
 		return e, err
 	}
 	return e, nil
@@ -284,20 +297,21 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 		return e, err
 	}
 	rec = publicationRecord{ApprovedDigest: confirmation.Digest, RequestDigest: requestDigest, GateID: confirmation.GateID}
+	if !confirmation.Approved && confirmation.DeliveryMode == "none" && (confirmation.GateStatus == "pending" || confirmation.GateStatus == "open") {
+		return e, errors.New("SuperPipeline gate is not yet resolved")
+	}
 	if !confirmation.Approved || confirmation.DeliveryMode != "automatic" {
 		return p.refuse(e, rec, errors.New("SuperPipeline did not confirm automatic delivery"))
 	}
 	if confirmation.Digest != requestDigest {
 		return p.refuse(e, rec, fmt.Errorf("approved digest %s does not match request digest %s", confirmation.Digest, requestDigest))
 	}
-	if confirmation.ExpiresAt != "" {
-		expires, parseErr := time.Parse(time.RFC3339, confirmation.ExpiresAt)
-		if parseErr != nil || !expires.After(p.Queue.now()) {
-			return p.refuse(e, rec, errors.New("SuperPipeline approval expiry is invalid or elapsed"))
-		}
-		if err := p.Queue.setGateExpiry(id, expires); err != nil {
-			return e, err
-		}
+	expires, parseErr := time.Parse(time.RFC3339, confirmation.ExpiresAt)
+	if parseErr != nil || !expires.After(p.Queue.now()) {
+		return p.refuse(e, rec, errors.New("SuperPipeline approval expiry is missing, invalid or elapsed"))
+	}
+	if err := p.Queue.setGateExpiry(id, expires); err != nil {
+		return e, err
 	}
 	claimed, err := p.Queue.decide(id, true, "superpipeline:"+confirmation.GateID, true)
 	if err != nil {
@@ -758,7 +772,8 @@ func (x *XHTTPProvider) uploadMedia(ctx context.Context, request GatedRequest, f
 			return "", ctx.Err()
 		case <-timer.C:
 		}
-		base.Path = "/2/media/upload/" + url.PathEscape(mediaID)
+		base.Path = "/2/media/upload"
+		base.RawQuery = url.Values{"command": {"STATUS"}, "media_id": {mediaID}}.Encode()
 		statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
 		if err != nil {
 			return "", err
@@ -828,7 +843,7 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		base.RawQuery = url.Values{
 			"expansions":   {"attachments.media_keys"},
 			"media.fields": {"media_key"},
-			"tweet.fields": {"attachments"},
+			"tweet.fields": {"attachments,entities"},
 		}.Encode()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
 		if err != nil {
@@ -852,6 +867,12 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 				Attachments struct {
 					MediaKeys []string `json:"media_keys"`
 				} `json:"attachments"`
+				Entities struct {
+					URLs []struct {
+						URL         string `json:"url"`
+						ExpandedURL string `json:"expanded_url"`
+					} `json:"urls"`
+				} `json:"entities"`
 			} `json:"data"`
 		}
 		if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&exact); decodeErr != nil {
@@ -865,6 +886,15 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		}
 		if !xMediaKeysMatch(exact.Data.Attachments.MediaKeys, sent.MediaIDs) {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back media does not match the uploaded media ids")
+		}
+		normalized := exact.Data.Text
+		for _, entity := range exact.Data.Entities.URLs {
+			if entity.URL != "" && entity.ExpandedURL != "" {
+				normalized = strings.ReplaceAll(normalized, entity.URL, entity.ExpandedURL)
+			}
+		}
+		if normalized != post.Text {
+			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back content does not match the approved post")
 		}
 		return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/" + url.PathEscape(x.Username) + "/status/" + url.PathEscape(sent.PostID)}, nil
 	}
