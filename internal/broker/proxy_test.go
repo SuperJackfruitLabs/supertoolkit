@@ -839,6 +839,38 @@ services:
 	}
 }
 
+func TestSingleRestrictedServiceEnforcesRouteInForward(t *testing.T) {
+	f := newFixture(t, `workspace: test
+services:
+  superpipeline-approvals-write:
+    scopes: []
+`)
+	cfg := f.broker.snap.Load().cfg
+	svc, ok := cfg.Service("superpipeline-approvals-write")
+	if !ok {
+		t.Fatal("missing fixture service")
+	}
+	f.broker.snap.Store(&snapshot{cfg: cfg, byHost: map[string]*policy.Service{"app.superpipeline.dev": svc}, routes: map[string][]*policy.Service{"app.superpipeline.dev": {svc}}})
+	for _, rawURL := range []string{
+		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/s/verify",
+		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/%2e%2e/delivery",
+	} {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, rawURL, strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer "+Placeholder("superpipeline-approvals-write"))
+		resp, err := f.client(false).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s status = %d, want 403", rawURL, resp.StatusCode)
+		}
+	}
+	if f.secretCalls.Load() != 0 || f.providerHits.Load() != 0 {
+		t.Fatalf("disallowed restricted route touched secret/provider: %d/%d", f.secretCalls.Load(), f.providerHits.Load())
+	}
+}
+
 func TestRestrictedRouteRejectsDotAndEncodedPaths(t *testing.T) {
 	pattern := "/v1/boards/{board}/approval-subjects/{subject}/delivery"
 	for _, path := range []string{
