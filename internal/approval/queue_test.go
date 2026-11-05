@@ -50,6 +50,47 @@ func TestAwaitReturnsTheDecision(t *testing.T) {
 	}
 }
 
+func TestAwaitStartedAfterPerformingDecisionWaitsForOutcome(t *testing.T) {
+	q := mustOpen(t, time.Minute)
+	e := q.Submit("github", "create_issue", "s", nil)
+	performing := make(chan struct{})
+	release := make(chan struct{})
+	performed := make(chan error, 1)
+	go func() {
+		_, err := q.DecideAndPerform(e.ID, true, "operator", func(*Effect) (string, error) {
+			close(performing)
+			<-release
+			return "201 Created", nil
+		})
+		performed <- err
+	}()
+	<-performing // The decision is durable, but its outcome does not exist yet.
+
+	result := make(chan Decision, 1)
+	go func() {
+		d, _ := q.Await(context.Background(), e.ID)
+		result <- d
+	}()
+	select {
+	case d := <-result:
+		t.Fatalf("Await returned before the performing decider recorded its outcome: %+v", d)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-performed; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case d := <-result:
+		if d.Outcome != "201 Created" || !d.Performed {
+			t.Fatalf("Decision = %+v, want the decider's recorded outcome", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Await did not return after the outcome was recorded")
+	}
+}
+
 // Expiry is not approval. This is the fail-closed assertion.
 func TestExpiryIsNotApproval(t *testing.T) {
 	q := mustOpen(t, 30*time.Millisecond)

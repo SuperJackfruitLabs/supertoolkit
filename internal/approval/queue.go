@@ -549,7 +549,11 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 	if err != nil {
 		return Decision{}, fmt.Errorf("no effect %q is waiting", id)
 	}
-	if e.State != Pending {
+	switch {
+	case e.State == Pending:
+	case e.State == Approved && e.Performs && e.Outcome == "" && e.Error == "" &&
+		q.now().Before(e.DecidedAt.Add(outcomeGrace)):
+	default:
 		return Decision{State: e.State, DecidedBy: e.DecidedBy,
 			Outcome: e.Outcome, Err: e.Error, Performed: e.Performs}, nil
 	}
