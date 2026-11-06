@@ -68,8 +68,21 @@ type Effect struct {
 	// operator reading the trail would reasonably believe the thing had
 	// happened. A record that says what a person authorised but not what
 	// occurred is worse than no record.
-	Outcome string `json:"outcome,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Outcome        string   `json:"outcome,omitempty"`
+	Error          string   `json:"error,omitempty"`
+	ApprovedDigest string   `json:"approved_digest,omitempty"`
+	RequestDigest  string   `json:"request_digest,omitempty"`
+	LiveURL        string   `json:"live_url,omitempty"`
+	ReadBack       string   `json:"read_back,omitempty"`
+	Attempts       int      `json:"attempts,omitempty"`
+	PostID         string   `json:"post_id,omitempty"`
+	MediaIDs       []string `json:"media_ids,omitempty"`
+	// GateExpirySet distinguishes the queue's short local intake TTL from the
+	// authoritative expiry returned by SuperPipeline.
+	GateExpirySet bool `json:"gate_expiry_set,omitempty"`
+	// SubjectExpirySet means submit bound the local backstop to the subject's
+	// own expiry, so the legacy short-TTL migration must not extend it.
+	SubjectExpirySet bool `json:"subject_expiry_set,omitempty"`
 
 	// Performs says the decider is carrying the effect out, so a waiter must
 	// report the result rather than act on it. Exactly one party performs.
@@ -92,6 +105,11 @@ type Decision struct {
 // counts: expiry and refusal both mean no.
 func (d Decision) Allowed() bool { return d.State == Approved }
 
+func decisionFromEffect(e *Effect) Decision {
+	return Decision{State: e.State, DecidedBy: e.DecidedBy,
+		Outcome: e.Outcome, Err: e.Error, Performed: e.Performs}
+}
+
 // pollInterval is how often a waiter checks for a decision made in another
 // process. There is no cross-process notification to wait on, and one stat of
 // one file is cheap enough that a quarter second costs nothing while making a
@@ -101,6 +119,16 @@ const pollInterval = 250 * time.Millisecond
 // keepDecided is how long a decided effect stays readable, so the UI and
 // `stk approvals` can show what was just answered before it is tidied away.
 const keepDecided = 24 * time.Hour
+
+// gatedBackstopTTL bounds a gate that was never confirmed by SuperPipeline.
+// It is deliberately much longer than the ordinary intake TTL so human review
+// can finish, but an abandoned undecided request cannot remain forever.
+const (
+	// MaxUnconfirmedGateLifetime is the longest subject lifetime stk can hold
+	// before SuperPipeline has confirmed its authoritative gate expiry.
+	MaxUnconfirmedGateLifetime = 7 * 24 * time.Hour
+	gatedBackstopTTL           = MaxUnconfirmedGateLifetime
+)
 
 // outcomeGrace is how long a waiter gives the decider to record what happened
 // before reporting an approval without its result.
@@ -189,7 +217,68 @@ func writeNew(path string, body []byte) error {
 		f.Close()
 		return err
 	}
-	return f.Close()
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	if closeErr := dir.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+func (q *Queue) setGateExpiry(id string, expires time.Time) error {
+	raw, err := os.ReadFile(q.reqPath(id))
+	if err != nil {
+		return err
+	}
+	var e Effect
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return err
+	}
+	e.Expires, e.GateExpirySet = expires, true
+	body, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(q.dir, id+".req-")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	defer os.Remove(name)
+	if err = f.Chmod(0o600); err == nil {
+		_, err = f.Write(body)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(name, q.reqPath(id)); err != nil {
+		return err
+	}
+	dir, err := os.Open(q.dir)
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	if closeErr := dir.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // Get returns one effect with its current state.
@@ -233,12 +322,31 @@ func (q *Queue) read(id string) (*Effect, error) {
 		if o, err := q.readOutcome(id); err == nil {
 			e.Outcome, e.Error = o.Outcome, o.Error
 		}
+		if p, err := q.readPublication(id); err == nil {
+			e.Outcome, e.Error = p.Outcome, p.Error
+			e.ApprovedDigest, e.RequestDigest = p.ApprovedDigest, p.RequestDigest
+			e.LiveURL, e.ReadBack, e.Attempts = p.LiveURL, p.ReadBack, p.Attempts
+			e.PostID, e.MediaIDs = p.PostID, append([]string(nil), p.MediaIDs...)
+		}
 		return &e, nil
 	}
 	// Undecided: expiry is a function of the clock, not of a write, so a
 	// process that was not running when the effect expired still sees it
 	// expired.
-	if q.now().After(e.Expires) {
+	// Before confirmation, a gated effect gets a long backstop rather than the
+	// ordinary queue TTL. Confirmation replaces it with the gate's own expiry.
+	_, gatedErr := os.Stat(q.gatedPath(id))
+	if gatedErr == nil && !e.GateExpirySet && !e.SubjectExpirySet {
+		// Round-2 requests used the ordinary queue TTL. Read those records with
+		// the gated backstop so an upgrade does not expire a live human review.
+		backstop := e.Submitted.Add(gatedBackstopTTL)
+		if e.Expires.Before(backstop) {
+			e.Expires = backstop
+		}
+	}
+	if gatedErr == nil && !e.GateExpirySet && !q.now().After(e.Expires) {
+		e.State = Pending
+	} else if q.now().After(e.Expires) {
 		e.State = Expired
 	} else {
 		e.State = Pending
@@ -313,9 +421,21 @@ func (q *Queue) List() []*Effect {
 		}
 		// An effect nobody will ask about again is removed, so the directory
 		// does not grow for the life of the install.
-		if e.State != Pending && e.Submitted.Before(cutoff) {
+		canCollect := e.State != Pending && e.Submitted.Before(cutoff)
+		if _, gatedErr := os.Stat(q.gatedPath(id)); gatedErr == nil {
+			// Keep every unresolved publisher fence. Only terminal records that
+			// cannot cause another side effect are eligible for ordinary cleanup.
+			p, pubErr := q.readPublication(id)
+			canCollect = pubErr == nil && ((p.Outcome == "delivered" && p.CardRecorded) || p.Outcome == "provider_error" || p.Outcome == "refused") && e.Submitted.Before(cutoff)
+		}
+		if canCollect {
 			os.Remove(q.reqPath(id))
 			os.Remove(q.decPath(id))
+			os.Remove(q.outPath(id))
+			os.Remove(q.pubPath(id))
+			os.Remove(q.gatedPath(id))
+			os.Remove(q.retryPath(id))
+			os.Remove(filepath.Join(q.dir, id+".pub.lock"))
 			continue
 		}
 		out = append(out, e)
@@ -351,6 +471,14 @@ func (q *Queue) Pending() []*Effect {
 // claimed, so it runs exactly once however many processes are deciding, and its
 // result is recorded against the effect. A refusal performs nothing.
 func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Effect) (string, error)) (*Effect, error) {
+	if current, ok := q.Get(id); ok {
+		if current.Outcome == "outcome_unknown" || current.Outcome == "sending" {
+			return current, fmt.Errorf("effect %q is fenced by %s pending provider read-back", id, current.Outcome)
+		}
+		if _, err := os.Stat(q.gatedPath(id)); err == nil {
+			return current, fmt.Errorf("effect %q requires direct SuperPipeline approval confirmation and cannot be decided locally", id)
+		}
+	}
 	e, err := q.decide(id, allow, who, allow)
 	if err != nil {
 		return nil, err
@@ -359,6 +487,9 @@ func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Eff
 		return e, nil
 	}
 	status, perr := do(e)
+	if perr != nil && outcomeMayBeUnknown(perr) {
+		status = "outcome_unknown"
+	}
 	if rerr := q.RecordOutcome(id, status, perr); rerr != nil {
 		return e, rerr
 	}
@@ -367,6 +498,15 @@ func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Eff
 		e.Error = perr.Error()
 	}
 	return e, perr
+}
+
+func outcomeMayBeUnknown(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "connection reset") ||
+		strings.Contains(message, "connection dropped") ||
+		strings.Contains(message, "timeout") ||
+		strings.Contains(message, "timed out") ||
+		strings.Contains(message, "unexpected eof")
 }
 
 // Decide records a decision and performs nothing.
@@ -430,9 +570,12 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 	if err != nil {
 		return Decision{}, fmt.Errorf("no effect %q is waiting", id)
 	}
-	if e.State != Pending {
-		return Decision{State: e.State, DecidedBy: e.DecidedBy,
-			Outcome: e.Outcome, Err: e.Error, Performed: e.Performs}, nil
+	switch {
+	case e.State == Pending:
+	case e.State == Approved && e.Performs && e.Outcome == "" && e.Error == "" &&
+		q.now().Before(e.DecidedAt.Add(outcomeGrace)):
+	default:
+		return decisionFromEffect(e), nil
 	}
 
 	t := time.NewTicker(pollInterval)
@@ -440,6 +583,12 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 	for {
 		select {
 		case <-ctx.Done():
+			// A decision may be durable while its outcome is still being recorded.
+			// Report that truth rather than claiming nothing was approved.
+			cur, readErr := q.read(id)
+			if readErr == nil && cur.State != Pending {
+				return decisionFromEffect(cur), nil
+			}
 			return Decision{State: Pending}, ctx.Err()
 		case <-t.C:
 			cur, err := q.read(id)
@@ -461,8 +610,7 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 					q.now().Before(cur.DecidedAt.Add(outcomeGrace)) {
 					continue
 				}
-				return Decision{State: cur.State, DecidedBy: cur.DecidedBy,
-					Outcome: cur.Outcome, Err: cur.Error, Performed: cur.Performs}, nil
+				return decisionFromEffect(cur), nil
 			default:
 				return Decision{State: cur.State, DecidedBy: cur.DecidedBy}, nil
 			}

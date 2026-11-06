@@ -229,6 +229,9 @@ type Capability struct {
 // Entry is one service.
 type Entry struct {
 	Name string
+	// NativeOnly marks credentials reserved for an internal stk workflow. They
+	// are never exposed through agent profiles, MCP, the proxy, or child env.
+	NativeOnly bool
 	// Host is the hostname a capability's path is relative to, and the one the
 	// broker intercepts by default.
 	Host string
@@ -312,6 +315,33 @@ var builtin = map[string]*Entry{
 			},
 		},
 	},
+	// --- SuperPipeline publisher service credentials ---
+	//
+	// Separate catalogue identities keep the gate-confirmation credential
+	// read-scoped even though delivery recording needs approvals:write. Both
+	// stay inside stk's native transport and are never returned to the command.
+	"superpipeline-approvals-read": {
+		RevokeAt: "https://accounts.superjackfruit.com",
+		Name:     "superpipeline-approvals-read", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_READ_TOKEN",
+		Placement: BearerHeader, Auth: AuthToken, NativeOnly: true,
+		Capabilities: []Capability{{
+			Name: "verify_approval", Kind: Read, Method: "POST",
+			Path:    "/v1/boards/{board}/approval-subjects/{subject}/verify",
+			Summary: "Confirm an automatic approval and its exact outbound request digest.",
+			Params:  []Param{{Name: "board", Required: true}, {Name: "subject", Required: true}},
+		}},
+	},
+	"superpipeline-approvals-write": {
+		RevokeAt: "https://accounts.superjackfruit.com",
+		Name:     "superpipeline-approvals-write", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_WRITE_TOKEN",
+		Placement: BearerHeader, Auth: AuthToken, NativeOnly: true,
+		Capabilities: []Capability{{
+			Name: "record_delivery", Kind: Write, Method: "POST",
+			Path:    "/v1/boards/{board}/approval-subjects/{subject}/delivery",
+			Summary: "Record a provider-verified automatic delivery URL.",
+			Params:  []Param{{Name: "board", Required: true}, {Name: "subject", Required: true}},
+		}},
+	},
 	// --- X ---
 	//
 	// Checked against docs.x.com on 2026-10-15, because X's API changes often
@@ -366,6 +396,10 @@ var builtin = map[string]*Entry{
 				Name: "media_append", Kind: Write, Method: "POST", Path: "/2/media/upload/{id}/append",
 				Summary: "Upload one segment, 5 MB or less, multipart.",
 				Params:  []Param{{Name: "id", Required: true}},
+			},
+			{
+				Name: "media_status", Kind: Read, Method: "GET", Path: "/2/media/upload",
+				Summary: "Poll media processing with command=STATUS and media_id.",
 			},
 			{
 				Name: "media_finalize", Kind: Write, Method: "POST", Path: "/2/media/upload/{id}/finalize",

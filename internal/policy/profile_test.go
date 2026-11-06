@@ -112,6 +112,27 @@ func TestUnknownProfileIsNotSilentlyPermissive(t *testing.T) {
 	}
 }
 
+func TestDefaultAndWildcardProfilesHideNativeOnlyServices(t *testing.T) {
+	cfg, err := Load(write(t, `
+workspace: test
+services:
+  superpipeline-approvals-read:
+    scopes: []
+profiles:
+  everything:
+    superpipeline-approvals-read: ["*"]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"", "everything"} {
+		p, _ := cfg.Profile(name)
+		if p.Visible("superpipeline-approvals-read", "verify_approval") || p.Resolve("superpipeline-approvals-read", "verify_approval") != ActionDeny {
+			t.Fatalf("profile %q exposed a native-only approval capability", name)
+		}
+	}
+}
+
 func TestProfileNamesAreListed(t *testing.T) {
 	cfg, _ := Load(write(t, withProfiles))
 	got := cfg.Profiles()

@@ -36,6 +36,24 @@ type Prepared struct {
 	sent         atomic.Bool
 }
 
+// publisherAuthorityKey is deliberately distinct from audit.CallerKey. Audit
+// attribution is descriptive and may come from the kernel-reported daemon uid;
+// it must never double as authority to use publisher-only credentials.
+type publisherAuthorityKey struct{}
+
+// PublisherContext grants the in-process publishing runtime access to
+// native-only services. The unexported key prevents callers outside this
+// internal package from manufacturing the grant with context.WithValue.
+func PublisherContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, publisherAuthorityKey{}, true)
+}
+
+// PublisherAuthorized reports whether PublisherContext granted this call.
+func PublisherAuthorized(ctx context.Context) bool {
+	authorized, _ := ctx.Value(publisherAuthorityKey{}).(bool)
+	return authorized
+}
+
 func Prepare(ctx context.Context, live *livepolicy.Config, store *credential.Store, client *http.Client, obs audit.Observer, version, service string, req *http.Request) (*Prepared, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -44,6 +62,9 @@ func Prepare(ctx context.Context, live *livepolicy.Config, store *credential.Sto
 	svc, ok := st.Cfg.Service(service)
 	if !ok {
 		return nil, errors.New("native service is unavailable")
+	}
+	if svc.NativeOnly() && !PublisherAuthorized(ctx) {
+		return nil, errors.New("native-only service is reserved for the publisher")
 	}
 	acqs := st.Acqs
 	if acqs == nil {

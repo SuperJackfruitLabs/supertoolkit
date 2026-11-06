@@ -32,6 +32,9 @@ stk — supertoolkit
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -41,7 +44,7 @@ stk — supertoolkit
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
-The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x
 
 
 $ stk help
@@ -78,6 +81,9 @@ stk — supertoolkit
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -87,7 +93,7 @@ stk — supertoolkit
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
-The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x
 
 
 $ stk -h
@@ -124,6 +130,9 @@ stk — supertoolkit
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -133,7 +142,7 @@ stk — supertoolkit
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
-The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x
 
 
 $ stk --help
@@ -170,6 +179,9 @@ stk — supertoolkit
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -179,7 +191,7 @@ stk — supertoolkit
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
-The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x
 
 
 $ stk version
@@ -239,6 +251,9 @@ stk — supertoolkit
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -248,7 +263,7 @@ stk — supertoolkit
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
-The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x
 
 
 $ stk stk-netjail-bogus
@@ -287,6 +302,9 @@ stk — supertoolkit
                               what the broker actually did, newest first
   stk approvals [allow|refuse <id>]
                               what is waiting on you, and decide it
+  stk publish submit|perform <id>|recover
+                              durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -296,14 +314,14 @@ stk — supertoolkit
   stk doctor --json [--agent-uid <uid>]...  checks and the isolation verdict as JSON
   stk version
 
-The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x
+The agent never holds a credential. Known services: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x
 
 
 $ stk add
 exit 1
 --- stdout
 --- stderr
-stk: usage: stk add <service>...  (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+stk: usage: stk add <service>...  (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x)
 
 
 $ stk add github
@@ -710,14 +728,14 @@ $ stk verify nosuch
 exit 1
 --- stdout
 --- stderr
-stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x; a git forge is defined in the policy file with `kind: forge`
 
 
 $ stk revoke
 exit 1
 --- stdout
 --- stderr
-stk: usage: stk revoke <service> [--local]   (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+stk: usage: stk revoke <service> [--local]   (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x)
 
 
 $ stk revoke a b
@@ -731,14 +749,14 @@ $ stk revoke nosuch
 exit 1
 --- stdout
 --- stderr
-stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x; a git forge is defined in the policy file with `kind: forge`
 
 
 $ stk forget
 exit 1
 --- stdout
 --- stderr
-stk: usage: stk revoke <service> [--local]   (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+stk: usage: stk revoke <service> [--local]   (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x)
 
 
 $ stk audit --bogus
@@ -960,14 +978,14 @@ $ stk add
 exit 1
 --- stdout
 --- stderr
-stk: usage: stk add <service>...  (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x)
+stk: usage: stk add <service>...  (known: aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x)
 
 
 $ stk add nosuch
 exit 1
 --- stdout
 --- stderr
-stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined by hand in the policy file with `kind: forge`
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x; a git forge is defined by hand in the policy file with `kind: forge`
 
 
 $ stk add github slack
@@ -1055,7 +1073,7 @@ $ stk handover open nosuch
 exit 1
 --- stdout
 --- stderr
-stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x; a git forge is defined in the policy file with `kind: forge`
 
 
 $ stk connect github
@@ -1092,7 +1110,7 @@ $ stk connect nosuch
 exit 1
 --- stdout
 --- stderr
-stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, x; a git forge is defined in the policy file with `kind: forge`
+stk: unknown service "nosuch": known services are aws-sts, cloudflare, github, github-app, google, notion, openai, resend, slack, stripe, superpipeline-approvals-read, superpipeline-approvals-write, x; a git forge is defined in the policy file with `kind: forge`
 
 
 $ stk verify slack

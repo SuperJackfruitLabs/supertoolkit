@@ -105,9 +105,16 @@ func New(cfg *policy.Config, store *credential.Store, dir, caller, version strin
 	return NewWith(livepolicy.New(cfg, store, &http.Client{Timeout: 60 * time.Second}), store, dir, caller, version)
 }
 
+func effectHTTPClient(caller string) *http.Client {
+	if caller == "publish" {
+		return native.ManagedClient()
+	}
+	return &http.Client{Timeout: 60 * time.Second}
+}
+
 // NewWith wires a service over a shared, reloadable policy holder.
 func NewWith(live *livepolicy.Config, store *credential.Store, dir, caller, version string) (*Service, error) {
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := effectHTTPClient(caller)
 	queue, err := approval.Open(dir, approvalTTL)
 	if err != nil {
 		return nil, err
@@ -125,6 +132,16 @@ func NewWith(live *livepolicy.Config, store *credential.Store, dir, caller, vers
 		live: live, store: store, Queue: queue, obs: obs,
 		hosts: map[string]*mcphost.Host{},
 		Perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
+			if caller == "publish" {
+				ctx = native.PublisherContext(ctx)
+			}
+			svc, ok := live.Config().Service(svcName)
+			if !ok {
+				return nil, fmt.Errorf("unknown service %q", svcName)
+			}
+			if svc.NativeOnly() && !native.PublisherAuthorized(ctx) {
+				return nil, fmt.Errorf("service %q is reserved for the native publisher", svcName)
+			}
 			prepared, err := native.Prepare(ctx, live, store, client, obs, version, svcName, req)
 			if err != nil {
 				return nil, err

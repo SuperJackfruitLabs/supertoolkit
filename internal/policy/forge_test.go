@@ -96,3 +96,18 @@ services:
 		t.Errorf("error = %v, want a rejection naming the shared host", err)
 	}
 }
+
+func TestParseRejectsReservedNativeOnlyNameAsForge(t *testing.T) {
+	_, err := Parse("fixture", []byte(`services:
+  superpipeline-approvals-write:
+    kind: forge
+    provider: forgejo
+    host: app.superpipeline.dev
+    auth: token
+    scheme: bearer
+    repositories: [SuperJackfruitLabs/supertoolkit]
+`))
+	if err == nil || !strings.Contains(err.Error(), "reserved native-only") {
+		t.Fatalf("Parse error = %v; want reserved native-only refusal", err)
+	}
+}

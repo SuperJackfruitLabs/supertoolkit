@@ -15,6 +15,7 @@ import (
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/clitest"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/ledger"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/localstate"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
 
 // connectStatus sends a keyless CONNECT and returns the status line.
@@ -94,6 +95,25 @@ func TestStartBrokerDefaultHasNoKey(t *testing.T) {
 }
 
 // The real binary: flag parsing, key loading, proxy.addr lifecycle, SIGTERM.
+func TestChildEnvOmitsNativeOnlyCredentialPlaceholders(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "supertoolkit.yaml")
+	if err := os.WriteFile(path, []byte("workspace: test\nservices:\n  github:\n    scopes: []\n  superpipeline-approvals-read:\n    scopes: []\n  superpipeline-approvals-write:\n    scopes: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := policy.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := ChildEnvFrom(nil, cfg, "", "")
+	if envValue(env, "GH_TOKEN") == "" {
+		t.Fatal("ordinary service placeholder missing")
+	}
+	if envValue(env, "SUPERPIPELINE_APPROVALS_READ_TOKEN") != "" || envValue(env, "SUPERPIPELINE_APPROVALS_WRITE_TOKEN") != "" {
+		t.Fatalf("native-only approval placeholder leaked into child env: %v", env)
+	}
+}
+
 func TestServeProxyListenSubprocess(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "stk")

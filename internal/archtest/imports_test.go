@@ -41,8 +41,8 @@ var layers = [][]string{
 	{"native", "session"},
 	// What the daemon serves; `stk doctor` and its probe; the managed Toolkit commands; `stk env`.
 	{"controlplane", "doctor", "managedtoolkit", "proxyenv"},
-	// The commands that run a daemon or speak to one: `stk mcp`, `stk serve`, `stk ui`.
-	{"mcpcmd", "serve", "uicmd"},
+	// The commands that run a daemon, speak to one, or execute durable gated publishing.
+	{"mcpcmd", "publishcmd", "serve", "uicmd"},
 }
 
 // knownBackEdges are imports that point up or across the layers and are allowed for now. It may

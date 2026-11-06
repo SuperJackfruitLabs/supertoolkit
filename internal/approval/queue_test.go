@@ -50,7 +50,73 @@ func TestAwaitReturnsTheDecision(t *testing.T) {
 	}
 }
 
+func TestAwaitStartedAfterPerformingDecisionWaitsForOutcome(t *testing.T) {
+	q := mustOpen(t, time.Minute)
+	e := q.Submit("github", "create_issue", "s", nil)
+	performing := make(chan struct{})
+	release := make(chan struct{})
+	performed := make(chan error, 1)
+	go func() {
+		_, err := q.DecideAndPerform(e.ID, true, "operator", func(*Effect) (string, error) {
+			close(performing)
+			<-release
+			return "201 Created", nil
+		})
+		performed <- err
+	}()
+	<-performing // The decision is durable, but its outcome does not exist yet.
+
+	result := make(chan Decision, 1)
+	go func() {
+		d, _ := q.Await(context.Background(), e.ID)
+		result <- d
+	}()
+	select {
+	case d := <-result:
+		t.Fatalf("Await returned before the performing decider recorded its outcome: %+v", d)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	if err := <-performed; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case d := <-result:
+		if d.Outcome != "201 Created" || !d.Performed {
+			t.Fatalf("Decision = %+v, want the decider's recorded outcome", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Await did not return after the outcome was recorded")
+	}
+}
+
 // Expiry is not approval. This is the fail-closed assertion.
+func TestAwaitContextExpiryReportsDurablePerformingDecision(t *testing.T) {
+	q := mustOpen(t, time.Minute)
+	e := q.Submit("github", "create_issue", "s", nil)
+	performing := make(chan struct{})
+	release := make(chan struct{})
+	performed := make(chan struct{})
+	go func() {
+		defer close(performed)
+		_, _ = q.DecideAndPerform(e.ID, true, "operator", func(*Effect) (string, error) {
+			close(performing)
+			<-release
+			return "201 Created", nil
+		})
+	}()
+	<-performing
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	d, err := q.Await(ctx, e.ID)
+	close(release)
+	<-performed
+	if err != nil || d.State != Approved || !d.Performed || d.Outcome != "" {
+		t.Fatalf("Await = %+v, %v; want approved/performed with pending outcome", d, err)
+	}
+}
+
 func TestExpiryIsNotApproval(t *testing.T) {
 	q := mustOpen(t, 30*time.Millisecond)
 	e := q.Submit("github", "delete_repo", "s", nil)

@@ -776,3 +776,114 @@ func TestFetchRefDiscoveryIsStillAFetch(t *testing.T) {
 		t.Fatalf("fetch ref discovery: %d, want 200", resp.StatusCode)
 	}
 }
+
+func TestSharedSuperPipelineHostSelectsCredentialByMethodAndPath(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "supertoolkit.yaml")
+	if err := os.WriteFile(cfgPath, []byte(`workspace: test
+services:
+  superpipeline-approvals-read:
+    scopes: []
+  superpipeline-approvals-write:
+    scopes: []
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := policy.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, _ := cfg.Service("superpipeline-approvals-read")
+	write, _ := cfg.Service("superpipeline-approvals-write")
+	services := []*policy.Service{read, write}
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{"/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify", "superpipeline-approvals-read"},
+		{"/v1/boards/brd_fixture/approval-subjects/aps_fixture/delivery", "superpipeline-approvals-write"},
+	} {
+		got, ok := serviceForRequest(services, http.MethodPost, tc.path)
+		if !ok || got.Name != tc.want {
+			t.Fatalf("%s selected %+v, %v; want %s", tc.path, got, ok, tc.want)
+		}
+	}
+	if got, ok := serviceForRequest(services, http.MethodGet, "/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify"); ok || got != nil {
+		t.Fatalf("wrong method selected %+v", got)
+	}
+	broker := &Broker{}
+	snap, err := broker.build(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.routes["app.superpipeline.dev"]) != 0 {
+		t.Fatal("native-only approvals credentials were exposed to the broker")
+	}
+}
+
+func TestBrokerNeverInjectsNativeApprovalCredentials(t *testing.T) {
+	f := newFixture(t, `workspace: test
+services:
+  superpipeline-approvals-read:
+    scopes: []
+  superpipeline-approvals-write:
+    scopes: []
+`)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://app.superpipeline.dev/v1/boards/b/approval-subjects/s/delivery", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+Placeholder("superpipeline-approvals-write"))
+	resp, _ := f.client(false).Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if f.secretCalls.Load() != 0 || f.broker.Stats().Swap != 0 {
+		t.Fatalf("approval credential reached proxy path: calls=%d stats=%+v", f.secretCalls.Load(), f.broker.Stats())
+	}
+}
+
+func TestSingleRestrictedServiceEnforcesRouteInForward(t *testing.T) {
+	f := newFixture(t, `workspace: test
+services:
+  superpipeline-approvals-write:
+    scopes: []
+`)
+	cfg := f.broker.snap.Load().cfg
+	svc, ok := cfg.Service("superpipeline-approvals-write")
+	if !ok {
+		t.Fatal("missing fixture service")
+	}
+	f.broker.snap.Store(&snapshot{cfg: cfg, byHost: map[string]*policy.Service{"app.superpipeline.dev": svc}, routes: map[string][]*policy.Service{"app.superpipeline.dev": {svc}}})
+	for _, rawURL := range []string{
+		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/s/verify",
+		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/%2e%2e/delivery",
+		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/%73/delivery",
+	} {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, rawURL, strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer "+Placeholder("superpipeline-approvals-write"))
+		resp, err := f.client(false).Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s status = %d, want 403", rawURL, resp.StatusCode)
+		}
+	}
+	if f.secretCalls.Load() != 0 || f.providerHits.Load() != 0 {
+		t.Fatalf("disallowed restricted route touched secret/provider: %d/%d", f.secretCalls.Load(), f.providerHits.Load())
+	}
+}
+
+func TestRestrictedRouteRejectsDotAndEncodedPaths(t *testing.T) {
+	pattern := "/v1/boards/{board}/approval-subjects/{subject}/delivery"
+	for _, path := range []string{
+		"/v1/boards/../approval-subjects/s/delivery",
+		"/v1/boards/b/approval-subjects/./delivery",
+	} {
+		if routePathMatches(pattern, path) || !hasDotPathSegment(path) {
+			t.Fatalf("unsafe path matched: %s", path)
+		}
+	}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://app.superpipeline.dev/v1/boards/b/approval-subjects/%2e%2e/delivery", nil)
+	if req.URL.RawPath == "" {
+		t.Fatal("encoded traversal lost RawPath evidence")
+	}
+}

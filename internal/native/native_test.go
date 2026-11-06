@@ -48,6 +48,44 @@ func nativeRig(t *testing.T, client *http.Client) (*livepolicy.Config, *credenti
 	return live, store, obs
 }
 
+func TestPrepareRefusesNativeOnlyServiceForNonPublisherCaller(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "policy.yaml")
+	if err := os.WriteFile(file, []byte("services:\n  superpipeline-approvals-read: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := policy.Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := credential.OpenStore(dir, "fixture-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put("superpipeline-approvals-read", "native-only-fixture"); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: clitest.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("native-only request was dispatched")
+		return nil, nil
+	})}
+	live := livepolicy.New(cfg, store, client)
+	obs, err := audit.NewObserverLive(live, dir, "native-only-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://app.superpipeline.dev/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify", nil)
+	spoofedAudit := context.WithValue(context.Background(), audit.CallerKey{}, "publish")
+	prepared, err := Prepare(spoofedAudit, live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
+	if err == nil || prepared != nil || !strings.Contains(err.Error(), "reserved for the publisher") {
+		t.Fatalf("Prepare with spoofed audit caller = %#v, %v; want refusal", prepared, err)
+	}
+	prepared, err = Prepare(PublisherContext(context.Background()), live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
+	if err != nil || prepared == nil {
+		t.Fatalf("Prepare with private publisher authority = %#v, %v; want admitted", prepared, err)
+	}
+}
+
 func TestNativePrepareDoesNotDispatchAndOwnedSendIsConsumedOnce(t *testing.T) {
 	var calls atomic.Int32
 	client := &http.Client{Transport: clitest.RoundTripFunc(func(req *http.Request) (*http.Response, error) {

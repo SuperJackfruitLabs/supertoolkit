@@ -134,6 +134,9 @@ func ChildEnvFrom(base []string, cfg *policy.Config, proxyURL, caPath string) []
 	placeholders := map[string]string{}
 	for _, name := range cfg.Services() {
 		svc, _ := cfg.Service(name)
+		if svc.NativeOnly() {
+			continue
+		}
 		if v := svc.Entry().EnvVar; v != "" {
 			placeholders[v] = broker.Placeholder(name)
 		}

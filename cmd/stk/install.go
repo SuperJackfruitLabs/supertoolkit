@@ -31,7 +31,7 @@ func parseInstallArgs(args []string) (install.Plan, bool, error) {
 				return p, false, fmt.Errorf("%s needs a value (%s)", name, installUsage)
 			}
 			i++
-			val = args[i]
+			val = args[i] // #nosec G602 -- i+1 was bounds-checked before i was incremented.
 		}
 		switch name {
 		case "--user":
