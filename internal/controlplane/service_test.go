@@ -42,8 +42,12 @@ func TestNonPublisherPerformRefusesNativeOnlyService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequest(http.MethodPost, "https://app.superpipeline.dev/v1/boards/b/approval-subjects/s/verify", nil)
-	_, err = service.Perform(context.Background(), "superpipeline-approvals-read", req)
+	ctx := context.Background()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://app.superpipeline.dev/v1/boards/b/approval-subjects/s/verify", nil)
+	resp, err := service.Perform(ctx, "superpipeline-approvals-read", req)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err == nil || !strings.Contains(err.Error(), "native publisher") {
 		t.Fatalf("Perform error = %v; want native-only refusal", err)
 	}
