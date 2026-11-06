@@ -24,7 +24,7 @@ import (
 
 var (
 	xWebScheme = regexp.MustCompile(`https?://`)
-	xMediaURL  = regexp.MustCompile(`/((photo)|(video))/[0-9]+(?:$|[?#])`)
+	xMediaURL  = regexp.MustCompile(`/status/([^/]+)/((photo)|(video))/[0-9]+(?:$|[?#])`)
 )
 
 type xURLEntity struct {
@@ -42,13 +42,14 @@ type xNoteTweet struct {
 	Entities xEntities `json:"entities"`
 }
 
-func normalizeXText(text string, entities []xURLEntity) string {
+func normalizeXText(text string, entities []xURLEntity, postID string) string {
 	normalized := html.UnescapeString(text)
 	for _, entity := range entities {
 		if entity.URL == "" {
 			continue
 		}
-		if entity.MediaKey != "" || xMediaURL.MatchString(entity.ExpandedURL) {
+		mediaMatch := xMediaURL.FindStringSubmatch(entity.ExpandedURL)
+		if entity.MediaKey != "" || (len(mediaMatch) > 1 && mediaMatch[1] == postID) {
 			normalized = strings.ReplaceAll(normalized, " "+entity.URL, "")
 			normalized = strings.ReplaceAll(normalized, entity.URL+" ", "")
 			normalized = strings.ReplaceAll(normalized, entity.URL, "")
@@ -61,11 +62,15 @@ func normalizeXText(text string, entities []xURLEntity) string {
 	return strings.TrimSpace(xWebScheme.ReplaceAllString(normalized, ""))
 }
 
-func normalizeXPost(text string, entities xEntities, note xNoteTweet) string {
+func normalizeApprovedXText(text string) string {
+	return strings.TrimSpace(xWebScheme.ReplaceAllString(text, ""))
+}
+
+func normalizeXPost(text string, entities xEntities, note xNoteTweet, postID string) string {
 	if note.Text != "" {
-		return normalizeXText(note.Text, note.Entities.URLs)
+		return normalizeXText(note.Text, note.Entities.URLs, postID)
 	}
-	return normalizeXText(text, entities.URLs)
+	return normalizeXText(text, entities.URLs, postID)
 }
 
 // GatedRequest is the complete provider request bound by a SuperPipeline gate.
@@ -949,7 +954,7 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		}
 		// URL entities describe X's t.co transformation. Media entities are a
 		// presentation-only suffix and are absent from the approved post text.
-		if normalizeXPost(exact.Data.Text, exact.Data.Entities, exact.Data.NoteTweet) != normalizeXText(post.Text, nil) {
+		if normalizeXPost(exact.Data.Text, exact.Data.Entities, exact.Data.NoteTweet, sent.PostID) != normalizeApprovedXText(post.Text) {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back content does not match the approved post")
 		}
 		return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/" + url.PathEscape(x.Username) + "/status/" + url.PathEscape(sent.PostID)}, nil
@@ -988,7 +993,7 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 	}
 	matches := make([]string, 0, 1)
 	for _, item := range result.Data {
-		if normalizeXPost(item.Text, item.Entities, item.NoteTweet) == normalizeXText(post.Text, nil) && item.ID != "" {
+		if normalizeXPost(item.Text, item.Entities, item.NoteTweet, item.ID) == normalizeApprovedXText(post.Text) && item.ID != "" {
 			matches = append(matches, item.ID)
 		}
 	}

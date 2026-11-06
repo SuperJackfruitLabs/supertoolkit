@@ -45,6 +45,9 @@ func Prepare(ctx context.Context, live *livepolicy.Config, store *credential.Sto
 	if !ok {
 		return nil, errors.New("native service is unavailable")
 	}
+	if caller, _ := ctx.Value(audit.CallerKey{}).(string); svc.NativeOnly() && caller != "publish" {
+		return nil, errors.New("native-only service is reserved for the publisher")
+	}
 	acqs := st.Acqs
 	if acqs == nil {
 		acqs = secrets.NewAcquirers(st.Cfg, store, client)

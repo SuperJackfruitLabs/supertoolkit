@@ -567,6 +567,9 @@ func Parse(path string, raw []byte) (*Config, error) {
 	}
 	cfg.egress = eg
 	for name, sf := range f.Services {
+		if builtIn, ok := catalog.Lookup(name); ok && builtIn.NativeOnly && sf.Kind != "" {
+			return nil, fmt.Errorf("%s: service %q is a reserved native-only built-in and cannot set kind %q", path, name, sf.Kind)
+		}
 		var entry *catalog.Entry
 		switch sf.Kind {
 		case "":
@@ -630,8 +633,7 @@ func Parse(path string, raw []byte) (*Config, error) {
 	for _, name := range cfg.Services() {
 		for _, h := range cfg.services[name].entry.Hosts() {
 			if other, taken := owner[h]; taken {
-				sharedPublisherHost := (other == "superpipeline-approvals-read" && name == "superpipeline-approvals-write") ||
-					(other == "superpipeline-approvals-write" && name == "superpipeline-approvals-read")
+				sharedPublisherHost := cfg.services[other].NativeOnly() && cfg.services[name].NativeOnly()
 				if !sharedPublisherHost || !serviceRoutesDisjoint(cfg.services[other], cfg.services[name]) {
 					return nil, fmt.Errorf("%s: services %q and %q both use host %s: one service per host unless publisher routes are disjoint", path, other, name, h)
 				}

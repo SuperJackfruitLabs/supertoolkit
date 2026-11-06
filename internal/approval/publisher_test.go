@@ -37,6 +37,19 @@ func (g *gateStub) RecordDelivered(_ context.Context, _, _, _, liveURL string) e
 	return nil
 }
 
+func TestNormalizeXTextKeepsApprovedMediaLookingLinksAndLiteralEntities(t *testing.T) {
+	const tco = "https://t.co/link"
+	if got := normalizeXPost(tco, xEntities{URLs: []xURLEntity{{URL: tco, ExpandedURL: "https://x.com/other/status/999/photo/1"}}}, xNoteTweet{}, "123"); got != "x.com/other/status/999/photo/1" {
+		t.Fatalf("approved media-looking link normalized to %q", got)
+	}
+	if got := normalizeXPost("literal &amp;", xEntities{}, xNoteTweet{}, "123"); got != "literal &" {
+		t.Fatalf("provider text normalized to %q", got)
+	}
+	if got := normalizeApprovedXText("literal &amp;"); got != "literal &amp;" {
+		t.Fatalf("approved literal entity normalized to %q", got)
+	}
+}
+
 type xStub struct {
 	sends     []SendResult
 	sendErrs  []error

@@ -132,6 +132,7 @@ func NewWith(live *livepolicy.Config, store *credential.Store, dir, caller, vers
 		live: live, store: store, Queue: queue, obs: obs,
 		hosts: map[string]*mcphost.Host{},
 		Perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
+			ctx = context.WithValue(ctx, audit.CallerKey{}, caller)
 			svc, ok := live.Config().Service(svcName)
 			if !ok {
 				return nil, fmt.Errorf("unknown service %q", svcName)
