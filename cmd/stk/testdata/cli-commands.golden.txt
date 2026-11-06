@@ -1117,7 +1117,7 @@ $ stk verify slack
 exit 1
 --- stdout
 --- stderr
-stk: slack failed verification: unsupported
+stk: slack cannot be verified: `stk verify` checks git forges only; `stk audit` shows whether slack's requests succeed
 
 
 $ stk verify slack --json
@@ -1125,7 +1125,7 @@ exit 1
 --- stdout
 {"ok":false,"reason":"unsupported"}
 --- stderr
-stk: slack failed verification: unsupported
+stk: slack cannot be verified: `stk verify` checks git forges only; `stk audit` shows whether slack's requests succeed
 
 
 $ stk env
@@ -1366,6 +1366,6 @@ $ stk verify github
 exit 1
 --- stdout
 --- stderr
-stk: github has no stored credential: connect it first (`stk connect github`)
+stk: github cannot be verified: `stk verify` checks git forges only; `stk audit` shows whether github's requests succeed
 
 
