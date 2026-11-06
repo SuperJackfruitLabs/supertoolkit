@@ -143,11 +143,12 @@ func TestRecoverSkipsUndecidedGateAndLaterApprovalPostsOnce(t *testing.T) {
 		factories++
 		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
 	}}
-	if err := recover(context.Background(), &bytes.Buffer{}, runtime); err != nil {
-		t.Fatal(err)
-	}
+	recoverErr := recover(context.Background(), &bytes.Buffer{}, runtime)
 	if got, _ := q.Get(e.ID); got.State != approval.Pending || x.sends != 0 || factories != 0 {
 		t.Fatalf("recover changed or performed undecided effect: %+v; sends=%d factories=%d", got, x.sends, factories)
+	}
+	if recoverErr != nil {
+		t.Fatal(recoverErr)
 	}
 	if _, err := perform(context.Background(), e.ID, runtime); err == nil {
 		t.Fatal("undecided gate was accepted")

@@ -854,6 +854,7 @@ services:
 	for _, rawURL := range []string{
 		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/s/verify",
 		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/%2e%2e/delivery",
+		"https://app.superpipeline.dev/v1/boards/b/approval-subjects/%73/delivery",
 	} {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, rawURL, strings.NewReader(`{}`))
 		req.Header.Set("Authorization", "Bearer "+Placeholder("superpipeline-approvals-write"))
