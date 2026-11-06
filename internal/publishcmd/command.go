@@ -68,7 +68,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, runtim
 		}
 		effect, err := perform(ctx, args[1], runtime)
 		if effect != nil {
-			_ = json.NewEncoder(out).Encode(effect)
+			if approval.IsAwaitingDecision(err) {
+				_ = json.NewEncoder(out).Encode(map[string]string{"id": effect.ID, "state": "awaiting_decision"})
+			} else {
+				_ = json.NewEncoder(out).Encode(effect)
+			}
 		}
 		return err
 	case "recover":
@@ -157,7 +161,11 @@ func recover(ctx context.Context, out io.Writer, runtime Runtime) error {
 		}
 		got, err := perform(ctx, effect.ID, runtime)
 		if got != nil {
-			_ = json.NewEncoder(out).Encode(got)
+			if approval.IsAwaitingDecision(err) {
+				_ = json.NewEncoder(out).Encode(map[string]string{"id": got.ID, "state": "awaiting_decision"})
+			} else {
+				_ = json.NewEncoder(out).Encode(got)
+			}
 		}
 		if err != nil && first == nil {
 			first = err

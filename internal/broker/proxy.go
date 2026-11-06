@@ -204,12 +204,11 @@ type snapshot struct {
 func (b *Broker) build(cfg *policy.Config) (*snapshot, error) {
 	s := &snapshot{cfg: cfg, byHost: map[string]*policy.Service{}, routes: map[string][]*policy.Service{}}
 	for _, name := range cfg.Services() {
-		// Publisher approval credentials are native-only. A proxy-authenticated
-		// agent must never be able to make stk inject either service token.
-		if name == "superpipeline-approvals-read" || name == "superpipeline-approvals-write" {
+		svc, _ := cfg.Service(name)
+		// Native-only credentials must never enter any agent-facing route.
+		if svc.NativeOnly() {
 			continue
 		}
-		svc, _ := cfg.Service(name)
 		for _, h := range svc.Entry().Hosts() {
 			for _, existing := range s.routes[h] {
 				for _, left := range existing.Entry().Capabilities {
@@ -564,7 +563,7 @@ func hasDotPathSegment(path string) bool {
 }
 
 func routeRestricted(svc *policy.Service) bool {
-	return svc != nil && (svc.Name == "superpipeline-approvals-read" || svc.Name == "superpipeline-approvals-write")
+	return svc != nil && svc.NativeOnly()
 }
 
 func (b *Broker) forward(w http.ResponseWriter, r *http.Request, host, proto, svcName string) {

@@ -109,6 +109,14 @@ func (s *Server) executeFronted(ctx context.Context, server, action, rawArgs str
 			}
 			return obj(map[string]any{"state": state, "id": e.ID, "note": "not approved, so nothing was done"})
 		}
+		if d.Performed {
+			out := map[string]any{"state": string(d.State), "id": e.ID, "outcome": d.Outcome}
+			if d.Err != "" {
+				out["error"] = d.Err
+				out["note"] = "approved, but carrying it out failed"
+			}
+			return obj(out)
+		}
 	}
 
 	host, err := s.servers(server)

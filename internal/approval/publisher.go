@@ -9,16 +9,64 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var (
+	xWebScheme = regexp.MustCompile(`https?://`)
+	xMediaURL  = regexp.MustCompile(`/((photo)|(video))/[0-9]+(?:$|[?#])`)
+)
+
+type xURLEntity struct {
+	URL         string `json:"url"`
+	ExpandedURL string `json:"expanded_url"`
+	MediaKey    string `json:"media_key"`
+}
+
+type xEntities struct {
+	URLs []xURLEntity `json:"urls"`
+}
+
+type xNoteTweet struct {
+	Text     string    `json:"text"`
+	Entities xEntities `json:"entities"`
+}
+
+func normalizeXText(text string, entities []xURLEntity) string {
+	normalized := html.UnescapeString(text)
+	for _, entity := range entities {
+		if entity.URL == "" {
+			continue
+		}
+		if entity.MediaKey != "" || xMediaURL.MatchString(entity.ExpandedURL) {
+			normalized = strings.ReplaceAll(normalized, " "+entity.URL, "")
+			normalized = strings.ReplaceAll(normalized, entity.URL+" ", "")
+			normalized = strings.ReplaceAll(normalized, entity.URL, "")
+			continue
+		}
+		if entity.ExpandedURL != "" {
+			normalized = strings.ReplaceAll(normalized, entity.URL, entity.ExpandedURL)
+		}
+	}
+	return strings.TrimSpace(xWebScheme.ReplaceAllString(normalized, ""))
+}
+
+func normalizeXPost(text string, entities xEntities, note xNoteTweet) string {
+	if note.Text != "" {
+		return normalizeXText(note.Text, note.Entities.URLs)
+	}
+	return normalizeXText(text, entities.URLs)
+}
 
 // GatedRequest is the complete provider request bound by a SuperPipeline gate.
 // Media is ordered: changing an item or its position changes Digest.
@@ -99,6 +147,19 @@ func UnknownOutcome(err error) error { return unknownOutcomeError{err} }
 func isUnknownOutcome(err error) bool {
 	var marked interface{ OutcomeUnknown() bool }
 	return errors.As(err, &marked) && marked.OutcomeUnknown()
+}
+
+// AwaitingDecisionError means the SuperPipeline gate is still open. It is a
+// non-terminal result: the durable effect remains untouched for later review.
+type AwaitingDecisionError struct{}
+
+func (AwaitingDecisionError) Error() string { return "SuperPipeline gate is awaiting_decision" }
+
+// IsAwaitingDecision lets command callers distinguish a pending human gate
+// from a failed publish attempt.
+func IsAwaitingDecision(err error) bool {
+	var pending AwaitingDecisionError
+	return errors.As(err, &pending)
 }
 
 type publicationRecord struct {
@@ -247,6 +308,9 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 	if e.Args["_approval_authority"] != "superpipeline" || e.Args["_approval_board"] != req.BoardID || e.Args["_approval_subject"] != req.SubjectID {
 		return p.refuse(e, publicationRecord{Outcome: "refused", RequestDigest: req.Digest()}, errors.New("effect is not bound to this SuperPipeline approval subject"))
 	}
+	if e.State == Expired && !e.GateExpirySet {
+		return p.refuse(e, publicationRecord{Outcome: "refused", RequestDigest: req.Digest()}, errors.New("unconfirmed SuperPipeline gate exceeded its backstop"))
+	}
 
 	rec, recErr := p.Queue.readPublication(id)
 	if recErr == nil {
@@ -298,7 +362,7 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 	}
 	rec = publicationRecord{ApprovedDigest: confirmation.Digest, RequestDigest: requestDigest, GateID: confirmation.GateID}
 	if !confirmation.Approved && confirmation.DeliveryMode == "none" && (confirmation.GateStatus == "pending" || confirmation.GateStatus == "open") {
-		return e, errors.New("SuperPipeline gate is not yet resolved")
+		return e, AwaitingDecisionError{}
 	}
 	if !confirmation.Approved || confirmation.DeliveryMode != "automatic" {
 		return p.refuse(e, rec, errors.New("SuperPipeline did not confirm automatic delivery"))
@@ -843,7 +907,7 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		base.RawQuery = url.Values{
 			"expansions":   {"attachments.media_keys"},
 			"media.fields": {"media_key"},
-			"tweet.fields": {"attachments,entities"},
+			"tweet.fields": {"attachments,entities,note_tweet"},
 		}.Encode()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
 		if err != nil {
@@ -867,33 +931,25 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 				Attachments struct {
 					MediaKeys []string `json:"media_keys"`
 				} `json:"attachments"`
-				Entities struct {
-					URLs []struct {
-						URL         string `json:"url"`
-						ExpandedURL string `json:"expanded_url"`
-					} `json:"urls"`
-				} `json:"entities"`
+				Entities  xEntities  `json:"entities"`
+				NoteTweet xNoteTweet `json:"note_tweet"`
 			} `json:"data"`
 		}
 		if decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&exact); decodeErr != nil {
 			return ReadBackResult{Status: ReadBackInconclusive}, decodeErr
 		}
-		// The provider-assigned id is the correlation key. X legitimately
-		// rewrites links in text to t.co, so exact text is not evidence against a
-		// known id.
+		// The provider-assigned id is the correlation key, but the returned
+		// content must still match after accounting for X's documented entity,
+		// media-suffix and long-form note_tweet representations.
 		if exact.Data.ID != sent.PostID {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back did not match the created post id")
 		}
 		if !xMediaKeysMatch(exact.Data.Attachments.MediaKeys, sent.MediaIDs) {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back media does not match the uploaded media ids")
 		}
-		normalized := exact.Data.Text
-		for _, entity := range exact.Data.Entities.URLs {
-			if entity.URL != "" && entity.ExpandedURL != "" {
-				normalized = strings.ReplaceAll(normalized, entity.URL, entity.ExpandedURL)
-			}
-		}
-		if normalized != post.Text {
+		// URL entities describe X's t.co transformation. Media entities are a
+		// presentation-only suffix and are absent from the approved post text.
+		if normalizeXPost(exact.Data.Text, exact.Data.Entities, exact.Data.NoteTweet) != normalizeXText(post.Text, nil) {
 			return ReadBackResult{Status: ReadBackInconclusive}, errors.New("x read-back content does not match the approved post")
 		}
 		return ReadBackResult{Status: ReadBackFound, LiveURL: "https://x.com/" + url.PathEscape(x.Username) + "/status/" + url.PathEscape(sent.PostID)}, nil
@@ -904,7 +960,7 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 		// Search only by the authenticated author. Quoting the entire post both
 		// exceeds X's 512-character query limit and misses t.co rewrites.
 		"query":        {"from:" + x.Username},
-		"tweet.fields": {"author_id,created_at,entities"},
+		"tweet.fields": {"author_id,created_at,entities,note_tweet"},
 		"max_results":  {"10"},
 	}.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String(), nil)
@@ -921,14 +977,10 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 	}
 	var result struct {
 		Data []struct {
-			ID       string `json:"id"`
-			Text     string `json:"text"`
-			Entities struct {
-				URLs []struct {
-					URL         string `json:"url"`
-					ExpandedURL string `json:"expanded_url"`
-				} `json:"urls"`
-			} `json:"entities"`
+			ID        string     `json:"id"`
+			Text      string     `json:"text"`
+			Entities  xEntities  `json:"entities"`
+			NoteTweet xNoteTweet `json:"note_tweet"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&result); err != nil {
@@ -936,13 +988,7 @@ func (x *XHTTPProvider) ReadBack(ctx context.Context, request GatedRequest, sent
 	}
 	matches := make([]string, 0, 1)
 	for _, item := range result.Data {
-		normalized := item.Text
-		for _, entity := range item.Entities.URLs {
-			if entity.URL != "" && entity.ExpandedURL != "" {
-				normalized = strings.ReplaceAll(normalized, entity.URL, entity.ExpandedURL)
-			}
-		}
-		if normalized == post.Text && item.ID != "" {
+		if normalizeXPost(item.Text, item.Entities, item.NoteTweet) == normalizeXText(post.Text, nil) && item.ID != "" {
 			matches = append(matches, item.ID)
 		}
 	}

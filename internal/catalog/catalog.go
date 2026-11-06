@@ -229,6 +229,9 @@ type Capability struct {
 // Entry is one service.
 type Entry struct {
 	Name string
+	// NativeOnly marks credentials reserved for an internal stk workflow. They
+	// are never exposed through agent profiles, MCP, the proxy, or child env.
+	NativeOnly bool
 	// Host is the hostname a capability's path is relative to, and the one the
 	// broker intercepts by default.
 	Host string
@@ -320,7 +323,7 @@ var builtin = map[string]*Entry{
 	"superpipeline-approvals-read": {
 		RevokeAt: "https://accounts.superjackfruit.com",
 		Name:     "superpipeline-approvals-read", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_READ_TOKEN",
-		Placement: BearerHeader, Auth: AuthToken,
+		Placement: BearerHeader, Auth: AuthToken, NativeOnly: true,
 		Capabilities: []Capability{{
 			Name: "verify_approval", Kind: Read, Method: "POST",
 			Path:    "/v1/boards/{board}/approval-subjects/{subject}/verify",
@@ -331,7 +334,7 @@ var builtin = map[string]*Entry{
 	"superpipeline-approvals-write": {
 		RevokeAt: "https://accounts.superjackfruit.com",
 		Name:     "superpipeline-approvals-write", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_WRITE_TOKEN",
-		Placement: BearerHeader, Auth: AuthToken,
+		Placement: BearerHeader, Auth: AuthToken, NativeOnly: true,
 		Capabilities: []Capability{{
 			Name: "record_delivery", Kind: Write, Method: "POST",
 			Path:    "/v1/boards/{board}/approval-subjects/{subject}/delivery",

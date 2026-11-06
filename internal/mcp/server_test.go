@@ -26,6 +26,10 @@ services:
     scopes: [repo:read]
     capabilities:
       delete_repo: deny
+  superpipeline-approvals-read:
+    scopes: []
+  superpipeline-approvals-write:
+    scopes: []
 profiles:
   reader:
     github: [get_user]
@@ -156,6 +160,24 @@ func TestDiscoveryAnswersFromTheProfile(t *testing.T) {
 	}
 	if strings.Contains(actions, "delete_repo") {
 		t.Errorf("reader was told about a denied capability: %s", actions)
+	}
+}
+
+func TestNativeOnlyServicesAreHiddenAndRefused(t *testing.T) {
+	r := newRig(t, "", 0)
+	discovery := r.callTool(t, "discover_server_categories", nil)
+	if strings.Contains(discovery, "superpipeline-approvals") {
+		t.Fatalf("native-only services leaked through discovery: %s", discovery)
+	}
+	got := r.callTool(t, "execute_action", map[string]string{
+		"category": "superpipeline-approvals-read", "action": "verify_approval",
+		"args": `{"board":"brd_fixture","subject":"aps_fixture"}`,
+	})
+	if !strings.HasPrefix(got, "ERROR:") {
+		t.Fatalf("native-only direct call was not refused: %s", got)
+	}
+	if len(r.sent) != 0 {
+		t.Fatal("native-only direct call reached the credential executor")
 	}
 }
 
@@ -372,6 +394,50 @@ func TestAnApprovalPerformedByTheDeciderIsNotRunAgainByTheWaiter(t *testing.T) {
 // something that could never have taken effect. Worse, a capability with no
 // required parameters would have *succeeded*, performing an effect whose
 // contents nobody could see.
+func TestWaitTimeoutReportsPerformingDecisionInsteadOfNotApproved(t *testing.T) {
+	r := newRig(t, "", 20*time.Millisecond)
+	done := make(chan string, 1)
+	go func() {
+		done <- r.callTool(t, "execute_action", map[string]string{
+			"category": "github", "action": "create_issue",
+			"args": `{"owner":"o","repo":"r","title":"t"}`,
+		})
+	}()
+	deadline := time.Now().Add(time.Second)
+	for len(r.q.Pending()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	pend := r.q.Pending()
+	if len(pend) != 1 {
+		t.Fatal("nothing queued")
+	}
+	performing := make(chan struct{})
+	release := make(chan struct{})
+	performed := make(chan struct{})
+	go func() {
+		_, _ = r.q.DecideAndPerform(pend[0].ID, true, "web", func(*approval.Effect) (string, error) {
+			close(performing)
+			<-release
+			return "201 Created", nil
+		})
+		close(performed)
+	}()
+	<-performing
+	select {
+	case got := <-done:
+		if strings.Contains(got, "not approved") || !strings.Contains(got, "approved") {
+			t.Fatalf("wait timeout misreported a durable decision: %s", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("waiter did not return at its timeout")
+	}
+	close(release)
+	<-performed
+	if len(r.sent) != 0 {
+		t.Fatalf("waiter dispatched %d duplicate request(s)", len(r.sent))
+	}
+}
+
 func TestAMalformedCallIsRefusedBeforeAnyoneIsAsked(t *testing.T) {
 	r := newRig(t, "", 2*time.Second)
 	got := r.callTool(t, "execute_action", map[string]string{

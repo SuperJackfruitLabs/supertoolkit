@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -136,14 +138,16 @@ func TestRecoverSkipsUndecidedGateAndLaterApprovalPostsOnce(t *testing.T) {
 	}
 	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "pending", GateID: "gate_fixture", Digest: req.Digest()}}
 	x := &commandX{successful: true}
+	factories := 0
 	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
+		factories++
 		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
 	}}
 	if err := recover(context.Background(), &bytes.Buffer{}, runtime); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := q.Get(e.ID); got.State != approval.Pending || x.sends != 0 {
-		t.Fatalf("recover changed undecided effect: %+v; sends=%d", got, x.sends)
+	if got, _ := q.Get(e.ID); got.State != approval.Pending || x.sends != 0 || factories != 0 {
+		t.Fatalf("recover changed or performed undecided effect: %+v; sends=%d factories=%d", got, x.sends, factories)
 	}
 	if _, err := perform(context.Background(), e.ID, runtime); err == nil {
 		t.Fatal("undecided gate was accepted")
@@ -157,5 +161,58 @@ func TestRecoverSkipsUndecidedGateAndLaterApprovalPostsOnce(t *testing.T) {
 	}
 	if x.sends != 1 {
 		t.Fatalf("provider sends = %d, want 1", x.sends)
+	}
+}
+
+func TestRecoverSurfacesRetryAllowedWithoutSendingAgain(t *testing.T) {
+	dir := t.TempDir()
+	q, err := approval.Open(dir, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := approval.GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"recover"}`)}
+	e, err := q.SubmitGated(req, "recover")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &commandGate{confirmation: approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_fixture", Digest: req.Digest()}}
+	x := &commandX{}
+	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
+		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
+	}}
+	if _, err := perform(context.Background(), e.ID, runtime); err == nil {
+		t.Fatal("fixture did not create the unknown-outcome fence")
+	}
+	retry := []byte(`{"outcome":"retry_allowed","approved_digest":"` + req.Digest() + `","request_digest":"` + req.Digest() + `","gate_id":"gate_fixture","attempts":1}`)
+	if err := os.WriteFile(filepath.Join(dir, "approvals", e.ID+".pub"), retry, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = recover(context.Background(), &bytes.Buffer{}, runtime)
+	if err == nil || !strings.Contains(err.Error(), "manual recovery") || x.sends != 1 {
+		t.Fatalf("recover err=%v sends=%d; want surfaced retry_allowed and no second send", err, x.sends)
+	}
+}
+
+func TestPerformReportsAwaitingDecisionState(t *testing.T) {
+	q, err := approval.Open(t.TempDir(), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := approval.GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"wait"}`)}
+	e, err := q.SubmitGated(req, "wait")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "open", Digest: req.Digest()}}
+	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
+		return &approval.Publisher{Queue: q, Gate: gate, X: &commandX{successful: true}}, nil
+	}}
+	var out bytes.Buffer
+	err = Run(context.Background(), []string{"perform", e.ID}, strings.NewReader(""), &out, runtime)
+	if !approval.IsAwaitingDecision(err) || !strings.Contains(out.String(), `"state":"awaiting_decision"`) {
+		t.Fatalf("perform = %q, %v; want typed awaiting_decision", out.String(), err)
+	}
+	if got, _ := q.Get(e.ID); got.State != approval.Pending || got.Outcome != "" {
+		t.Fatalf("awaiting gate changed durable state: %+v", got)
 	}
 }

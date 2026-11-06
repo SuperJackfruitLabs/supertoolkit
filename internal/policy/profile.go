@@ -45,6 +45,9 @@ func (p *Profile) Visible(service, capability string) bool {
 	if !ok {
 		return false
 	}
+	if svc.NativeOnly() {
+		return false
+	}
 	// Deny is a floor as well as a ceiling: nothing makes a denied capability
 	// visible.
 	if svc.Policy(capability) == ActionDeny {

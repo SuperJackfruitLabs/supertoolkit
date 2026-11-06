@@ -114,6 +114,10 @@ func (s *Service) APIPrefix() string {
 // placement.
 func (s *Service) Entry() *catalog.Entry { return s.entry }
 
+// NativeOnly reports whether this credential is reserved for an internal stk
+// workflow and must not be exposed through an agent-facing surface.
+func (s *Service) NativeOnly() bool { return s.entry.NativeOnly }
+
 // Device describes the headless connect path for this service: the
 // catalogue's endpoints, with the operator's own client id filled in.
 //

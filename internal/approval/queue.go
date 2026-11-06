@@ -102,6 +102,11 @@ type Decision struct {
 // counts: expiry and refusal both mean no.
 func (d Decision) Allowed() bool { return d.State == Approved }
 
+func decisionFromEffect(e *Effect) Decision {
+	return Decision{State: e.State, DecidedBy: e.DecidedBy,
+		Outcome: e.Outcome, Err: e.Error, Performed: e.Performs}
+}
+
 // pollInterval is how often a waiter checks for a decision made in another
 // process. There is no cross-process notification to wait on, and one stat of
 // one file is cheap enough that a quarter second costs nothing while making a
@@ -323,6 +328,14 @@ func (q *Queue) read(id string) (*Effect, error) {
 	// Before confirmation, a gated effect gets a long backstop rather than the
 	// ordinary queue TTL. Confirmation replaces it with the gate's own expiry.
 	_, gatedErr := os.Stat(q.gatedPath(id))
+	if gatedErr == nil && !e.GateExpirySet {
+		// Round-2 requests used the ordinary queue TTL. Read those records with
+		// the gated backstop so an upgrade does not expire a live human review.
+		backstop := e.Submitted.Add(gatedBackstopTTL)
+		if e.Expires.Before(backstop) {
+			e.Expires = backstop
+		}
+	}
 	if gatedErr == nil && !e.GateExpirySet && !q.now().After(e.Expires) {
 		e.State = Pending
 	} else if q.now().After(e.Expires) {
@@ -554,8 +567,7 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 	case e.State == Approved && e.Performs && e.Outcome == "" && e.Error == "" &&
 		q.now().Before(e.DecidedAt.Add(outcomeGrace)):
 	default:
-		return Decision{State: e.State, DecidedBy: e.DecidedBy,
-			Outcome: e.Outcome, Err: e.Error, Performed: e.Performs}, nil
+		return decisionFromEffect(e), nil
 	}
 
 	t := time.NewTicker(pollInterval)
@@ -563,6 +575,12 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 	for {
 		select {
 		case <-ctx.Done():
+			// A decision may be durable while its outcome is still being recorded.
+			// Report that truth rather than claiming nothing was approved.
+			cur, readErr := q.read(id)
+			if readErr == nil && cur.State != Pending {
+				return decisionFromEffect(cur), nil
+			}
 			return Decision{State: Pending}, ctx.Err()
 		case <-t.C:
 			cur, err := q.read(id)
@@ -584,8 +602,7 @@ func (q *Queue) Await(ctx context.Context, id string) (Decision, error) {
 					q.now().Before(cur.DecidedAt.Add(outcomeGrace)) {
 					continue
 				}
-				return Decision{State: cur.State, DecidedBy: cur.DecidedBy,
-					Outcome: cur.Outcome, Err: cur.Error, Performed: cur.Performs}, nil
+				return decisionFromEffect(cur), nil
 			default:
 				return Decision{State: cur.State, DecidedBy: cur.DecidedBy}, nil
 			}

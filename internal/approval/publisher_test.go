@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -768,6 +770,36 @@ func TestGatedEffectUsesGateExpiryAndKeepsUnknownFenceDuringCleanup(t *testing.T
 	if got, ok := q3.Get(abandoned.ID); !ok || got.State != Expired {
 		t.Fatalf("unconfirmed gated backstop = %+v, %v; want expired", got, ok)
 	}
+
+	q4, legacy, _ := gatedFixture(t)
+	legacy.Expires = legacy.Submitted.Add(q4.ttl)
+	body, _ := json.Marshal(legacy)
+	if err := os.WriteFile(q4.reqPath(legacy.ID), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	q4.now = func() time.Time { return legacy.Submitted.Add(time.Hour) }
+	if got, ok := q4.Get(legacy.ID); !ok || got.State != Pending || !got.Expires.Equal(legacy.Submitted.Add(gatedBackstopTTL)) {
+		t.Fatalf("legacy gated expiry migration = %+v, %v", got, ok)
+	}
+}
+
+func TestExpiredUnconfirmedGateBecomesTerminalAndCannotSendLater(t *testing.T) {
+	q, e, req := gatedFixture(t)
+	q.now = func() time.Time { return e.Submitted.Add(gatedBackstopTTL + time.Second) }
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "late"}}
+	x := &xStub{}
+	publisher := &Publisher{Queue: q, Gate: gate, X: x}
+	got, err := publisher.Perform(context.Background(), e.ID, req)
+	if err == nil || got.State != Expired || x.sendCalls != 0 || gate.confirms != 0 {
+		t.Fatalf("expired gate = %+v, %v; sends=%d confirms=%d", got, err, x.sendCalls, gate.confirms)
+	}
+	rec, readErr := q.readPublication(e.ID)
+	if readErr != nil || rec.Outcome != "refused" {
+		t.Fatalf("terminal publication = %+v, %v", rec, readErr)
+	}
+	if _, err := publisher.Perform(context.Background(), e.ID, req); err == nil || x.sendCalls != 0 || gate.confirms != 0 {
+		t.Fatalf("late approval re-enabled expired gate: err=%v sends=%d confirms=%d", err, x.sendCalls, gate.confirms)
+	}
 }
 
 func TestXReadBackNormalizesLinksWithAndWithoutKnownPostID(t *testing.T) {
@@ -858,7 +890,7 @@ func TestRecentSearchMissRemainsInconclusive(t *testing.T) {
 func TestKnownPostIDStillRequiresApprovedContent(t *testing.T) {
 	request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"approved text"}`)}
 	provider := &XHTTPProvider{Username: "fixture", Do: func(_ context.Context, got *http.Request) (*http.Response, error) {
-		if got.URL.Query().Get("tweet.fields") != "attachments,entities" {
+		if got.URL.Query().Get("tweet.fields") != "attachments,entities,note_tweet" {
 			t.Fatalf("tweet.fields = %q", got.URL.Query().Get("tweet.fields"))
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"data":{"id":"planted","text":"someone else's post"}}`))}, nil
@@ -866,6 +898,29 @@ func TestKnownPostIDStillRequiresApprovedContent(t *testing.T) {
 	result, err := provider.ReadBack(context.Background(), request, SendResult{PostID: "planted"})
 	if result.Status != ReadBackInconclusive || err == nil || !strings.Contains(err.Error(), "content") {
 		t.Fatalf("read-back = %+v, %v", result, err)
+	}
+}
+
+func TestKnownPostIDNormalizesXRepresentations(t *testing.T) {
+	for _, tc := range []struct{ name, approved, body string }{
+		{"media suffix", "with image", `{"data":{"id":"known","text":"with image https://t.co/media","entities":{"urls":[{"url":"https://t.co/media","expanded_url":"https://x.com/fixture/status/1/photo/1","media_key":"3_fixture"}]}}}`},
+		{"html escaped", "fish & chips", `{"data":{"id":"known","text":"fish &amp; chips"}}`},
+		{"scheme-less link", "visit example.com/story", `{"data":{"id":"known","text":"visit https://t.co/a","entities":{"urls":[{"url":"https://t.co/a","expanded_url":"http://example.com/story"}]}}}`},
+		{"long note", strings.Repeat("long form ", 40), `{"data":{"id":"known","text":"long form…","note_tweet":{"text":"` + strings.Repeat("long form ", 40) + `"}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := GatedRequest{Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":` + strconv.Quote(tc.approved) + `}`)}
+			provider := &XHTTPProvider{Username: "fixture", Do: func(_ context.Context, got *http.Request) (*http.Response, error) {
+				if !strings.Contains(got.URL.Query().Get("tweet.fields"), "note_tweet") {
+					t.Fatalf("tweet.fields = %q", got.URL.Query().Get("tweet.fields"))
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+			}}
+			result, err := provider.ReadBack(context.Background(), request, SendResult{PostID: "known"})
+			if err != nil || result.Status != ReadBackFound {
+				t.Fatalf("read-back = %+v, %v", result, err)
+			}
+		})
 	}
 }
 

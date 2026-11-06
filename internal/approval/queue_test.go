@@ -92,6 +92,28 @@ func TestAwaitStartedAfterPerformingDecisionWaitsForOutcome(t *testing.T) {
 }
 
 // Expiry is not approval. This is the fail-closed assertion.
+func TestAwaitContextExpiryReportsDurablePerformingDecision(t *testing.T) {
+	q := mustOpen(t, time.Minute)
+	e := q.Submit("github", "create_issue", "s", nil)
+	performing := make(chan struct{})
+	release := make(chan struct{})
+	go func() {
+		_, _ = q.DecideAndPerform(e.ID, true, "operator", func(*Effect) (string, error) {
+			close(performing)
+			<-release
+			return "201 Created", nil
+		})
+	}()
+	<-performing
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	d, err := q.Await(ctx, e.ID)
+	close(release)
+	if err != nil || d.State != Approved || !d.Performed || d.Outcome != "" {
+		t.Fatalf("Await = %+v, %v; want approved/performed with pending outcome", d, err)
+	}
+}
+
 func TestExpiryIsNotApproval(t *testing.T) {
 	q := mustOpen(t, 30*time.Millisecond)
 	e := q.Submit("github", "delete_repo", "s", nil)
