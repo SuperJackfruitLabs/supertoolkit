@@ -120,7 +120,7 @@ hand-over path is the exception and
 
 ## Services
 
-Eleven, chosen so every auth scheme and placement has a live connector behind it
+Thirteen, chosen so every auth scheme and placement has a live connector behind it
 rather than only a constant:
 
 | Service | Operation |
@@ -130,6 +130,7 @@ rather than only a constant:
 | `aws-sts` | sign with SigV4 — the credential is an HMAC, never a value |
 | `github-app` | mint a JWT, exchange it for an installation token |
 | `x`, `google` | refresh an OAuth 2.0 grant into a short-lived access token |
+| `superpipeline-approvals-read`, `superpipeline-approvals-write` | exchange a service credential at the Organization plane for a token that lasts minutes (publisher only) |
 
 A service we do not front directly is reachable as a fronted MCP server: the
 child gets a placeholder in its environment and nothing else.

@@ -436,3 +436,22 @@ func (s *syncBuf) String() string {
 	defer s.mu.Unlock()
 	return s.b.String()
 }
+
+// A reload rebuilds the acquirers; one it forgot would be nil, and the next
+// publisher request after a SIGHUP would panic instead of exchanging. Every
+// acquirer survives, unchanged, so single-flight state is kept too.
+func TestReloadKeepsEveryAcquirer(t *testing.T) {
+	f := newReloadFixture(t, reloadConfig())
+	before := f.live.State().Acqs
+	if before == nil || before.OAuth2 == nil || before.GitHubApp == nil || before.Service == nil {
+		t.Fatalf("acquirers before reload = %+v", before)
+	}
+	writeConfig(t, reloadConfig())
+	if res := f.rl.Reload(); !res.OK {
+		t.Fatalf("reload: %+v", res)
+	}
+	after := f.live.State().Acqs
+	if after.OAuth2 != before.OAuth2 || after.GitHubApp != before.GitHubApp || after.Service != before.Service {
+		t.Errorf("a reload replaced or dropped an acquirer: before %+v after %+v", before, after)
+	}
+}

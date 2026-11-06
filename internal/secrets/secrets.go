@@ -26,6 +26,9 @@ import (
 type Acquirers struct {
 	GitHubApp *credential.Acquirer
 	OAuth2    *credential.Acquirer
+	// Service exchanges a stored service credential at an issuer for a token
+	// that lasts minutes (catalog.AuthServiceExchange).
+	Service *credential.Acquirer
 	// ForgeApp holds one acquirer per `kind: forge` service with auth: app.
 	// Each has its own App, installation, API base and repository list, so
 	// sharing a cache would hand one service's token to another.
@@ -46,6 +49,21 @@ func NewAcquirersFn(cfgFn func() *policy.Config, store *credential.Store, client
 			Material: store.Material,
 			Shared:   store,
 			Exchange: credential.ExchangeGitHubApp("https://api.github.com", client, nil),
+		},
+		Service: &credential.Acquirer{
+			Material: store.Material,
+			Shared:   store,
+			Exchange: credential.ExchangeService(client, func(service string) (credential.ServiceExchangeTarget, error) {
+				svc, ok := cfgFn().Service(service)
+				if !ok {
+					return credential.ServiceExchangeTarget{}, fmt.Errorf("%s is not configured", service)
+				}
+				e := svc.Entry()
+				if e.Auth != catalog.AuthServiceExchange {
+					return credential.ServiceExchangeTarget{}, fmt.Errorf("%s is not a service-exchange credential", service)
+				}
+				return credential.ServiceExchangeTarget{TokenURL: e.Exchange.TokenURL, Audience: e.Exchange.Audience}, nil
+			}),
 		},
 		OAuth2: &credential.Acquirer{
 			Material: store.Material,
@@ -222,6 +240,8 @@ func SecretSource(cfg *policy.Config, store *credential.Store, acqs *Acquirers) 
 			return acqs.App(service).Token(context.Background(), service)
 		case catalog.AuthOAuth2:
 			return acqs.OAuth2.Token(context.Background(), service)
+		case catalog.AuthServiceExchange:
+			return acqs.Service.Token(context.Background(), service)
 		case catalog.AuthSigV4:
 			// A SigV4 request is signed, not substituted. Reaching here means
 			// a client sent a placeholder for a service that has none, and
@@ -274,6 +294,16 @@ func Authorize(ctx context.Context, name string, e *catalog.Entry, req *http.Req
 		// provider's own token endpoint; a short-lived access token goes to
 		// the API.
 		tok, err := acqs.OAuth2.Token(ctx, name)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+		return nil
+
+	case catalog.AuthServiceExchange:
+		// The stored service credential only ever reaches the issuer's
+		// exchange endpoint; a token valid for minutes goes to the API.
+		tok, err := acqs.Service.Token(ctx, name)
 		if err != nil {
 			return err
 		}

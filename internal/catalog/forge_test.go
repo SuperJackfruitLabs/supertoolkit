@@ -206,3 +206,24 @@ func TestNoAuthForgeHoldsNoCredential(t *testing.T) {
 		}
 	}
 }
+
+// The Organization plane's service tokens last minutes, so the publisher's
+// SuperPipeline credentials must be exchanged, not substituted, and only for
+// SuperPipeline's audience.
+func TestApprovalCredentialsUseThePlaneServiceExchange(t *testing.T) {
+	for _, name := range []string{"superpipeline-approvals-read", "superpipeline-approvals-write"} {
+		e, ok := Lookup(name)
+		if !ok {
+			t.Fatalf("%s missing", name)
+		}
+		if e.Auth != AuthServiceExchange || e.Auth.LongLivedOnTheWire() || !e.NativeOnly {
+			t.Errorf("%s: auth = %v native-only = %v, want a native-only service exchange", name, e.Auth, e.NativeOnly)
+		}
+		if e.Exchange.TokenURL != "https://accounts.superjackfruit.com/api/token/service" || e.Exchange.Audience != "https://app.superpipeline.dev" {
+			t.Errorf("%s: exchange = %+v", name, e.Exchange)
+		}
+		if f := e.Auth.Fields(); len(f) != 1 || f[0] != "token" {
+			t.Errorf("%s: fields = %v, want the one stored token", name, f)
+		}
+	}
+}

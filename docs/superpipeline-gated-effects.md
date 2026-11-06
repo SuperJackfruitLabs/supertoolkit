@@ -17,6 +17,8 @@ The frozen approval subject carries an `outboundRequest` descriptor: method, URL
 
 The local approval record fields `_approval_authority`, `_approval_board`, and `_approval_subject` are lookup references only. The immutable gated-request sidecar, not those caller-writable arguments, marks an effect as SuperPipeline-owned; `stk approvals allow` and `deny` both refuse it without changing state. The automatic publisher uses its own `approvals:read` token only for `POST .../verify` and a separate `approvals:write` token only for `POST .../delivery` after provider read-back has found the canonical live URL. Broker injection allow-lists those method/path pairs, so neither credential can be sent to the other's route. Agents never receive either scope.
 
+Both are Organization-plane service credentials (`svc_…`). SuperPipeline accepts only a plane-signed service token, which lives for minutes, so stk never sends the stored credential to SuperPipeline: it exchanges it at `https://accounts.superjackfruit.com/api/token/service` for SuperPipeline's audience, caches the result until shortly before it expires, and sends only that token (`AuthServiceExchange`). The operator creates each service in Accounts with exactly one scope and connects it with `stk connect superpipeline-approvals-read` and `stk connect superpipeline-approvals-write`, the credential on stdin.
+
 ## Unknown outcome
 
 A timeout or connection loss after request bytes may have reached X is not a normal failure. stk records `outcome_unknown`, fences every retry, and invokes deterministic provider read-back. For X, read-back checks whether the exact approved post exists without issuing a write:

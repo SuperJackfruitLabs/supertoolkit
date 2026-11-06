@@ -149,6 +149,7 @@ func (r *Reloader) Reload() Result {
 		state.Acqs = &secrets.Acquirers{
 			GitHubApp: old.Acqs.GitHubApp,
 			OAuth2:    old.Acqs.OAuth2,
+			Service:   old.Acqs.Service,
 			ForgeApp:  secrets.ForgeAppAcquirers(next, r.store, r.client, old.Acqs.ForgeApp),
 		}
 	}

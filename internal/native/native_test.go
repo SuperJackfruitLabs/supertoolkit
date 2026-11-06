@@ -65,8 +65,16 @@ func TestPrepareRefusesNativeOnlyServiceForNonPublisherCaller(t *testing.T) {
 	if err := store.Put("superpipeline-approvals-read", "native-only-fixture"); err != nil {
 		t.Fatal(err)
 	}
-	client := &http.Client{Transport: clitest.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-		t.Fatal("native-only request was dispatched")
+	// Preparing may acquire a credential (the plane exchange) but never sends
+	// the API request; a refused caller must cause no traffic at all.
+	exchanges := 0
+	client := &http.Client{Transport: clitest.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "accounts.superjackfruit.com" && r.URL.Path == "/api/token/service" {
+			exchanges++
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+				Body: io.NopCloser(strings.NewReader(`{"access_token":"fixture-plane-token","expires_in":300}`)), Request: r}, nil
+		}
+		t.Fatalf("native-only request was dispatched to %s", r.URL)
 		return nil, nil
 	})}
 	live := livepolicy.New(cfg, store, client)
@@ -80,9 +88,15 @@ func TestPrepareRefusesNativeOnlyServiceForNonPublisherCaller(t *testing.T) {
 	if err == nil || prepared != nil || !strings.Contains(err.Error(), "reserved for the publisher") {
 		t.Fatalf("Prepare with spoofed audit caller = %#v, %v; want refusal", prepared, err)
 	}
+	if exchanges != 0 {
+		t.Fatalf("a refused caller caused %d exchange(s)", exchanges)
+	}
 	prepared, err = Prepare(PublisherContext(context.Background()), live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
 	if err != nil || prepared == nil {
 		t.Fatalf("Prepare with private publisher authority = %#v, %v; want admitted", prepared, err)
+	}
+	if got := prepared.Req.Header.Get("Authorization"); got != "Bearer fixture-plane-token" {
+		t.Errorf("prepared Authorization = %q, want the exchanged token", got)
 	}
 }
 
