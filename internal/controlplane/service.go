@@ -132,12 +132,14 @@ func NewWith(live *livepolicy.Config, store *credential.Store, dir, caller, vers
 		live: live, store: store, Queue: queue, obs: obs,
 		hosts: map[string]*mcphost.Host{},
 		Perform: func(ctx context.Context, svcName string, req *http.Request) (*http.Response, error) {
-			ctx = context.WithValue(ctx, audit.CallerKey{}, caller)
+			if caller == "publish" {
+				ctx = native.PublisherContext(ctx)
+			}
 			svc, ok := live.Config().Service(svcName)
 			if !ok {
 				return nil, fmt.Errorf("unknown service %q", svcName)
 			}
-			if svc.NativeOnly() && caller != "publish" {
+			if svc.NativeOnly() && !native.PublisherAuthorized(ctx) {
 				return nil, fmt.Errorf("service %q is reserved for the native publisher", svcName)
 			}
 			prepared, err := native.Prepare(ctx, live, store, client, obs, version, svcName, req)

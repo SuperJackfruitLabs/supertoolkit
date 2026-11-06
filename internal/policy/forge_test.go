@@ -105,6 +105,7 @@ func TestParseRejectsReservedNativeOnlyNameAsForge(t *testing.T) {
     host: app.superpipeline.dev
     auth: token
     scheme: bearer
+    repositories: [SuperJackfruitLabs/supertoolkit]
 `))
 	if err == nil || !strings.Contains(err.Error(), "reserved native-only") {
 		t.Fatalf("Parse error = %v; want reserved native-only refusal", err)

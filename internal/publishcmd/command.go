@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/approval"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/controlplane"
@@ -35,6 +36,7 @@ type Runtime struct {
 type submission struct {
 	BoardID    string   `json:"boardId"`
 	SubjectID  string   `json:"subjectId"`
+	ExpiresAt  string   `json:"expiresAt"`
 	Method     string   `json:"method"`
 	URL        string   `json:"url"`
 	BodyBase64 string   `json:"bodyBase64"`
@@ -102,6 +104,10 @@ func submit(in io.Reader, out io.Writer, queue *approval.Queue) error {
 	if !identifier(input.BoardID, "brd_") || !identifier(input.SubjectID, "aps_") {
 		return errors.New("publishing request needs valid SuperPipeline boardId and subjectId")
 	}
+	expiresAt, err := time.Parse(time.RFC3339, input.ExpiresAt)
+	if err != nil {
+		return errors.New("expiresAt must be the SuperPipeline subject expiry in RFC3339 form")
+	}
 	body, err := base64.StdEncoding.Strict().DecodeString(input.BodyBase64)
 	if err != nil || len(body) == 0 {
 		return errors.New("bodyBase64 must contain the exact non-empty request body")
@@ -116,7 +122,7 @@ func submit(in io.Reader, out io.Writer, queue *approval.Queue) error {
 	if strings.TrimSpace(input.Summary) == "" {
 		return errors.New("summary is required")
 	}
-	req := approval.GatedRequest{BoardID: input.BoardID, SubjectID: input.SubjectID, Method: input.Method, URL: input.URL, Body: body, Media: media}
+	req := approval.GatedRequest{BoardID: input.BoardID, SubjectID: input.SubjectID, SubjectExpires: expiresAt, Method: input.Method, URL: input.URL, Body: body, Media: media}
 	effect, err := queue.SubmitGated(req, input.Summary)
 	if err != nil {
 		return err

@@ -97,7 +97,9 @@ func TestAwaitContextExpiryReportsDurablePerformingDecision(t *testing.T) {
 	e := q.Submit("github", "create_issue", "s", nil)
 	performing := make(chan struct{})
 	release := make(chan struct{})
+	performed := make(chan struct{})
 	go func() {
+		defer close(performed)
 		_, _ = q.DecideAndPerform(e.ID, true, "operator", func(*Effect) (string, error) {
 			close(performing)
 			<-release
@@ -109,6 +111,7 @@ func TestAwaitContextExpiryReportsDurablePerformingDecision(t *testing.T) {
 	defer cancel()
 	d, err := q.Await(ctx, e.ID)
 	close(release)
+	<-performed
 	if err != nil || d.State != Approved || !d.Performed || d.Outcome != "" {
 		t.Fatalf("Await = %+v, %v; want approved/performed with pending outcome", d, err)
 	}

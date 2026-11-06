@@ -75,9 +75,14 @@ func TestPrepareRefusesNativeOnlyServiceForNonPublisherCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://app.superpipeline.dev/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify", nil)
-	prepared, err := Prepare(context.Background(), live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
+	spoofedAudit := context.WithValue(context.Background(), audit.CallerKey{}, "publish")
+	prepared, err := Prepare(spoofedAudit, live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
 	if err == nil || prepared != nil || !strings.Contains(err.Error(), "reserved for the publisher") {
-		t.Fatalf("Prepare native-only service = %#v, %v; want refusal", prepared, err)
+		t.Fatalf("Prepare with spoofed audit caller = %#v, %v; want refusal", prepared, err)
+	}
+	prepared, err = Prepare(PublisherContext(context.Background()), live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
+	if err != nil || prepared == nil {
+		t.Fatalf("Prepare with private publisher authority = %#v, %v; want admitted", prepared, err)
 	}
 }
 

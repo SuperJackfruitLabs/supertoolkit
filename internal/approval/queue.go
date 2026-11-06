@@ -80,6 +80,9 @@ type Effect struct {
 	// GateExpirySet distinguishes the queue's short local intake TTL from the
 	// authoritative expiry returned by SuperPipeline.
 	GateExpirySet bool `json:"gate_expiry_set,omitempty"`
+	// SubjectExpirySet means submit bound the local backstop to the subject's
+	// own expiry, so the legacy short-TTL migration must not extend it.
+	SubjectExpirySet bool `json:"subject_expiry_set,omitempty"`
 
 	// Performs says the decider is carrying the effect out, so a waiter must
 	// report the result rather than act on it. Exactly one party performs.
@@ -120,7 +123,12 @@ const keepDecided = 24 * time.Hour
 // gatedBackstopTTL bounds a gate that was never confirmed by SuperPipeline.
 // It is deliberately much longer than the ordinary intake TTL so human review
 // can finish, but an abandoned undecided request cannot remain forever.
-const gatedBackstopTTL = 7 * 24 * time.Hour
+const (
+	// MaxUnconfirmedGateLifetime is the longest subject lifetime stk can hold
+	// before SuperPipeline has confirmed its authoritative gate expiry.
+	MaxUnconfirmedGateLifetime = 7 * 24 * time.Hour
+	gatedBackstopTTL           = MaxUnconfirmedGateLifetime
+)
 
 // outcomeGrace is how long a waiter gives the decider to record what happened
 // before reporting an approval without its result.
@@ -328,7 +336,7 @@ func (q *Queue) read(id string) (*Effect, error) {
 	// Before confirmation, a gated effect gets a long backstop rather than the
 	// ordinary queue TTL. Confirmation replaces it with the gate's own expiry.
 	_, gatedErr := os.Stat(q.gatedPath(id))
-	if gatedErr == nil && !e.GateExpirySet {
+	if gatedErr == nil && !e.GateExpirySet && !e.SubjectExpirySet {
 		// Round-2 requests used the ordinary queue TTL. Read those records with
 		// the gated backstop so an upgrade does not expire a live human review.
 		backstop := e.Submitted.Add(gatedBackstopTTL)

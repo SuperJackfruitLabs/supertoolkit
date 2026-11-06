@@ -79,9 +79,11 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 	}}
 
 	frozenMedia := append([]byte("\x89PNG\r\n\x1a\n"), []byte("command-image")...)
+	subjectExpiry := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 	payload, _ := json.Marshal(map[string]any{
 		"boardId":     "brd_0123456789abcdef",
 		"subjectId":   "aps_0123456789abcdef",
+		"expiresAt":   subjectExpiry.Format(time.RFC3339),
 		"method":      http.MethodPost,
 		"url":         "https://api.x.com/2/tweets",
 		"bodyBase64":  base64.StdEncoding.EncodeToString([]byte(`{"text":"frozen command path"}`)),
@@ -98,6 +100,10 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 	}
 	if err := json.Unmarshal(submitted.Bytes(), &receipt); err != nil || receipt.ID == "" || !strings.HasPrefix(receipt.Digest, "sha256:") {
 		t.Fatalf("submission receipt = %q, %v", submitted.String(), err)
+	}
+	queued, ok := q.Get(receipt.ID)
+	if !ok || !queued.Expires.Equal(subjectExpiry) {
+		t.Fatalf("queued subject expiry = %+v, ok=%v; want %s", queued, ok, subjectExpiry)
 	}
 
 	// The first executor run loses the provider outcome and leaves durable state.
@@ -123,6 +129,31 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 	}
 	if len(x.requests) != 1 || len(x.requests[0].Media) != 1 || string(x.requests[0].Media[0]) != string(frozenMedia) {
 		t.Fatalf("durable frozen media was not preserved across retry: %+v", x.requests)
+	}
+}
+
+func TestSubmitRefusesSubjectExpiryBeyondUnconfirmedBackstop(t *testing.T) {
+	q, err := approval.Open(t.TempDir(), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
+		t.Fatal("submit constructed a publisher")
+		return nil, nil
+	}}
+	payload, _ := json.Marshal(map[string]any{
+		"boardId":    "brd_0123456789abcdef",
+		"subjectId":  "aps_0123456789abcdef",
+		"expiresAt":  time.Now().Add(8 * 24 * time.Hour).UTC().Format(time.RFC3339),
+		"method":     http.MethodPost,
+		"url":        "https://api.x.com/2/tweets",
+		"bodyBase64": base64.StdEncoding.EncodeToString([]byte(`{"text":"too late"}`)),
+		"summary":    "Publish after the local backstop",
+	})
+	var out bytes.Buffer
+	err = Run(context.Background(), []string{"submit"}, bytes.NewReader(payload), &out, runtime)
+	if err == nil || !strings.Contains(err.Error(), "seven-day") || len(q.List()) != 0 {
+		t.Fatalf("submit err=%v output=%q pending=%+v; want refusal before queueing", err, out.String(), q.List())
 	}
 }
 

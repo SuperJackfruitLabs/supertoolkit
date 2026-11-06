@@ -9,79 +9,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var (
-	xWebScheme = regexp.MustCompile(`https?://`)
-	xMediaURL  = regexp.MustCompile(`/status/([^/]+)/((photo)|(video))/[0-9]+(?:$|[?#])`)
-)
-
-type xURLEntity struct {
-	URL         string `json:"url"`
-	ExpandedURL string `json:"expanded_url"`
-	MediaKey    string `json:"media_key"`
-}
-
-type xEntities struct {
-	URLs []xURLEntity `json:"urls"`
-}
-
-type xNoteTweet struct {
-	Text     string    `json:"text"`
-	Entities xEntities `json:"entities"`
-}
-
-func normalizeXText(text string, entities []xURLEntity, postID string) string {
-	normalized := html.UnescapeString(text)
-	for _, entity := range entities {
-		if entity.URL == "" {
-			continue
-		}
-		mediaMatch := xMediaURL.FindStringSubmatch(entity.ExpandedURL)
-		if entity.MediaKey != "" || (len(mediaMatch) > 1 && mediaMatch[1] == postID) {
-			normalized = strings.ReplaceAll(normalized, " "+entity.URL, "")
-			normalized = strings.ReplaceAll(normalized, entity.URL+" ", "")
-			normalized = strings.ReplaceAll(normalized, entity.URL, "")
-			continue
-		}
-		if entity.ExpandedURL != "" {
-			normalized = strings.ReplaceAll(normalized, entity.URL, entity.ExpandedURL)
-		}
-	}
-	return strings.TrimSpace(xWebScheme.ReplaceAllString(normalized, ""))
-}
-
-func normalizeApprovedXText(text string) string {
-	return strings.TrimSpace(xWebScheme.ReplaceAllString(text, ""))
-}
-
-func normalizeXPost(text string, entities xEntities, note xNoteTweet, postID string) string {
-	if note.Text != "" {
-		return normalizeXText(note.Text, note.Entities.URLs, postID)
-	}
-	return normalizeXText(text, entities.URLs, postID)
-}
-
 // GatedRequest is the complete provider request bound by a SuperPipeline gate.
 // Media is ordered: changing an item or its position changes Digest.
 type GatedRequest struct {
-	BoardID   string
-	SubjectID string
-	Method    string
-	URL       string
-	Body      []byte
-	Media     [][]byte
+	BoardID        string
+	SubjectID      string
+	SubjectExpires time.Time
+	Method         string
+	URL            string
+	Body           []byte
+	Media          [][]byte
 }
 
 // Digest length-prefixes every field so no two field boundaries are ambiguous.
@@ -190,6 +138,15 @@ func (q *Queue) retryPath(id string) string { return filepath.Join(q.dir, id+".r
 // supplied again after approval.
 func (q *Queue) SubmitGated(req GatedRequest, summary string) (*Effect, error) {
 	now := q.now()
+	if !req.SubjectExpires.IsZero() && (!req.SubjectExpires.After(now) || req.SubjectExpires.After(now.Add(MaxUnconfirmedGateLifetime))) {
+		return &Effect{State: Refused}, errors.New("SuperPipeline subject expiry must be in the future and within the seven-day unconfirmed gate backstop")
+	}
+	expires := now.Add(gatedBackstopTTL)
+	subjectExpirySet := false
+	if !req.SubjectExpires.IsZero() {
+		expires = req.SubjectExpires
+		subjectExpirySet = true
+	}
 	e := &Effect{
 		ID: newID(), Service: "x", Capability: "post_tweet", Summary: summary,
 		Args: map[string]string{
@@ -197,7 +154,7 @@ func (q *Queue) SubmitGated(req GatedRequest, summary string) (*Effect, error) {
 			"_approval_board":     req.BoardID,
 			"_approval_subject":   req.SubjectID,
 		},
-		Submitted: now, Expires: now.Add(gatedBackstopTTL), State: Pending,
+		Submitted: now, Expires: expires, SubjectExpirySet: subjectExpirySet, State: Pending,
 	}
 	gatedBody, err := json.Marshal(req)
 	if err != nil {

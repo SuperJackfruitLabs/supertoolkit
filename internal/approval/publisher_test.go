@@ -917,6 +917,7 @@ func TestKnownPostIDStillRequiresApprovedContent(t *testing.T) {
 func TestKnownPostIDNormalizesXRepresentations(t *testing.T) {
 	for _, tc := range []struct{ name, approved, body string }{
 		{"media suffix", "with image", `{"data":{"id":"known","text":"with image https://t.co/media","entities":{"urls":[{"url":"https://t.co/media","expanded_url":"https://x.com/fixture/status/1/photo/1","media_key":"3_fixture"}]}}}`},
+		{"own media suffix without media key", "with image", `{"data":{"id":"known","text":"with image https://t.co/media","entities":{"urls":[{"url":"https://t.co/media","expanded_url":"https://x.com/fixture/status/known/photo/1"}]}}}`},
 		{"html escaped", "fish & chips", `{"data":{"id":"known","text":"fish &amp; chips"}}`},
 		{"scheme-less link", "visit example.com/story", `{"data":{"id":"known","text":"visit https://t.co/a","entities":{"urls":[{"url":"https://t.co/a","expanded_url":"http://example.com/story"}]}}}`},
 		{"long note", strings.Repeat("long form ", 40), `{"data":{"id":"known","text":"long form…","note_tweet":{"text":"` + strings.Repeat("long form ", 40) + `"}}}`},
