@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/approval"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/audit"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/credcmd"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/doctor"
@@ -63,6 +64,7 @@ func usage() {
                               what is waiting on you, and decide it
   stk publish submit|perform <id>|recover
                               durable SuperPipeline-gated automatic X publishing
+                              exit 3 means the gate is awaiting a person's decision
   stk ui [--bind addr] [--no-open]
                               the five screens, on a one-time link
   stk doctor                  check the setup, and prove no credential leaks
@@ -147,6 +149,13 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "stk:", err)
-		os.Exit(1)
+		os.Exit(commandExitCode(err))
 	}
+}
+
+func commandExitCode(err error) int {
+	if approval.IsAwaitingDecision(err) {
+		return publishcmd.AwaitingDecisionExitCode
+	}
+	return 1
 }

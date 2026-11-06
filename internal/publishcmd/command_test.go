@@ -194,6 +194,45 @@ func TestRecoverSurfacesRetryAllowedWithoutSendingAgain(t *testing.T) {
 	}
 }
 
+func TestRecoverTerminallyRefusesExpiredUnconfirmedGateWithoutPublisher(t *testing.T) {
+	dir := t.TempDir()
+	q, err := approval.Open(dir, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := approval.GatedRequest{BoardID: "brd_0123456789abcdef", SubjectID: "aps_0123456789abcdef", Method: http.MethodPost, URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"expired"}`)}
+	e, err := q.SubmitGated(req, "expired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Submitted = time.Now().Add(-8 * 24 * time.Hour)
+	e.Expires = e.Submitted.Add(7 * 24 * time.Hour)
+	raw, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "approvals", e.ID+".req"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	factories := 0
+	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
+		factories++
+		return nil, errors.New("publisher must not be constructed")
+	}}
+	var out bytes.Buffer
+	if err := recover(context.Background(), &out, runtime); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := q.Get(e.ID)
+	pub, readErr := os.ReadFile(filepath.Join(dir, "approvals", e.ID+".pub"))
+	if !ok || got.State != approval.Expired || factories != 0 || readErr != nil || !strings.Contains(string(pub), `"outcome":"refused"`) {
+		t.Fatalf("recovered expired effect = %+v, ok=%v, factories=%d, publication=%q, err=%v", got, ok, factories, pub, readErr)
+	}
+	if !strings.Contains(out.String(), `"outcome":"refused"`) {
+		t.Fatalf("recover output = %q", out.String())
+	}
+}
+
 func TestPerformReportsAwaitingDecisionState(t *testing.T) {
 	q, err := approval.Open(t.TempDir(), time.Minute)
 	if err != nil {

@@ -281,6 +281,38 @@ func (q *Queue) writePublication(id string, r publicationRecord) error {
 	return err
 }
 
+// RefuseExpiredUnconfirmed terminally closes a gated effect whose local
+// backstop elapsed before SuperPipeline ever confirmed an expiry. It does not
+// consult the gate or construct a provider.
+func (q *Queue) RefuseExpiredUnconfirmed(id string) (effect *Effect, refused bool, err error) {
+	unlock, err := q.lockPublication(id)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() {
+		if unlockErr := unlock(); err == nil && unlockErr != nil {
+			err = unlockErr
+		}
+	}()
+	e, ok := q.Get(id)
+	if !ok {
+		return nil, false, fmt.Errorf("no effect %q is waiting", id)
+	}
+	if e.State != Expired || e.GateExpirySet {
+		return e, false, nil
+	}
+	req, err := q.GatedRequest(id)
+	if err != nil {
+		return e, false, err
+	}
+	rec := publicationRecord{Outcome: "refused", Error: "unconfirmed SuperPipeline gate exceeded its backstop", RequestDigest: req.Digest()}
+	if err := q.writePublication(id, rec); err != nil {
+		return e, false, err
+	}
+	e.Outcome, e.Error, e.RequestDigest = rec.Outcome, rec.Error, rec.RequestDigest
+	return e, true, nil
+}
+
 // Publisher is the automatic path. Gate holds stk's service-authenticated
 // SuperPipeline client; no caller-provided assertion can replace its answer.
 type Publisher struct {

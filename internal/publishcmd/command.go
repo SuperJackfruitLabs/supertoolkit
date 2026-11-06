@@ -21,6 +21,10 @@ import (
 
 const superPipelineBaseURL = "https://app.superpipeline.dev"
 
+// AwaitingDecisionExitCode tells automation that publishing is safely waiting
+// for a person. It is distinct from both success (0) and failure (1).
+const AwaitingDecisionExitCode = 3
+
 // Runtime carries the durable queue and the broker-owned dependency factory.
 // Publisher is called only after the request has been loaded from disk.
 type Runtime struct {
@@ -148,6 +152,16 @@ func recover(ctx context.Context, out io.Writer, runtime Runtime) error {
 	var first error
 	for _, effect := range runtime.Queue.List() {
 		if _, err := runtime.Queue.GatedRequest(effect.ID); err != nil {
+			continue
+		}
+		if effect.State == approval.Expired && !effect.GateExpirySet {
+			got, refused, err := runtime.Queue.RefuseExpiredUnconfirmed(effect.ID)
+			if got != nil && refused {
+				_ = json.NewEncoder(out).Encode(got)
+			}
+			if err != nil && first == nil {
+				first = err
+			}
 			continue
 		}
 		// A pending gated effect is waiting on a person, not on recovery.
