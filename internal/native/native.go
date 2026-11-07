@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -117,16 +118,30 @@ func (p *Prepared) Send() (*http.Response, error) {
 // connection reuse, compression or replayable request bodies. The managed
 // broker never falls back through the agent's egress configuration.
 func ManagedClient() *http.Client {
+	return &http.Client{Transport: managedStatusTransport{managedTransport()}, Timeout: 30 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
+// managedTransport is one HTTP/1.1 connection per dispatch.
+//
+// HTTP/2 can retry streams after GOAWAY independently of HTTP/1 connection
+// reuse, so managed effects speak HTTP/1.1 only. Restricting Protocols is not
+// enough on its own: the cloned default transport's TLS config still offers
+// "h2" in ALPN, an HTTP/2 server (api.x.com) selects it, and the HTTP/1
+// transport then reads HTTP/2 frames as a malformed response. The handshake
+// must offer only http/1.1.
+func managedTransport() *http.Transport {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
 	tr.DisableKeepAlives = true
 	tr.DisableCompression = true
-	// HTTP/2 can retry streams after GOAWAY independently of HTTP/1 connection
-	// reuse. Managed effects use one HTTP/1 connection and one dispatch only.
 	tr.Protocols = new(http.Protocols)
 	tr.Protocols.SetHTTP1(true)
-	return &http.Client{Transport: managedStatusTransport{tr}, Timeout: 30 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if tr.TLSClientConfig == nil {
+		tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	tr.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	return tr
 }
 
 // ManagedResult is a protocol outcome, never verification that a product effect
