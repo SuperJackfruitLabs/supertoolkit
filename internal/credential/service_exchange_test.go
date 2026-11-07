@@ -123,3 +123,26 @@ func TestServiceExchangeIsSingleFlight(t *testing.T) {
 		t.Errorf("exchanges = %d, want 1", n)
 	}
 }
+
+// A failed connection names its cause, so a refused port, a TLS failure and a
+// cancelled context can be told apart in production — and the stored
+// credential still appears nowhere in the message.
+func TestExchangeServiceTransportErrorKeepsItsCauseButNotTheCredential(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	addr := srv.URL
+	srv.Close() // nothing listens there now
+	_, _, err := ExchangeService(http.DefaultClient, serviceTarget(addr))(context.Background(), "svc", Material{FieldToken: svcSecret})
+	if err == nil || !strings.Contains(err.Error(), "could not reach the service exchange: ") || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("err = %v, want the refused connection named", err)
+	}
+	if strings.Contains(err.Error(), "ZZsecretZZ") || strings.Contains(err.Error(), "ZZstoredZZ") {
+		t.Errorf("err = %v: it leaks the stored credential", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err = ExchangeService(http.DefaultClient, serviceTarget(addr))(ctx, "svc", Material{FieldToken: svcSecret})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want it to wrap context.Canceled", err)
+	}
+}

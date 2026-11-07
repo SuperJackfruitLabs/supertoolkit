@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -54,7 +56,16 @@ func ExchangeService(client *http.Client, lookup func(service string) (ServiceEx
 		c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		resp, err := c.Do(req)
 		if err != nil {
-			return "", time.Time{}, fmt.Errorf("%s: could not reach the service exchange", service)
+			// The cause tells a refused connection from a TLS failure, a timeout
+			// or a cancelled context. It is the inner error of *url.Error, which
+			// carries the URL and the transport cause, never request headers —
+			// the stored credential travels only in Authorization.
+			cause := err
+			var urlErr *url.Error
+			if errors.As(err, &urlErr) {
+				cause = urlErr.Err
+			}
+			return "", time.Time{}, fmt.Errorf("%s: could not reach the service exchange: %w", service, cause)
 		}
 		defer resp.Body.Close()
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
