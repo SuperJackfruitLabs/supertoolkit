@@ -55,6 +55,17 @@ func Verify(args []string) error {
 	if entry.Auth == catalog.AuthNone {
 		return fmt.Errorf("%s is declared auth: none: it holds no credential, so there is nothing to verify", name)
 	}
+	// Verify calls a forge's identity endpoint, and only a forge declares one.
+	// Saying so first matters: reading the store below would otherwise report
+	// a connected OAuth 2.0 or service-exchange credential as missing.
+	if entry.Forge == nil {
+		if asJSON {
+			if err := json.NewEncoder(os.Stdout).Encode(verify.Result{Reason: verify.ReasonUnsupported}); err != nil {
+				return err
+			}
+		}
+		return fmt.Errorf("%s cannot be verified: `stk verify` checks git forges only; `stk audit` shows whether %s's requests succeed", name, name)
+	}
 	dir, err := localstate.Home()
 	if err != nil {
 		return err

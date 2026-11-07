@@ -74,6 +74,11 @@ const (
 	// endpoints, such as anonymous git over HTTPS, where the point is to bound
 	// and record what an agent does rather than to attach a secret.
 	AuthNone
+	// AuthServiceExchange trades a stored service credential for a short-lived
+	// token at an issuer's exchange endpoint, naming the audience it is for, and
+	// substitutes that. The Organization plane's service tokens expire in
+	// minutes, so a stored token could never stay valid: only the exchange can.
+	AuthServiceExchange
 )
 
 func (a Auth) String() string {
@@ -86,6 +91,8 @@ func (a Auth) String() string {
 		return "acquire (OAuth 2.0 refresh)"
 	case AuthNone:
 		return "none (policy and audit only)"
+	case AuthServiceExchange:
+		return "acquire (service token exchange)"
 	default:
 		return "substitute (token)"
 	}
@@ -128,6 +135,8 @@ func (a Auth) Reassurance() string {
 		return "the broker trades the stored refresh token for a short-lived access token; the refresh token only ever reaches the provider's token endpoint, never the API"
 	case AuthNone:
 		return "no credential exists for this service; the broker enforces its rules and records every request"
+	case AuthServiceExchange:
+		return "the broker trades the stored service credential for a token that expires in minutes; the stored credential only ever reaches the issuer's exchange endpoint, never the API"
 	default:
 		return "the stored token is what goes on the wire, so treat it as long-lived"
 	}
@@ -174,6 +183,14 @@ type OAuth2 struct {
 // Supported reports whether the authorization-code path is configured.
 func (o OAuth2) Supported() bool {
 	return o.AuthorizeURL != "" && o.TokenURL != "" && o.ClientID != ""
+}
+
+// ServiceExchange describes an issuer's service-token exchange: the stored
+// credential is presented as a Bearer token to TokenURL with {"audience":
+// Audience}, and the response is {"access_token", "expires_in"}.
+type ServiceExchange struct {
+	TokenURL string
+	Audience string
 }
 
 // Hosts is every hostname the broker intercepts for this service.
@@ -252,6 +269,8 @@ type Entry struct {
 	Device Device
 	// OAuth2 is the authorization-code path, used when Auth is AuthOAuth2.
 	OAuth2 OAuth2
+	// Exchange is the issuer's exchange, used when Auth is AuthServiceExchange.
+	Exchange ServiceExchange
 	// RevokeURL is a provider endpoint that invalidates a token, where one
 	// exists and we can reach it. Empty means we cannot revoke on the
 	// operator's behalf, and `stk revoke` says so rather than implying the
@@ -273,6 +292,19 @@ type Entry struct {
 	// Forge is set only for a service defined in configuration with
 	// `kind: forge`. Built-ins leave it nil.
 	Forge *ForgeInfo
+}
+
+// superPipelineServiceExchange is where the publisher's two SuperPipeline
+// credentials become tokens: the Organization plane signs a service token for
+// SuperPipeline's audience, valid for minutes.
+const (
+	planeExchangeEndpoint = "https://accounts.superjackfruit.com/api/token/service"
+	superPipelineAudience = "https://app.superpipeline.dev"
+)
+
+var superPipelineServiceExchange = ServiceExchange{
+	TokenURL: planeExchangeEndpoint,
+	Audience: superPipelineAudience,
 }
 
 // builtin is deliberately short. Breadth is not the product: there are hundreds
@@ -323,7 +355,7 @@ var builtin = map[string]*Entry{
 	"superpipeline-approvals-read": {
 		RevokeAt: "https://accounts.superjackfruit.com",
 		Name:     "superpipeline-approvals-read", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_READ_TOKEN",
-		Placement: BearerHeader, Auth: AuthToken, NativeOnly: true,
+		Placement: BearerHeader, Auth: AuthServiceExchange, Exchange: superPipelineServiceExchange, NativeOnly: true,
 		Capabilities: []Capability{{
 			Name: "verify_approval", Kind: Read, Method: "POST",
 			Path:    "/v1/boards/{board}/approval-subjects/{subject}/verify",
@@ -334,7 +366,7 @@ var builtin = map[string]*Entry{
 	"superpipeline-approvals-write": {
 		RevokeAt: "https://accounts.superjackfruit.com",
 		Name:     "superpipeline-approvals-write", Host: "app.superpipeline.dev", EnvVar: "SUPERPIPELINE_APPROVALS_WRITE_TOKEN",
-		Placement: BearerHeader, Auth: AuthToken, NativeOnly: true,
+		Placement: BearerHeader, Auth: AuthServiceExchange, Exchange: superPipelineServiceExchange, NativeOnly: true,
 		Capabilities: []Capability{{
 			Name: "record_delivery", Kind: Write, Method: "POST",
 			Path:    "/v1/boards/{board}/approval-subjects/{subject}/delivery",

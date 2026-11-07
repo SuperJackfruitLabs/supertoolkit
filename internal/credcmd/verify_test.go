@@ -220,3 +220,25 @@ func TestVerifyAppCommandRepositoryMissing(t *testing.T) {
 		t.Error("the output names a repository")
 	}
 }
+
+// A connected OAuth 2.0 credential was reported as "no stored credential",
+// because verify read it as a token before learning it could not verify a
+// non-forge service at all. It must say what it cannot do instead.
+func TestVerifyCommandRefusesANonForgeServiceWithoutCallingItMissing(t *testing.T) {
+	home := clitest.ForgeEnv(t)
+	store, err := credential.OpenStore(home, "test-passphrase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PutMaterial("x", credential.Material{credential.FieldClientID: "cid", credential.FieldRefreshToken: "ZZ-refresh-ZZ"}); err != nil {
+		t.Fatal(err)
+	}
+	var verr error
+	clitest.WithStdin(t, "", func() { verr = Verify([]string{"x"}) })
+	if verr == nil || !strings.Contains(verr.Error(), "checks git forges only") {
+		t.Fatalf("error = %v, want a refusal naming forges only", verr)
+	}
+	if strings.Contains(verr.Error(), "no stored credential") || strings.Contains(verr.Error(), "ZZ-refresh-ZZ") {
+		t.Errorf("error = %v: it calls a connected credential missing, or leaks it", verr)
+	}
+}
