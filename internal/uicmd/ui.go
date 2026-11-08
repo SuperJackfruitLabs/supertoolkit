@@ -14,6 +14,7 @@ import (
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/audit"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/catalog"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/controlplane"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/daemon"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/doctor"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/localstate"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
@@ -66,7 +67,8 @@ func Command(args []string, version string) error {
 		},
 		// Approving here performs the effect here, in this process, which is
 		// the whole point: the agent that asked may be long gone.
-		Decide: svc.DecideAndPerform,
+		Decide:  svc.DecideAndPerform,
+		Decider: daemon.Identity(os.Getuid()) + " via stk ui",
 	})
 	assets, haveAssets := webui.Assets()
 	var assetHandler http.Handler

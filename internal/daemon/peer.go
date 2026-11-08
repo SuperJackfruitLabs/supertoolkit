@@ -5,7 +5,22 @@ package daemon
 import (
 	"fmt"
 	"net"
+	"os/user"
+	"strconv"
 )
+
+// Identity names a kernel-reported uid for the record: "name (uid N)", or
+// "uid N" when the account has no name. It is what a decision records as its
+// decider — never a name the caller sent, which anyone can choose.
+func Identity(uid int) string {
+	if uid < 0 {
+		return "unknown uid"
+	}
+	if u, err := user.LookupId(strconv.Itoa(uid)); err == nil && u.Username != "" {
+		return fmt.Sprintf("%s (uid %d)", u.Username, uid)
+	}
+	return fmt.Sprintf("uid %d", uid)
+}
 
 // PeerUID reports the uid of the process at the other end of a Unix socket.
 //

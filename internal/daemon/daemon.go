@@ -55,14 +55,28 @@ var Methods = []string{
 	"reload",
 }
 
+// OperatorMethods are the methods only an operator uid may call. An agent uid
+// may submit, list and execute, but it may never decide: until this existed the
+// socket's uid allowlist was the only gate on approvals.decide, and station
+// mode puts every agent's uid on that list, so an agent could approve its own
+// write.
+//
+// reload is deliberately not here. It applies the policy file the operator
+// wrote and cannot change what that file says; the node agent that delivers
+// grants calls it as the agents' uid.
+var OperatorMethods = map[string]bool{
+	"approvals.decide": true,
+}
+
 // Server is the control plane.
 type Server struct {
 	sock string
 	h    Handler
 	ln   net.Listener
 
-	allow []int
-	peer  func(net.Conn) (int, error)
+	allow     []int
+	operators []int
+	peer      func(net.Conn) (int, error)
 
 	mu     sync.Mutex
 	closed bool
@@ -83,6 +97,10 @@ type Options struct {
 	// uids. A connection from any other uid is closed before a request is read.
 	// Empty keeps the socket's own 0600 mode as the only gate.
 	AllowUIDs []int
+	// OperatorUIDs alone may call the OperatorMethods, and may connect even
+	// when they are not on AllowUIDs. Empty means DefaultOperatorUIDs: root and
+	// the uid the daemon runs as, unless either is an agent uid.
+	OperatorUIDs []int
 	// PeerUID reads the caller's uid. Nil means the kernel's answer; tests
 	// inject a fake.
 	PeerUID func(net.Conn) (int, error)
@@ -121,7 +139,47 @@ func ListenWith(sock string, h Handler, opts Options) (*Server, error) {
 	if peer == nil {
 		peer = PeerUID
 	}
-	return &Server{sock: sock, h: h, ln: ln, allow: append([]int(nil), opts.AllowUIDs...), peer: peer}, nil
+	operators := append([]int(nil), opts.OperatorUIDs...)
+	if len(operators) == 0 {
+		operators = DefaultOperatorUIDs(opts.AllowUIDs)
+	}
+	return &Server{sock: sock, h: h, ln: ln, allow: append([]int(nil), opts.AllowUIDs...),
+		operators: operators, peer: peer}, nil
+}
+
+// DefaultOperatorUIDs is who decides when no operator is named: root, and the
+// uid the daemon runs as (the service user, which holds the store anyway). A
+// uid that is also an agent uid is left out, so naming yourself as an agent
+// never makes the agent an operator.
+func DefaultOperatorUIDs(agents []int) []int {
+	var out []int
+	for _, uid := range []int{0, os.Getuid()} {
+		if contains(agents, uid) || contains(out, uid) {
+			continue
+		}
+		out = append(out, uid)
+	}
+	return out
+}
+
+// CheckOperatorUIDs refuses a uid that is named both as an agent and as an
+// operator: it would let that agent decide its own approvals.
+func CheckOperatorUIDs(agents, operators []int) error {
+	for _, uid := range operators {
+		if contains(agents, uid) {
+			return fmt.Errorf("uid %d is both an agent uid and an operator uid; an agent must never decide approvals", uid)
+		}
+	}
+	return nil
+}
+
+func contains(list []int, uid int) bool {
+	for _, v := range list {
+		if v == uid {
+			return true
+		}
+	}
+	return false
 }
 
 // Addr is the socket path.
@@ -160,12 +218,14 @@ func (s *Server) handle(conn net.Conn) {
 	if len(s.allow) > 0 {
 		// Fail closed: an unreadable uid is not on the list. The refusal is
 		// only a closed connection, so it tells the caller nothing.
-		if err != nil || !s.allowed(uid) {
+		if err != nil || (!contains(s.allow, uid) && !contains(s.operators, uid)) {
 			return
 		}
 	} else if err != nil {
 		uid = -1
 	}
+	// An unreadable uid is -1 by now, which is never an operator.
+	operator := contains(s.operators, uid)
 	dec := json.NewDecoder(bufio.NewReader(conn))
 	enc := json.NewEncoder(conn)
 	for {
@@ -173,20 +233,17 @@ func (s *Server) handle(conn net.Conn) {
 		if err := dec.Decode(&req); err != nil {
 			return
 		}
-		resp := s.h(uid, req)
+		var resp Response
+		if OperatorMethods[req.Method] && !operator {
+			// Refused here, before the handler, so no handler can forget it.
+			resp = Response{Error: fmt.Sprintf("%s is reserved for an operator; uid %d is not one", req.Method, uid)}
+		} else {
+			resp = s.h(uid, req)
+		}
 		if err := enc.Encode(resp); err != nil {
 			return
 		}
 	}
-}
-
-func (s *Server) allowed(uid int) bool {
-	for _, a := range s.allow {
-		if a == uid {
-			return true
-		}
-	}
-	return false
 }
 
 // Client is a connection to the daemon.

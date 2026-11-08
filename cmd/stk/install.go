@@ -14,7 +14,7 @@ import (
 )
 
 const installUsage = "usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] " +
-	"[--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run]"
+	"[--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--operator-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run]"
 
 func parseInstallArgs(args []string) (install.Plan, bool, error) {
 	p := install.Plan{StateDir: "/var/lib/stk", RuntimeDir: "/run/stk",
@@ -50,6 +50,12 @@ func parseInstallArgs(args []string) (install.Plan, bool, error) {
 				return p, false, fmt.Errorf("--agent-uid wants a non-negative integer, got %q", val)
 			}
 			p.AgentUIDs = append(p.AgentUIDs, n)
+		case "--operator-uid":
+			n, err := strconv.Atoi(val)
+			if err != nil || n < 0 {
+				return p, false, fmt.Errorf("--operator-uid wants a non-negative integer, got %q", val)
+			}
+			p.OperatorUIDs = append(p.OperatorUIDs, n)
 		case "--unit-name":
 			p.UnitName = val
 		case "--proxy-port":

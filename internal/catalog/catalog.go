@@ -350,7 +350,10 @@ var builtin = map[string]*Entry{
 	// --- SuperPipeline publisher service credentials ---
 	//
 	// Separate catalogue identities keep the gate-confirmation credential
-	// read-scoped even though delivery recording needs approvals:write. Both
+	// read-scoped even though delivery recording needs approvals:write.
+	// Hosted approvals use the same two services with SuperPipeline's
+	// approval-requests scopes: write (approval-requests:write) creates the
+	// approval request, read (approval-requests:read) reads its decision back. Both
 	// stay inside stk's native transport and are never returned to the command.
 	"superpipeline-approvals-read": {
 		RevokeAt: "https://accounts.superjackfruit.com",
@@ -361,6 +364,11 @@ var builtin = map[string]*Entry{
 			Path:    "/v1/boards/{board}/approval-subjects/{subject}/verify",
 			Summary: "Confirm an automatic approval and its exact outbound request digest.",
 			Params:  []Param{{Name: "board", Required: true}, {Name: "subject", Required: true}},
+		}, {
+			Name: "read_approval_request", Kind: Read, Method: "GET",
+			Path:    "/v1/boards/{board}/approval-requests/{request}",
+			Summary: "Read back the decision on an approval request stk hosted on the board.",
+			Params:  []Param{{Name: "board", Required: true}, {Name: "request", Required: true}},
 		}},
 	},
 	"superpipeline-approvals-write": {
@@ -372,6 +380,11 @@ var builtin = map[string]*Entry{
 			Path:    "/v1/boards/{board}/approval-subjects/{subject}/delivery",
 			Summary: "Record a provider-verified automatic delivery URL.",
 			Params:  []Param{{Name: "board", Required: true}, {Name: "subject", Required: true}},
+		}, {
+			Name: "create_approval_request", Kind: Write, Method: "POST",
+			Path:    "/v1/boards/{board}/approval-requests",
+			Summary: "Host one of stk's approvals on the board, for a workspace owner or admin to decide.",
+			Params:  []Param{{Name: "board", Required: true}},
 		}},
 	},
 	// --- X ---

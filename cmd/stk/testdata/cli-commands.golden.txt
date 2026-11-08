@@ -391,7 +391,7 @@ $ stk serve --bogus
 exit 1
 --- stdout
 --- stderr
-stk: serve: unknown argument "--bogus" (usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--socket-mode 0600|0660] [--local-commands-socket <absolute path>] [--local-commands-mode 0600|0660])
+stk: serve: unknown argument "--bogus" (usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--operator-uid <n>]... [--socket-mode 0600|0660] [--local-commands-socket <absolute path>] [--local-commands-mode 0600|0660])
 
 
 $ stk serve --proxy-listen

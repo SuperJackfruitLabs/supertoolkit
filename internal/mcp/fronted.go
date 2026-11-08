@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/approval"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcphost"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/policy"
 )
@@ -92,7 +93,22 @@ func (s *Server) executeFronted(ctx context.Context, server, action, rawArgs str
 		if summary == "" {
 			summary = server + "/" + action
 		}
-		e := s.queue.Submit(server, action, describeArgs(summary, args), args)
+		bound := approval.ToolCapabilityRequest(server, action, s.profile.Name, args)
+		sub := approval.Submission{
+			Service: server, Capability: action, Summary: describeArgs(summary, args), Args: args,
+			Profile: s.profile.Name, Requester: s.requester, Digest: bound.Digest(),
+			Target: bound.URL,
+		}
+		if s.hosting != nil {
+			sub.HostedBoard = s.hosting.Board
+		}
+		e := s.queue.SubmitRequest(sub)
+		if e.State != approval.Pending {
+			return errText("the approval could not be queued, so nothing was done")
+		}
+		if s.hosting != nil {
+			return s.host(ctx, e)
+		}
 		if s.waitFor <= 0 {
 			return obj(map[string]any{
 				"state": "pending", "id": e.ID,
@@ -116,6 +132,9 @@ func (s *Server) executeFronted(ctx context.Context, server, action, rawArgs str
 				out["note"] = "approved, but carrying it out failed"
 			}
 			return obj(out)
+		}
+		if err := s.verifyStored(e.ID, bound); err != nil {
+			return errText("%v", err)
 		}
 	}
 

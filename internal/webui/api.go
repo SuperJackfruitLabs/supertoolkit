@@ -40,6 +40,9 @@ type Deps struct {
 	// something that never happens, which is a false statement in the audit
 	// trail rather than a missing feature.
 	Decide func(id string, allow bool, who string) (*approval.Effect, error)
+	// Decider is who a decision made here is recorded as: the OS identity of
+	// the process serving this interface. A name in the request is ignored.
+	Decider string
 }
 
 // Check is one status line.
@@ -275,31 +278,33 @@ func (d Deps) setPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) decide(w http.ResponseWriter, r *http.Request) {
+	// A `who` in the body is ignored: the decider is the identity of the
+	// process serving this interface, which had to open the store to run.
 	var p struct {
 		ID    string `json:"id"`
 		Allow bool   `json:"allow"`
-		Who   string `json:"who"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		fail(w, http.StatusBadRequest, "could not read the request: %v", err)
 		return
 	}
-	if p.Who == "" {
-		p.Who = "web"
+	who := d.Decider
+	if who == "" {
+		who = "stk ui"
 	}
 	if d.Decide == nil {
 		fail(w, http.StatusInternalServerError,
 			"this interface cannot carry out an approval, so it will not record one — restart `stk ui`")
 		return
 	}
-	e, err := d.Decide(p.ID, p.Allow, p.Who)
+	e, err := d.Decide(p.ID, p.Allow, who)
 	if err != nil && e == nil {
 		fail(w, http.StatusConflict, "%v", err)
 		return
 	}
 	// The response says what happened, not only what was decided. An approval
 	// whose effect failed is reported as such rather than as a plain success.
-	res := map[string]string{"id": p.ID, "state": string(e.State), "by": p.Who, "outcome": e.Outcome}
+	res := map[string]string{"id": p.ID, "state": string(e.State), "by": e.DecidedBy, "outcome": e.Outcome}
 	if e.Error != "" {
 		res["error"] = e.Error
 	}

@@ -26,6 +26,9 @@ import (
 type serveArgs struct {
 	listen    string
 	allowUIDs []int
+	// operatorUIDs alone may decide approvals. Empty means the daemon's
+	// default: root and the uid it runs as, unless either is an agent uid.
+	operatorUIDs []int
 	// socketMode is the control socket's file mode. 0600 by default; an
 	// install under its own user passes 0660 so the agent's group can reach
 	// the socket at all, while --allow-uid stays the authorisation.
@@ -36,7 +39,7 @@ type serveArgs struct {
 	localCommandsMode   os.FileMode
 }
 
-const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--socket-mode 0600|0660] [--local-commands-socket <absolute path>] [--local-commands-mode 0600|0660]"
+const serveUsage = "usage: stk serve [--proxy-listen <loopback host:port>] [--allow-uid <n>]... [--operator-uid <n>]... [--socket-mode 0600|0660] [--local-commands-socket <absolute path>] [--local-commands-mode 0600|0660]"
 
 // parseSocketMode accepts only owner rw, optionally plus group rw. Anything
 // reachable by other users, or with execute or special bits, is refused: the
@@ -67,8 +70,28 @@ func parseServeArgs(args []string) (serveArgs, error) {
 		o.allowUIDs = append(o.allowUIDs, n)
 		return nil
 	}
+	addOperator := func(v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return fmt.Errorf("--operator-uid wants a non-negative integer, got %q", v)
+		}
+		o.operatorUIDs = append(o.operatorUIDs, n)
+		return nil
+	}
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
+		case a == "--operator-uid" || strings.HasPrefix(a, "--operator-uid="):
+			v, ok := strings.CutPrefix(a, "--operator-uid=")
+			if !ok {
+				if i+1 >= len(args) {
+					return o, fmt.Errorf("--operator-uid needs a uid")
+				}
+				i++
+				v = args[i] // #nosec G602 -- i+1 was bounds-checked before i was incremented.
+			}
+			if err := addOperator(v); err != nil {
+				return o, err
+			}
 		case a == "--proxy-listen":
 			if i+1 >= len(args) {
 				return o, fmt.Errorf("--proxy-listen needs a loopback host:port")
@@ -131,6 +154,9 @@ func parseServeArgs(args []string) (serveArgs, error) {
 		default:
 			return o, fmt.Errorf("serve: unknown argument %q (%s)", a, serveUsage)
 		}
+	}
+	if err := daemon.CheckOperatorUIDs(o.allowUIDs, o.operatorUIDs); err != nil {
+		return o, err
 	}
 	return o, nil
 }
@@ -204,7 +230,8 @@ func Command(args []string, version string) error {
 	}
 
 	sock := localstate.SocketPath(dir)
-	d, err := daemon.ListenWith(sock, svc.Handle, daemon.Options{AllowUIDs: sa.allowUIDs, SocketMode: sa.socketMode})
+	d, err := daemon.ListenWith(sock, svc.Handle, daemon.Options{
+		AllowUIDs: sa.allowUIDs, OperatorUIDs: sa.operatorUIDs, SocketMode: sa.socketMode})
 	if err != nil {
 		return err
 	}
@@ -213,6 +240,17 @@ func Command(args []string, version string) error {
 	fmt.Printf("  listening on %s (%04o, owner uid %d)\n", sock, sa.socketMode, os.Getuid())
 	if len(sa.allowUIDs) > 0 {
 		fmt.Printf("  callers limited to uid(s) %v\n", sa.allowUIDs)
+	} else {
+		// Said every time, because the operator gate is only as real as the
+		// uid split under it: with no agent uids named, an agent running as
+		// this daemon's own uid is an operator and can decide its own writes.
+		fmt.Println("  warning: no --allow-uid, so any process running as this uid (an agent too) can decide approvals;")
+		fmt.Println("           approvals are enforced only when agents run as their own uids (stk install)")
+	}
+	if len(sa.operatorUIDs) > 0 {
+		fmt.Printf("  approvals decided only by operator uid(s) %v\n", sa.operatorUIDs)
+	} else {
+		fmt.Println("  approvals decided only by root and this daemon's own uid, unless an agent uid")
 	}
 	fmt.Printf("  workspace %q · %d service(s) · %d profile(s)\n", cfg.Workspace, len(cfg.Services()), len(cfg.Profiles()))
 	if listen != "" {
@@ -220,6 +258,12 @@ func Command(args []string, version string) error {
 	}
 	fmt.Printf("  %d meta-tools exposed to agents\n", len(mcp.ToolNames))
 	fmt.Println("  ctrl-C to stop")
+
+	// Hosted approvals are read back and performed here, the long-lived
+	// process. It does nothing while the policy names no approvals board.
+	watchCtx, stopWatch := context.WithCancel(context.Background())
+	defer stopWatch()
+	go svc.WatchHosted(watchCtx, func(m string) { fmt.Fprintln(os.Stderr, "  "+m) })
 
 	errc := make(chan error, 1)
 	go func() { errc <- d.Serve() }()

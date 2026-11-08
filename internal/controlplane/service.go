@@ -39,6 +39,8 @@ type Service struct {
 	// hosts are children we did not write, started lazily and kept running.
 	hostsMu sync.Mutex
 	hosts   map[string]*mcphost.Host
+	// fronted replaces FrontedServer for a hosted tool call in tests.
+	fronted func(name string) (mcp.FrontedServer, error)
 	// ChildEnvFor builds a child's environment. Set by the caller, because the
 	// proxy address is only known once the broker is listening.
 	ChildEnvFor func(server string) []string
@@ -163,6 +165,8 @@ func (s *Service) Handle(uid int, r daemon.Request) daemon.Response {
 		Config: cfg, Profile: prof, Queue: s.Queue, Exec: s.Perform,
 		Servers:      s.FrontedServer,
 		ApprovalWait: 0, // the MCP caller gets `pending`; a human decides out of band
+		Requester:    daemon.Identity(uid),
+		Hosting:      s.Hosting(),
 	})
 	if err != nil {
 		return daemon.Response{Error: err.Error()}
@@ -195,18 +199,21 @@ func (s *Service) Handle(uid int, r daemon.Request) daemon.Response {
 		out, _ := json.Marshal(s.Queue.List())
 		return daemon.Response{Result: out}
 	case "approvals.decide":
+		// The daemon has already refused this method to anyone but an operator
+		// uid. The decider recorded is that uid's own identity, from the
+		// kernel: a `who` in the params is ignored, because a name the caller
+		// chooses is no record of who decided.
 		var p struct {
 			ID    string `json:"id"`
 			Allow bool   `json:"allow"`
-			Who   string `json:"who"`
 		}
 		// Unreadable params leave p zero: an empty id, which matches no waiting effect.
 		_ = json.Unmarshal(r.Params, &p)
-		e, err := s.decideAndPerformCtx(audit.WithCallerUID(context.Background(), uid), p.ID, p.Allow, p.Who)
+		e, err := s.decideAndPerformCtx(audit.WithCallerUID(context.Background(), uid), p.ID, p.Allow, daemon.Identity(uid))
 		if err != nil && e == nil {
 			return daemon.Response{Error: err.Error()}
 		}
-		res := map[string]string{"id": p.ID, "state": string(e.State), "outcome": e.Outcome}
+		res := map[string]string{"id": p.ID, "state": string(e.State), "outcome": e.Outcome, "by": e.DecidedBy}
 		if e.Error != "" {
 			res["error"] = e.Error
 		}
@@ -243,6 +250,9 @@ func (s *Service) Handle(uid int, r daemon.Request) daemon.Response {
 // approval causes its effect regardless of who is still listening.
 func (s *Service) performApproved(ctx context.Context, e *approval.Effect) (string, error) {
 	cfg := s.config()
+	if cfg.IsServer(e.Service) && e.HostedBoard != "" {
+		return s.performHostedTool(ctx, e)
+	}
 	if cfg.IsServer(e.Service) {
 		// A fronted server's action is executed by its own child process, which
 		// this process may not be running. Saying so is better than a silent
@@ -258,6 +268,16 @@ func (s *Service) performApproved(ctx context.Context, e *approval.Effect) (stri
 	req, err := svc.Entry().Request(e.Capability, e.Args)
 	if err != nil {
 		return "", err
+	}
+	// What is about to be sent must be what was approved: the same service,
+	// capability, profile, target and arguments, hashed the same way. A
+	// policy reload, a catalogue change or an edited record all show here.
+	bound, err := approval.HTTPCapabilityRequest(e.Service, e.Capability, e.Profile, e.Args, req)
+	if err != nil {
+		return "refused", err
+	}
+	if err := approval.VerifyDigest(e, bound); err != nil {
+		return "refused", err
 	}
 	resp, err := s.Perform(ctx, e.Service, req.WithContext(ctx))
 	if err != nil {
@@ -278,6 +298,12 @@ func (s *Service) DecideAndPerform(id string, allow bool, who string) (*approval
 // decideAndPerformCtx is decideAndPerform with the caller's context, so the
 // effect's audit row names who asked.
 func (s *Service) decideAndPerformCtx(parent context.Context, id string, allow bool, who string) (*approval.Effect, error) {
+	// With an approvals board configured, nothing is decided locally — not
+	// even an effect queued before the reload that added the board, which has
+	// no hosted marker of its own. It waits and expires.
+	if board := s.config().ApprovalsBoard(); board != "" {
+		return nil, fmt.Errorf("approvals on this host are decided on SuperPipeline board %s; effect %q cannot be decided locally", board, id)
+	}
 	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 	// The outcome is recorded whether it succeeded or not: "approved, and it

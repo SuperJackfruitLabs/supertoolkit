@@ -39,6 +39,9 @@ func Unit(p Plan) string {
 	for _, uid := range p.AgentUIDs {
 		fmt.Fprintf(&exec, " --allow-uid %d", uid)
 	}
+	for _, uid := range p.OperatorUIDs {
+		fmt.Fprintf(&exec, " --operator-uid %d", uid)
+	}
 	// /run is a tmpfs: without RuntimeDirectory= the directory (and its group
 	// mode) is gone after a reboot and the daemon would recreate it 0700.
 	runtime := ""

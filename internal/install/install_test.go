@@ -492,3 +492,19 @@ func TestReportTellsOperatorToAddAgentsToGroup(t *testing.T) {
 		t.Error("install ran usermod")
 	}
 }
+
+func TestUnitNamesOperatorUIDs(t *testing.T) {
+	p := Plan{User: "stk", StateDir: "/var/lib/stk", RuntimeDir: "/run/stk", ConfigPath: "/etc/stk/supertoolkit.yaml",
+		AgentUIDs: []int{1001}, OperatorUIDs: []int{1000}, Binary: "/usr/local/bin/stk", ProxyPort: 8899}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if u := Unit(p); !strings.Contains(u, "--allow-uid 1001 --operator-uid 1000") {
+		t.Fatalf("unit does not name the operator uid:\n%s", u)
+	}
+	// An agent can never also be an operator.
+	p.OperatorUIDs = []int{1001}
+	if err := p.Validate(); err == nil {
+		t.Fatal("a plan naming an agent uid as an operator was accepted")
+	}
+}

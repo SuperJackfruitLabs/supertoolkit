@@ -57,7 +57,11 @@ type Server struct {
 	exec    Executor
 	servers func(name string) (FrontedServer, error)
 	waitFor time.Duration
-	mu      sync.Mutex
+	// requester is who is asking, as the kernel reports it; it is recorded on
+	// every approval so the person deciding knows which agent wants this.
+	requester string
+	hosting   *approval.Host
+	mu        sync.Mutex
 }
 
 // Options configure a server.
@@ -72,6 +76,14 @@ type Options struct {
 	// ApprovalWait is how long execute_action blocks for a decision before
 	// returning `pending`. Zero returns immediately.
 	ApprovalWait time.Duration
+	// Requester is the caller's kernel-reported identity, recorded on each
+	// approval. It describes; it grants nothing.
+	Requester string
+	// Hosting, when set, hosts every approval (catalogue capability or fronted
+	// tool) on a
+	// SuperPipeline board: SuperPipeline decides it, and no local decision is
+	// accepted. Nil keeps approvals local.
+	Hosting *approval.Host
 }
 
 // NewServer builds a server.
@@ -80,7 +92,8 @@ func NewServer(o Options) (*Server, error) {
 		return nil, fmt.Errorf("mcp: Config, Profile, Queue and Exec are all required")
 	}
 	return &Server{cfg: o.Config, profile: o.Profile, queue: o.Queue, exec: o.Exec,
-		servers: o.Servers, waitFor: o.ApprovalWait}, nil
+		servers: o.Servers, waitFor: o.ApprovalWait, requester: o.Requester,
+		hosting: o.Hosting}, nil
 }
 
 // --- JSON-RPC 2.0 ---
@@ -376,7 +389,8 @@ func (s *Server) execute(ctx context.Context, category, action, rawArgs string) 
 	// person's attention on a decision that cannot take effect is worse than
 	// refusing it now — they would approve something, watch nothing happen, and
 	// have no idea why.
-	if _, err := svc.Entry().Request(action, args); err != nil {
+	built, err := svc.Entry().Request(action, args)
+	if err != nil {
 		return errText("%v", err)
 	}
 
@@ -385,7 +399,27 @@ func (s *Server) execute(ctx context.Context, category, action, rawArgs string) 
 	case policy.ActionDeny:
 		return errText("%s/%s is denied on this workspace", category, action)
 	case policy.ActionApproval:
-		e := s.queue.Submit(category, action, describe(c, args), args)
+		// The approval binds this exact request: its digest is stored now and
+		// checked against the request actually sent after any decision.
+		bound, err := approval.HTTPCapabilityRequest(category, action, s.profile.Name, args, built)
+		if err != nil {
+			return errText("%v", err)
+		}
+		sub := approval.Submission{
+			Service: category, Capability: action, Summary: describe(c, args), Args: args,
+			Profile: s.profile.Name, Requester: s.requester, Digest: bound.Digest(),
+			Target: bound.Method + " " + bound.URL,
+		}
+		if s.hosting != nil {
+			sub.HostedBoard = s.hosting.Board
+		}
+		e := s.queue.SubmitRequest(sub)
+		if e.State != approval.Pending {
+			return errText("the approval could not be queued, so nothing was done")
+		}
+		if s.hosting != nil {
+			return s.host(ctx, e)
+		}
 		if s.waitFor <= 0 {
 			return obj(map[string]any{
 				"state": "pending", "id": e.ID,
@@ -417,8 +451,41 @@ func (s *Server) execute(ctx context.Context, category, action, rawArgs string) 
 			}
 			return obj(out)
 		}
+		if err := s.verifyStored(e.ID, bound); err != nil {
+			return errText("%v", err)
+		}
 	}
 	return s.perform(ctx, category, svc, action, args)
+}
+
+// verifyStored re-checks, before a waiter performs an approval nobody else
+// performed, that the approval on record binds the request about to be sent.
+// The record is read again from the queue: it is what the person decided on.
+func (s *Server) verifyStored(id string, bound approval.CapabilityRequest) error {
+	stored, ok := s.queue.Get(id)
+	if !ok {
+		return fmt.Errorf("the approval %q is gone, so nothing was done", id)
+	}
+	return approval.VerifyDigest(stored, bound)
+}
+
+// host creates the approval request on SuperPipeline now, so it reaches a
+// person straight away. Failing to reach SuperPipeline leaves the effect
+// pending and hosted: the watcher retries the create until the effect expires,
+// and no local decision is ever accepted in the meantime.
+func (s *Server) host(ctx context.Context, e *approval.Effect) toolResult {
+	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	out := map[string]any{"state": "pending", "id": e.ID, "decided_on": "superpipeline", "board": s.hosting.Board,
+		"expires": e.Expires.UTC().Format(time.RFC3339)}
+	if apr, err := s.hosting.Publish(cctx, e); err != nil {
+		out["note"] = "a workspace owner or admin must approve this in SuperPipeline; it could not be reached yet, " +
+			"and stk keeps trying until the request expires. Nothing has been done."
+	} else {
+		out["approval_request_id"] = apr
+		out["note"] = "a workspace owner or admin must approve this in SuperPipeline; nothing has been done yet"
+	}
+	return obj(out)
 }
 
 func (s *Server) perform(ctx context.Context, category string, svc *policy.Service, action string, args map[string]string) toolResult {

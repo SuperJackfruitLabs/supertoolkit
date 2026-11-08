@@ -50,10 +50,17 @@ type Effect struct {
 	Capability string `json:"capability"`
 	// Summary is what a human reads before deciding. It must describe the
 	// effect, never carry a credential.
-	Summary   string            `json:"summary"`
-	Args      map[string]string `json:"args,omitempty"`
-	Submitted time.Time         `json:"submitted"`
-	Expires   time.Time         `json:"expires"`
+	Summary string            `json:"summary"`
+	Args    map[string]string `json:"args,omitempty"`
+	// Profile is the profile the request was made under, and Requester the
+	// kernel-reported identity of who made it. Both are part of what a person
+	// is shown; Profile is part of the request digest.
+	Profile   string `json:"profile,omitempty"`
+	Requester string `json:"requester,omitempty"`
+	// Target is the method and URL the request goes to, for the person deciding.
+	Target    string    `json:"target,omitempty"`
+	Submitted time.Time `json:"submitted"`
+	Expires   time.Time `json:"expires"`
 
 	State     State     `json:"state"`
 	DecidedBy string    `json:"decided_by,omitempty"`
@@ -87,6 +94,12 @@ type Effect struct {
 	// Performs says the decider is carrying the effect out, so a waiter must
 	// report the result rather than act on it. Exactly one party performs.
 	Performs bool `json:"performs,omitempty"`
+
+	// HostedBoard is the SuperPipeline board deciding this effect, read from
+	// the hosted marker; set, no local decision is accepted. ApprovalRequestID
+	// is SuperPipeline's id for it once created.
+	HostedBoard       string `json:"hosted_board,omitempty"`
+	ApprovalRequestID string `json:"approval_request_id,omitempty"`
 }
 
 // Decision is the outcome of waiting.
@@ -186,16 +199,46 @@ type outcome struct {
 	Error   string `json:"error"`
 }
 
-// Submit queues an effect and returns it.
+// Submit queues an effect that binds no request. It is kept for callers that
+// only answer (tests); such an effect can never be performed by a decider,
+// because VerifyDigest refuses an effect with no digest.
 func (q *Queue) Submit(service, capability, summary string, args map[string]string) *Effect {
+	return q.SubmitRequest(Submission{Service: service, Capability: capability, Summary: summary, Args: args})
+}
+
+// Submission is one effect to queue, bound to the exact request it would send.
+type Submission struct {
+	Service, Capability, Summary string
+	Args                         map[string]string
+	Profile, Requester, Target   string
+	// Digest is the CapabilityRequest digest of the request, computed by the
+	// caller that built it.
+	Digest string
+	// HostedBoard, when set, makes SuperPipeline the only place this effect can
+	// be decided: the hosted marker is written before the request is visible,
+	// so there is no moment at which a local decision could claim it.
+	HostedBoard string
+}
+
+// SubmitRequest queues an effect and returns it.
+func (q *Queue) SubmitRequest(sub Submission) *Effect {
 	now := q.now()
 	e := &Effect{
-		ID: newID(), Service: service, Capability: capability, Summary: summary,
-		Args: args, Submitted: now, Expires: now.Add(q.ttl), State: Pending,
+		ID: newID(), Service: sub.Service, Capability: sub.Capability, Summary: sub.Summary,
+		Args: sub.Args, Profile: sub.Profile, Requester: sub.Requester, Target: sub.Target,
+		RequestDigest: sub.Digest, HostedBoard: sub.HostedBoard,
+		Submitted: now, Expires: now.Add(q.ttl), State: Pending,
 	}
 	body, err := json.Marshal(e)
 	if err != nil {
+		e.State, e.DecidedBy = Refused, "supertoolkit"
 		return e
+	}
+	if sub.HostedBoard != "" {
+		if err := q.writeHostedMarker(e.ID, sub.HostedBoard); err != nil {
+			e.State, e.DecidedBy = Refused, "supertoolkit"
+			return e
+		}
 	}
 	// A write that fails must not look like a queued effect, so the state says
 	// so rather than leaving a caller waiting on something that was never
@@ -316,6 +359,14 @@ func (q *Queue) read(id string) (*Effect, error) {
 	if err := json.Unmarshal(raw, &e); err != nil {
 		return nil, err
 	}
+	// The marker, not the request record, says who decides.
+	e.HostedBoard, e.ApprovalRequestID = "", ""
+	if m, err := q.readHostedMarker(id); err == nil {
+		e.HostedBoard = m.Board
+		if r, err := q.readHostedRequest(id); err == nil {
+			e.ApprovalRequestID = r.ApprovalRequestID
+		}
+	}
 	if d, err := q.readDecision(id); err == nil {
 		e.State, e.DecidedBy, e.DecidedAt = d.State, d.DecidedBy, d.DecidedAt
 		e.Performs = d.Performs
@@ -435,6 +486,8 @@ func (q *Queue) List() []*Effect {
 			os.Remove(q.pubPath(id))
 			os.Remove(q.gatedPath(id))
 			os.Remove(q.retryPath(id))
+			os.Remove(q.hostedPath(id))
+			os.Remove(q.aprPath(id))
 			os.Remove(filepath.Join(q.dir, id+".pub.lock"))
 			continue
 		}
@@ -479,6 +532,12 @@ func (q *Queue) DecideAndPerform(id string, allow bool, who string, do func(*Eff
 			return current, fmt.Errorf("effect %q requires direct SuperPipeline approval confirmation and cannot be decided locally", id)
 		}
 	}
+	// Hosted: SuperPipeline decides, and only the hosted resolver may record
+	// that decision. Checked on the marker itself, so an unreadable request
+	// record cannot open a local path.
+	if _, err := os.Stat(q.hostedPath(id)); validID(id) && err == nil {
+		return nil, fmt.Errorf("effect %q is hosted on SuperPipeline; a workspace owner or admin decides it there, not locally", id)
+	}
 	e, err := q.decide(id, allow, who, allow)
 	if err != nil {
 		return nil, err
@@ -514,6 +573,9 @@ func outcomeMayBeUnknown(err error) bool {
 // It exists for a decider that only answers — a test, or a front end that
 // cannot reach the broker. A waiter will not expect an outcome from it.
 func (q *Queue) Decide(id string, allow bool, who string) (*Effect, error) {
+	if _, err := os.Stat(q.hostedPath(id)); validID(id) && err == nil {
+		return nil, fmt.Errorf("effect %q is hosted on SuperPipeline; a workspace owner or admin decides it there, not locally", id)
+	}
 	return q.decide(id, allow, who, false)
 }
 

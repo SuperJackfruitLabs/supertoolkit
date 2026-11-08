@@ -188,6 +188,9 @@ type Config struct {
 	// egress decides hosts outside policy for a caller that names no server.
 	// nil means they are tunnelled undecided (but recorded).
 	egress *egress.Policy
+	// approvalsBoard is the SuperPipeline board that hosts approvals, "" for
+	// local approvals.
+	approvalsBoard string
 }
 
 // Egress is the workspace's egress for hosts not named in policy, nil when
@@ -282,6 +285,8 @@ type file struct {
 	Notify    notifyFile                     `yaml:"notify"`
 	AgentUIDs []int                          `yaml:"agent_uids"`
 	Egress    *egressFile                    `yaml:"egress"`
+	// SuperPipeline connects the workspace to a SuperPipeline board.
+	SuperPipeline superPipelineFile `yaml:"superpipeline"`
 }
 
 // egressFile mirrors an `egress:` block.
@@ -662,6 +667,9 @@ func Parse(path string, raw []byte) (*Config, error) {
 			allow[sname] = set
 		}
 		cfg.profiles[pname] = allow
+	}
+	if err := cfg.applySuperPipeline(f.SuperPipeline); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
 }

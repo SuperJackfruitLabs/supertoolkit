@@ -10,6 +10,7 @@ import (
 
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/approval"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/controlplane"
+	"github.com/SuperJackfruitLabs/supertoolkit/internal/daemon"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/localstate"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/mcp"
 	"github.com/SuperJackfruitLabs/supertoolkit/internal/session"
@@ -61,11 +62,18 @@ func Command(args []string, version string) error {
 		// An agent waiting on stdio cannot be left blocked indefinitely, but a
 		// short wait lets a human approve in time to keep the turn alive.
 		ApprovalWait: 90 * time.Second,
+		Requester:    daemon.Identity(os.Getuid()) + " via stk mcp",
+		Hosting:      svc.Hosting(),
 	})
 	if err != nil {
 		return err
 	}
-	return srv.Serve(context.Background(), os.Stdin, os.Stdout)
+	// This process may be the only one running, so it watches its hosted
+	// approvals too; stdout is the protocol, so failures go to stderr.
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	go svc.WatchHosted(ctx, func(m string) { fmt.Fprintln(os.Stderr, "stk: "+m) })
+	return srv.Serve(ctx, os.Stdin, os.Stdout)
 }
 
 // mcpInstall prints the client configuration. It contains a command and a
@@ -160,11 +168,9 @@ func listApprovals(c localstate.DaemonClient) error {
 }
 
 func decideApproval(c localstate.DaemonClient, id string, allow bool) error {
-	who := os.Getenv("USER")
-	if who == "" {
-		who = "operator"
-	}
-	params, _ := json.Marshal(map[string]any{"id": id, "allow": allow, "who": who})
+	// No name is sent: the daemon records the kernel-reported uid of this
+	// process as the decider, and refuses the call unless it is an operator's.
+	params, _ := json.Marshal(map[string]any{"id": id, "allow": allow})
 	resp, err := c.Call("approvals.decide", params, "")
 	if err != nil {
 		return err
@@ -172,6 +178,6 @@ func decideApproval(c localstate.DaemonClient, id string, allow bool) error {
 	var out map[string]string
 	// An unreadable answer prints empty fields; the decision was already made by the daemon.
 	_ = json.Unmarshal(resp, &out)
-	fmt.Printf("  %s %s by %s\n", out["id"], out["state"], who)
+	fmt.Printf("  %s %s by %s\n", out["id"], out["state"], out["by"])
 	return nil
 }

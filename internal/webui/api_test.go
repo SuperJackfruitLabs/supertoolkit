@@ -83,6 +83,7 @@ servers:
 				Policy: "agent", Caller: "default", Credential: "sha256:0e49c51e", Outcome: "200"}}
 		},
 		SetPolicy: func(string, string, policy.Action) error { return nil },
+		Decider:   "alice (uid 501) via stk ui",
 	}
 	return API(d), d, q, store
 }
@@ -217,11 +218,11 @@ func TestApprovalDecidesOnceThroughTheAPI(t *testing.T) {
 	h, _, q, _ := rig(t)
 	e := q.Submit("github", "create_issue", "Open an issue", nil)
 
-	code, body := post(t, h, "/api/approvals/decide", map[string]any{"id": e.ID, "allow": true, "who": "rakesh"})
+	code, body := post(t, h, "/api/approvals/decide", map[string]any{"id": e.ID, "allow": true})
 	if code != http.StatusOK {
 		t.Fatalf("deciding = %d (%s)", code, body)
 	}
-	if !strings.Contains(body, "approved") || !strings.Contains(body, "rakesh") {
+	if !strings.Contains(body, "approved") || !strings.Contains(body, "alice (uid 501)") {
 		t.Errorf("response = %s", body)
 	}
 	// A second decision must be refused, not performed again.
@@ -388,5 +389,20 @@ func TestRefusingPerformsNothing(t *testing.T) {
 	}
 	if len(performed) != 0 {
 		t.Fatalf("a refusal performed %d effect(s)", len(performed))
+	}
+}
+
+// Regression guarded: the decider was whatever `who` the request carried,
+// defaulting to "web", so the record of who approved was the caller's claim.
+func TestDecideIgnoresACallerSuppliedWho(t *testing.T) {
+	h, _, q, _ := rig(t)
+	e := q.Submit("github", "create_issue", "Open an issue", nil)
+	code, body := post(t, h, "/api/approvals/decide", map[string]any{"id": e.ID, "allow": true, "who": "mallory"})
+	if code != http.StatusOK {
+		t.Fatalf("deciding = %d (%s)", code, body)
+	}
+	got, _ := q.Get(e.ID)
+	if got.DecidedBy != "alice (uid 501) via stk ui" || strings.Contains(body, "mallory") {
+		t.Fatalf("recorded decider = %q, response %s; want the interface's own identity, never the claimed name", got.DecidedBy, body)
 	}
 }

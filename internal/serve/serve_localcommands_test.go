@@ -50,3 +50,16 @@ func TestListenLocalCommandsSetsModeAndReplacesAStaleSocket(t *testing.T) {
 		c.Close()
 	}
 }
+
+func TestServeOperatorUIDFlag(t *testing.T) {
+	o, err := parseServeArgs([]string{"--allow-uid", "1001", "--operator-uid", "1000", "--operator-uid=0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(o.operatorUIDs) != 2 || o.operatorUIDs[0] != 1000 || o.operatorUIDs[1] != 0 {
+		t.Fatalf("operatorUIDs = %v", o.operatorUIDs)
+	}
+	if _, err := parseServeArgs([]string{"--allow-uid", "1001", "--operator-uid", "1001"}); err == nil {
+		t.Fatal("an agent uid was accepted as an operator uid")
+	}
+}

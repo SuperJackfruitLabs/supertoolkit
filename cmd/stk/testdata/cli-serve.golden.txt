@@ -118,6 +118,9 @@ $ stk serve --proxy-listen $PROXY_ADDR
 exit 0
 --- stdout
   listening on $ROOT/state/stk.sock (0600, owner uid $UID)
+  warning: no --allow-uid, so any process running as this uid (an agent too) can decide approvals;
+           approvals are enforced only when agents run as their own uids (stk install)
+  approvals decided only by root and this daemon's own uid, unless an agent uid
   workspace "default" · 1 service(s) · 0 profile(s)
   proxy on $PROXY_ADDR (key required; `stk env` prints the settings)
   4 meta-tools exposed to agents

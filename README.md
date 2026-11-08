@@ -103,6 +103,27 @@ Defaults come from the catalogue and fail safe: a read is agent-callable, a
 write needs approval, and anything unclassified is treated as a write. Marking a
 capability `deny` is a floor that no profile can lift.
 
+### Approvals hosted on SuperPipeline
+
+By default an approval waits locally, for an operator uid to decide with
+`stk approvals` or `stk ui`. Name a board and every approval
+is hosted there instead, for a workspace owner or admin to decide
+(on the board's API or in chat):
+
+```yaml
+services:
+  superpipeline-approvals-write: {}   # approval-requests:write: creates the request
+  superpipeline-approvals-read: {}    # approval-requests:read: reads the decision back
+superpipeline:
+  approvals_board: brd_…
+```
+
+stk binds the request's digest, re-checks it, the expiry and the subject before
+performing, records SuperPipeline's decider, and refuses every local decision on
+a hosted approval. If SuperPipeline cannot be reached the approval waits and then
+expires: it never falls back to a local decision. Details:
+[docs/superpipeline-hosted-approvals.md](docs/superpipeline-hosted-approvals.md).
+
 ## Connecting a service
 
 Four ways, in order of preference:
@@ -130,7 +151,7 @@ rather than only a constant:
 | `aws-sts` | sign with SigV4 — the credential is an HMAC, never a value |
 | `github-app` | mint a JWT, exchange it for an installation token |
 | `x`, `google` | refresh an OAuth 2.0 grant into a short-lived access token |
-| `superpipeline-approvals-read`, `superpipeline-approvals-write` | exchange a service credential at the Organization plane for a token that lasts minutes (publisher only) |
+| `superpipeline-approvals-read`, `superpipeline-approvals-write` | exchange a service credential at the Organization plane for a token that lasts minutes (publisher and hosted approvals only) |
 
 A service we do not front directly is reachable as a fronted MCP server: the
 child gets a placeholder in its environment and nothing else.
@@ -286,7 +307,7 @@ still reaches the broker, over a loopback proxy it must present a key to.
 ### `stk install`
 
 ```
-sudo stk install --user stk --group stk --agent-uid 1001 [--agent-uid 1002] [--unit-name stk]
+sudo stk install --user stk --group stk --agent-uid 1001 [--agent-uid 1002] [--operator-uid 1000] [--unit-name stk]
 ```
 
 Linux with systemd only; on any other OS it refuses. It must run as root and
@@ -303,7 +324,16 @@ creates, if absent:
   passphrase is not in an environment file;
 - `/etc/systemd/system/<unit-name>.service` (default `stk`, see
   [Several instances on one host](#several-instances-on-one-host)), running `stk serve --proxy-listen
-  127.0.0.1:<port> --socket-mode … --allow-uid …` (default port 8899).
+  127.0.0.1:<port> --socket-mode … --allow-uid … [--operator-uid …]` (default port 8899).
+
+**Only an operator decides approvals.** Agent uids (`--agent-uid`, which becomes
+`--allow-uid`) may list, submit and execute, but the socket refuses
+`approvals.decide` to them. That method is reserved for operator uids:
+`--operator-uid`, repeatable, or by default root and the service user itself
+(so `sudo stk approvals allow <id>`, or `sudo -u stk …`, decides). A uid named as
+both an agent and an operator is refused. The decision records the deciding
+uid's own account (`name (uid N)`, from the kernel), never a name the caller
+sends.
 
 If a config file already exists its mode is set to `0640 root:<group>`; install
 never creates policy. A second run changes nothing. It refuses to run when the

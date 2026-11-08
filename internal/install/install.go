@@ -24,8 +24,11 @@ type Plan struct {
 	User, Group                      string
 	StateDir, RuntimeDir, ConfigPath string
 	AgentUIDs                        []int
-	Binary                           string
-	ProxyPort                        int
+	// OperatorUIDs alone may decide approvals on the socket. Empty writes no
+	// flag, and the daemon defaults to root and its own service user.
+	OperatorUIDs []int
+	Binary       string
+	ProxyPort    int
 	// UnitName is the systemd unit's name without ".service"; empty means "stk".
 	UnitName string
 }
@@ -106,6 +109,13 @@ func (p Plan) Validate() error {
 	if len(p.AgentUIDs) == 0 {
 		return errors.New("stk install needs at least one --agent-uid: without it the socket allowlist is empty and any member of the group would be served")
 	}
+	for _, op := range p.OperatorUIDs {
+		for _, agent := range p.AgentUIDs {
+			if op == agent {
+				return fmt.Errorf("uid %d is both an --agent-uid and an --operator-uid; an agent must never decide approvals", op)
+			}
+		}
+	}
 	// Only a single segment under /run gets RuntimeDirectory=; anything else
 	// vanishes or keeps a stale mode after a reboot.
 	if rest, ok := strings.CutPrefix(p.RuntimeDir, "/run/"); !ok || rest == "" || strings.Contains(rest, "/") {
@@ -127,6 +137,11 @@ func DryRun(p Plan) string {
 	fmt.Fprintf(&b, "would ensure %s 0750; config, if present, 0640 root:%s\n", filepath.Dir(p.ConfigPath), p.group())
 	if p.Group != "" {
 		fmt.Fprintf(&b, "you must add each agent user to group %s (install runs no usermod)\n", p.Group)
+	}
+	if len(p.OperatorUIDs) > 0 {
+		fmt.Fprintf(&b, "approvals decided only by operator uid(s) %v\n", p.OperatorUIDs)
+	} else {
+		fmt.Fprintf(&b, "approvals decided only by root and %s (no --operator-uid given)\n", p.User)
 	}
 	fmt.Fprintf(&b, "would write %s:\n\n%s", p.UnitFile(), Unit(p))
 	return b.String()

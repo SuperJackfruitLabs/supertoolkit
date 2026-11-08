@@ -222,3 +222,76 @@ func TestPeerUIDErrorRefuses(t *testing.T) {
 		t.Fatal("the handler ran although the uid was unknown")
 	}
 }
+
+// Regression guarded: station mode puts every agent uid on the allowlist, and
+// the allowlist was the only gate on approvals.decide, so an agent could
+// approve its own write. Deciding is now an operator's alone.
+func TestAgentUIDCannotDecide(t *testing.T) {
+	var calls atomic.Int32
+	s := serveWith(t, func(int, Request) Response { calls.Add(1); return Response{Error: "handled"} },
+		Options{AllowUIDs: []int{4242}, OperatorUIDs: []int{900}, PeerUID: fakeUID(4242, nil)})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	resp, err := c.Call(Request{Method: "approvals.decide", Params: json.RawMessage(`{"id":"abc","allow":true}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resp.Error, "reserved for an operator") {
+		t.Fatalf("agent decide answered %+v; want an operator-only refusal", resp)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("the handler ran an agent's decide")
+	}
+	// The agent keeps everything else.
+	if resp, _ := c.Call(Request{Method: "approvals.list"}); resp.Error != "handled" {
+		t.Fatalf("agent list = %+v; want it to reach the handler", resp)
+	}
+}
+
+func TestOperatorUIDDecidesWithoutBeingAnAgent(t *testing.T) {
+	seen := make(chan int, 1)
+	s := serveWith(t, func(uid int, r Request) Response { seen <- uid; return Response{Error: "handled"} },
+		Options{AllowUIDs: []int{4242}, OperatorUIDs: []int{900}, PeerUID: fakeUID(900, nil)})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	resp, err := c.Call(Request{Method: "approvals.decide"})
+	if err != nil || resp.Error != "handled" {
+		t.Fatalf("operator decide: resp=%+v err=%v", resp, err)
+	}
+	if got := <-seen; got != 900 {
+		t.Fatalf("handler saw uid %d, want the operator's 900", got)
+	}
+}
+
+// With no allowlist the socket mode is the only connection gate, but an
+// unreadable uid must still never decide.
+func TestUnknownPeerNeverDecides(t *testing.T) {
+	var calls atomic.Int32
+	s := serveWith(t, func(int, Request) Response { calls.Add(1); return Response{} },
+		Options{OperatorUIDs: []int{900}, PeerUID: fakeUID(900, errors.New("no creds"))})
+	c, _ := Dial(s.Addr())
+	defer c.Close()
+	resp, _ := c.Call(Request{Method: "approvals.decide"})
+	if !strings.Contains(resp.Error, "reserved for an operator") || calls.Load() != 0 {
+		t.Fatalf("unknown peer decide: resp=%+v calls=%d", resp, calls.Load())
+	}
+}
+
+func TestDefaultOperatorsLeaveOutAgents(t *testing.T) {
+	self := os.Getuid()
+	got := DefaultOperatorUIDs([]int{self})
+	for _, uid := range got {
+		if uid == self {
+			t.Fatalf("DefaultOperatorUIDs(%v) = %v; an agent uid became an operator", []int{self}, got)
+		}
+	}
+	if got := DefaultOperatorUIDs(nil); !contains(got, self) || !contains(got, 0) {
+		t.Fatalf("DefaultOperatorUIDs(nil) = %v; want root and the daemon's own uid %d", got, self)
+	}
+	if err := CheckOperatorUIDs([]int{4242}, []int{4242}); err == nil {
+		t.Fatal("a uid named as both agent and operator was accepted")
+	}
+	if err := CheckOperatorUIDs([]int{4242}, []int{900}); err != nil {
+		t.Fatalf("disjoint lists refused: %v", err)
+	}
+}

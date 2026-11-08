@@ -1,17 +1,17 @@
 $ [linux] stk install 
-error: --user is required (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
+error: --user is required (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--operator-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
 --- output
 --- runs
 
 
 $ [linux] stk install --user
-error: --user needs a value (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
+error: --user needs a value (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--operator-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
 --- output
 --- runs
 
 
 $ [linux] stk install --user stk --bogus
-error: --bogus needs a value (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
+error: --bogus needs a value (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--operator-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
 --- output
 --- runs
 
@@ -29,7 +29,7 @@ error: --proxy-port wants a port, got "x"
 
 
 $ [linux] stk install --group agents
-error: --user is required (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
+error: --user is required (usage: stk install --user <name> [--group <name>] [--state-dir /var/lib/stk] [--runtime-dir /run/stk] [--config /etc/stk/supertoolkit.yaml] [--agent-uid N]... [--operator-uid N]... [--proxy-port 8899] [--unit-name stk] [--dry-run])
 --- output
 --- runs
 
@@ -49,6 +49,7 @@ would ensure /run/stk 0750 owned by stk:agents
 would generate /var/lib/stk/stk-passphrase.key 0400 if absent (never printed)
 would ensure /etc/stk 0750; config, if present, 0640 root:agents
 you must add each agent user to group agents (install runs no usermod)
+approvals decided only by root and stk (no --operator-uid given)
 would write /etc/systemd/system/stk.service:
 
 [Unit]
@@ -87,6 +88,7 @@ would ensure /srv/stk 0700 owned by stk
 would ensure /run/stk 0700 owned by stk:stk
 would generate /srv/stk/stk-passphrase.key 0400 if absent (never printed)
 would ensure /etc/stk 0750; config, if present, 0640 root:stk
+approvals decided only by root and stk (no --operator-uid given)
 would write /etc/systemd/system/stk-two.service:
 
 [Unit]
