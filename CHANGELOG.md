@@ -10,4 +10,7 @@ v0.0.9 predate this file: their notes are on the GitHub releases.
 - Releases are built by the suite's shared release workflow: the forge's CI must have passed for
   the tag's commit, every archive comes with `SHA256SUMS` and a build-provenance attestation
   (`gh attestation verify <file> -R SuperJackfruitLabs/supertoolkit`), and the notes carry a
-  summary, this section and the grouped commits.
+  summary, this section and the grouped commits. Install with
+  `curl -fsSL https://supertoolkit.dev/install.sh | sh`, which verifies `SHA256SUMS`; read
+  `docs/limitations.md` before trusting the broker with anything that matters, and run
+  `stk doctor --probe` on the machine you intend to use it on.
