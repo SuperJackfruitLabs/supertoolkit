@@ -41,6 +41,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      attestations: read
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
       run_id: ${{ steps.ci.outputs.run_id }}
@@ -146,6 +147,11 @@ jobs:
           echo "run_id=${run% *}" >> "$GITHUB_OUTPUT"
           echo "run_attempt=${run#* }" >> "$GITHUB_OUTPUT"
           echo "main CI run ${run% *} (attempt ${run#* }) passed for $SHA"
+      - name: Set up Node for the checks at the tag (the repo's .nvmrc)
+        if: (steps.ci.outputs.source == 'tag' || steps.config.outputs.check == 'true') && hashFiles('.nvmrc') != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
       - name: Set up Bun for the checks at the tag
         if: (steps.ci.outputs.source == 'tag' || steps.config.outputs.check == 'true') && hashFiles('.bun-version') != ''
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -160,10 +166,15 @@ jobs:
       - name: Check at the tag (main's CI result could not be read)
         if: steps.ci.outputs.source == 'tag'
         run: sh -c "$(jq -r '.ci.check_command' .github/release-config.json)"
+      # The check sees main CI's run (empty for a forge-primary product) and a read-only token, so
+      # it can inspect that run's artifacts and their attestations.
       - name: The product's own release check
         if: steps.config.outputs.check == 'true'
         env:
           RELEASE_SHA: ${{ steps.commit.outputs.sha }}
+          CI_RUN_ID: ${{ steps.ci.outputs.run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.ci.outputs.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
         run: sh -c "$(jq -r '.check' .github/release-config.json)"
 
   publish:
