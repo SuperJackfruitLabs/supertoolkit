@@ -514,7 +514,12 @@ probe still only tests clients as run from this environment; see
 
 ## Install
 
-Not yet released. Build from source:
+```
+curl -fsSL https://supertoolkit.dev/install.sh | sh
+```
+
+The installer verifies the release's `SHA256SUMS` before it moves anything into
+place, and refuses on a mismatch. Or build from source:
 
 ```
 go build -o stk ./cmd/stk

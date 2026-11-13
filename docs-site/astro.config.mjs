@@ -35,8 +35,9 @@ export default defineConfig({
         },
       ],
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
-      // Three sections, in the order a reader needs them: what it is and how to stand it
-      // up, then using it, then the things worth knowing before trusting it.
+      // In the order a reader needs them: what it is and how to stand it up, using it,
+      // running it for agents on a server, the reference, then the things worth knowing
+      // before trusting it.
       sidebar: [
         {
           label: 'Start',
@@ -55,6 +56,10 @@ export default defineConfig({
             { label: 'From an agent', slug: 'use/from-an-agent' },
             { label: 'Services', slug: 'use/services' },
           ],
+        },
+        {
+          label: 'Run',
+          items: [{ label: 'Run as a service', slug: 'run/serve' }],
         },
         {
           label: 'Know',
