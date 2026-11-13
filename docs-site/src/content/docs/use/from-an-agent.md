@@ -7,6 +7,7 @@ description: Four MCP tools instead of a thousand, and running a child under the
 
 ```sh
 stk mcp install claude-code     # prints the configuration; no secret in it
+stk mcp install cursor
 ```
 
 `stk mcp` speaks MCP on stdio and exposes exactly **four** tools:
@@ -65,4 +66,9 @@ servers:
 ```
 
 Its tools appear as one category among the four meta-tools, under the same
-policy as everything else.
+policy as everything else. `env:` gives it non-secret variables; the
+placeholder goes in `env_var:`, and `host:` is where the broker substitutes the
+credential on its way out.
+
+To serve the server's own tools under their own names instead, each call still
+decided and audited, use [`stk mcp serve`](/use/mcp-serve/).

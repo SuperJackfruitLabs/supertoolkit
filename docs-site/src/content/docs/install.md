@@ -1,9 +1,33 @@
 ---
 title: Install
-description: Build supertoolkit from source and stand up a broker.
+description: Install supertoolkit with the checksum-verifying installer or from source, and stand up a broker.
 ---
 
-supertoolkit is a single Go binary, `stk`. It runs on your own machine.
+supertoolkit is a single Go binary, `stk`. It runs on your own machine, on Linux
+or macOS, amd64 or arm64.
+
+## The installer
+
+```sh
+curl -fsSL https://supertoolkit.dev/install.sh | sh
+```
+
+It downloads the release archive for this OS and architecture and the release's
+`SHA256SUMS`, and **verifies the archive before moving anything into place**. A
+missing checksum tool, a `SHA256SUMS` that does not mention the archive, or a
+mismatch stops it: it refuses rather than warns. It then puts `stk` in
+`/usr/local/bin` if that is writable, otherwise `~/.local/bin`, and prints
+`stk version`.
+
+| Variable | Default | |
+|---|---|---|
+| `STK_VERSION` | the latest release | a tag to install instead |
+| `STK_BIN_DIR` | `/usr/local/bin` or `~/.local/bin` | where to put the binary |
+| `STK_BASE_URL` | the GitHub release | a mirror or an air-gapped copy. `SHA256SUMS` is still fetched from it and still verified |
+
+```sh
+curl -fsSL https://supertoolkit.dev/install.sh | STK_VERSION=v0.0.9 STK_BIN_DIR="$HOME/bin" sh
+```
 
 ## From source
 
@@ -21,7 +45,10 @@ under your account and add it to this shell's `PATH`. Add the same `export` line
 to your shell startup file to use it in future terminals.
 
 There is nothing else to install: the web interface is
-embedded in the binary.
+embedded in the binary. `stk version` prints the version it was built as.
+
+On a server where agents run as their own OS users, run the broker as another
+one, under systemd: see [Run as a service](/run/serve/), and `stk install`.
 
 ## First run
 

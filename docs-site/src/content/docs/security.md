@@ -17,7 +17,7 @@ convenient it would be.
 |---|---|
 | **At rest** | AES-256-GCM, in an owner-only file in an owner-only directory. The key is derived with Argon2id from a passphrase held in the OS keychain where one exists. Ciphertext is padded, so the file's size does not report the credential's length. |
 | **In memory** | Only in the broker, only while a request is in flight or a short-lived token is cached. |
-| **On the wire** | Whatever the scheme requires — and for three of the five operations, never the long-lived secret. |
+| **On the wire** | Whatever the scheme requires — and for four of the six operations, never the long-lived secret. |
 | **In the agent** | A placeholder, which means nothing off the host. |
 
 The short-lived access token is cached on disk too, sealed with the same key and
@@ -37,9 +37,11 @@ refresh token — which, against a provider that rotates, they would lose.
 - **A client that ignores proxy configuration.** It goes around the broker and
   fails silently. Detect it from outside with `stk doctor --probe`, and do not
   broker a client it reports as `bypassed`.
-- **An agent with a shell on the same machine.** It could run
-  `stk approvals allow` itself, or read the store if it runs as the same user.
-  Run the broker as its own OS user, and do not give the agent a shell there.
+- **An agent with a shell, running as the broker's user or an operator uid.**
+  It could run `stk approvals allow` itself, or read the store. Run the broker
+  as its own OS user (`stk install`), with the agent as an agent uid: the
+  socket then refuses `approvals.decide` to it, and it cannot read the state
+  directory. Do not give the agent a shell as the broker's user.
 - **A host you chose to intercept behaving badly.** Interception's blast radius
   is exactly your configured service list; everything else is tunnelled
   unopened.

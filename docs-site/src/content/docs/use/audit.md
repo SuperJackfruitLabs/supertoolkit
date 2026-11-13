@@ -40,8 +40,22 @@ A line that cannot be parsed is skipped rather than fatal. A process killed
 mid-write leaves one incomplete record, and a ledger that refuses to open
 because of its last line has lost everything before it.
 
+## Hosts outside policy
+
+A connection to a host you have not configured is recorded too, but only as far
+as the broker can see it:
+
+- **With no `egress:`**, it is tunnelled unopened and recorded as
+  `tunnelled, not decided`, with the host. The broker never sees inside it,
+  which is what keeps interception's blast radius equal to your service list.
+- **With an [`egress:`](/use/mcp-serve/#egress-decided-by-address) policy**, it
+  is decided by address, and recorded allowed or refused with the rule that
+  decided it and the address dialled.
+- **With `methods:` in that egress**, the tunnel is opened with the broker's CA,
+  so each request's method and path are checked and recorded as well.
+
 ## What is not recorded
 
-Traffic to hosts you have not configured. Those are tunnelled unopened — the
-broker never sees inside them, which is what keeps interception's blast radius
-equal to your service list.
+The credential, ever. And, for a host outside policy whose egress has no
+`methods:`, what went through the tunnel: its method, path and body are not
+seen, only the host and the address.

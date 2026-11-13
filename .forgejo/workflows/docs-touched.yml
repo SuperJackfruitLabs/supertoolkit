@@ -1,0 +1,38 @@
+name: docs-touched
+
+# A pull request that changes the public surface (commands and flags, supertoolkit.yaml keys,
+# environment variables, stk ui routes, control-socket methods, MCP tools, the catalogue; the
+# paths are listed in scripts/docs-touched/main.go) must touch the docs too: docs-site/src/content,
+# docs/ or README.md. Or, when nothing a reader sees changed, carry the `no-docs-needed` label.
+#
+# Its own workflow so that adding or removing the label re-runs only this check. The labels are
+# read from the event payload, never from the API.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  docs-touched:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: https://data.forgejo.org/actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Surface changes come with docs, or the no-docs-needed label
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+        run: |
+          set -o pipefail
+          git diff --name-only "$BASE" HEAD | go run ./scripts/docs-touched

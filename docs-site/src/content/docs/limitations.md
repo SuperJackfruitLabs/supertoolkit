@@ -45,7 +45,8 @@ client that ignores the proxy must resolve it itself and cannot. A DNS failure
 is therefore **proof** of a bypass, not a guess.
 
 **Run the probe before trusting a new client.** A client it reports as
-`bypassed` must not be brokered.
+`bypassed` must not be brokered. The command exits non-zero on `bypassed` or
+`failed`, and `--json` gives a machine-readable list.
 
 ### The safe class, by contrast
 
@@ -160,6 +161,11 @@ done.
 
 ## Operational limits
 
+- **`stk run`'s per-session loopback proxy is not authenticated.** Only the
+  fixed proxy of `stk serve --proxy-listen` requires a proxy key. Any local
+  process that finds a `stk run` session's port can use the routes that session
+  allows, though it still receives no credential.
+
 - **The audit ledger rotates at 8 MB, keeping one generation.** An unbounded
   audit log on a small VPS is an outage. If you need more history, ship
   `audit.log` somewhere before it rotates.
@@ -179,3 +185,73 @@ done.
 - **`stk handover` briefly puts the credential on the sealing machine.** The
   commands say so. The device grant and the web UI do not have that property, so
   prefer them when either is possible.
+
+## Shared refresh ownership
+
+On supported macOS and Linux hosts, token acquisition uses a stable OS-owned file
+lock. Process death releases it; elapsed time does not prove an owner died. Cache
+invalidation preserves lock files. If ownership or cache persistence is unavailable,
+acquisition fails explicitly instead of racing another refresh or returning an
+unpersisted access token. No additional refresh retries are introduced.
+
+Stop older broker processes before updating a store to this lock format. Known
+live old-format owners are refused, but concurrent old and new broker binaries
+sharing one store are not a supported migration. Do not remove a live cache lock
+file to bypass a refusal. Managed profiles must pin their broker version and
+account for old owned processes during upgrade and recovery.
+
+## The staging deployment
+
+`deploy/staging/` runs the broker as user `stk` on the staging host, for a Salaam agent that
+runs under its own uid. It fronts one service, `git-public` (`auth: none`), and Salaam's git is
+pointed at it through `~/.gitconfig`. That is configuration, not confinement: the agent runs
+commands as an ordinary user with network access, so `/usr/bin/git -c http.proxy= …` or any
+other client that ignores the proxy goes straight out, unrecorded. The broker bounds and records
+what goes *through* it. Enforcing that nothing goes around it needs egress filtering for the
+agent's uid, which staging does not have yet.
+
+Fronted MCP servers can be served directly (`stk mcp serve <server>`), each tool call decided and
+audited, and a host outside policy is decided by address (`egress:`) rather than passed through:
+staging declares `egress: public-only`, so nothing is tunnelled undecided. Its `fetch` server is
+`network: watched` rather than `confined` — see the next section for why, and what that costs.
+
+## A fronted server's own network: blocked, or only detected
+
+`stk mcp serve` starts the server as the caller, with the proxy in its environment. Whether a
+server that ignores the proxy can go around it depends on `network:`:
+
+- **`confined`** (the default for a server with `egress`): the server runs in its own user and
+  network namespace with only a loopback interface; a shim relays to the broker over a Unix
+  socket. A direct connection has no route: **blocked**. If the namespace cannot be created, the
+  server is not started. On Ubuntu 24.04 and later, `kernel.apparmor_restrict_unprivileged_userns=1`
+  refuses it unless an AppArmor profile grants `userns` to the stk binary — an operator decision,
+  not something stk installs. DNS lookups may still work through a resolver's Unix socket
+  (nss-resolve); connections cannot.
+- **`watched`**: the server's sockets (and its descendants') are polled every 50 ms from
+  `/proc`. A TCP connection, or non-DNS UDP, to anything but the broker is **detected**: recorded
+  in the audit as `netwatch:direct` with the address, and the server is stopped; every later call
+  fails. It is not prevented — the first connection happens, and one that opens and closes
+  between two polls is not seen.
+- **`host`**: configured, not confined — the same posture as any `stk run` child.
+
+**Measured: Go clients never proxy loopback.** Go's `ProxyFromEnvironment` skips the proxy for
+`localhost` and loopback addresses, so a Go-based server fetching `http://127.0.0.1/…`, or
+following a redirect there, goes direct and the broker never sees it. A test keeps this
+(`TestMCPServeLoopbackBypassByAGoClientIsCaughtWhenWatched`): watched catches and stops it; only
+confined prevents it. Python's httpx (used by `mcp-server-fetch`) does proxy loopback.
+
+## Egress decisions
+
+- **Ports are not rules.** An allowed address is allowed on any port.
+- **Only `methods:` opens a tunnel.** An egress without `methods` decides by address and passes
+  the tunnel through unopened, so the method and path of an HTTPS request are not seen or
+  recorded, only the host and the address. With `methods` the tunnel is opened with the broker's
+  CA, which the client must trust; one that does not fails loudly.
+- **Approval-gated tools are refused by `stk mcp serve`**, with their rule id: holding a direct
+  tool call open for a person is not built. The meta-tools (`stk mcp`) keep approval.
+- **The tool-call hint is the server's own claim.** An unannotated tool defaults to approval, so
+  is refused; a tool annotated read-only is allowed unless the policy says otherwise. Name each
+  tool you allow in `capabilities:`.
+- **With a daemon, the decision is the daemon's, but the caller runs the server.** An agent that
+  can run commands can run the same server without stk. `stk mcp serve` bounds the server, not
+  the agent.

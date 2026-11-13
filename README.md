@@ -40,11 +40,11 @@ GH_TOKEN=stk:ref:github:v1
 
 The broker recognises that placeholder on the wire and does whatever the service
 needs: substitutes a token, decodes and re-encodes a Basic header, signs with
-SigV4, mints a JWT, or refreshes an OAuth 2.0 grant into a short-lived access
-token. Clients need no modification. If an agent reads the placeholder, it has
+SigV4, mints a JWT, refreshes an OAuth 2.0 grant into a short-lived access
+token, or exchanges a service credential for a token that lasts minutes. Clients need no modification. If an agent reads the placeholder, it has
 read nothing — it means nothing off this host.
 
-Three of the five credential operations never put a long-lived secret on the
+Four of the six credential operations never put a long-lived secret on the
 wire at all.
 
 ## Read this before trusting it
@@ -514,7 +514,12 @@ probe still only tests clients as run from this environment; see
 
 ## Install
 
-Not yet released. Build from source:
+```
+curl -fsSL https://supertoolkit.dev/install.sh | sh
+```
+
+The installer verifies the release's `SHA256SUMS` before it moves anything into
+place, and refuses on a mismatch. Or build from source:
 
 ```
 go build -o stk ./cmd/stk

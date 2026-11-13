@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.36.0",
+    "@superjackfruit/vibekit": "file:../landing/vendor/superjackfruit-vibekit-0.0.15.tgz",
     "astro": "^5.14.1"
   }
 }

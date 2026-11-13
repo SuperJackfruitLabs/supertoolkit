@@ -193,10 +193,10 @@ sharing one store are not a supported migration. Do not remove a live cache lock
 file to bypass a refusal. Managed profiles must pin their broker version and
 account for old owned processes during upgrade and recovery.
 
-## The staging deployment (workbench)
+## The staging deployment
 
-`deploy/staging/` runs the broker as user `stk` on the staging host, for the Salaam agent
-(`salaam`, uid 1001). It fronts one service, `git-public` (`auth: none`), and Salaam's git is
+`deploy/staging/` runs the broker as user `stk` on the staging host, for a Salaam agent that
+runs under its own uid. It fronts one service, `git-public` (`auth: none`), and Salaam's git is
 pointed at it through `~/.gitconfig`. That is configuration, not confinement: the agent runs
 commands as an ordinary user with network access, so `/usr/bin/git -c http.proxy= …` or any
 other client that ignores the proxy goes straight out, unrecorded. The broker bounds and records

@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { accentCss } from './accent.mjs';
 
 const REPO = 'https://github.com/SuperJackfruitLabs/supertoolkit';
 
@@ -14,11 +15,13 @@ export default defineConfig({
       // The mark beside the name, as on the landing page. See the component for why it
       // replaces Starlight's own rather than using the `logo` option.
       components: { SiteTitle: './src/components/SiteTitle.astro' },
-      // The landing page's palette and faces; see src/styles/theme.css for each value.
+      // The landing page's palette and faces; see src/styles/theme.css for each value. The
+      // accent's values come from vibekit (accent.mjs), in a style element in the head.
       customCss: ['./src/styles/theme.css'],
       favicon: '/favicon.svg',
       editLink: { baseUrl: `${REPO}/edit/main/docs-site/` },
       head: [
+        { tag: 'style', content: accentCss() },
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
         {
@@ -32,8 +35,9 @@ export default defineConfig({
         },
       ],
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
-      // Three sections, in the order a reader needs them: what it is and how to stand it
-      // up, then using it, then the things worth knowing before trusting it.
+      // In the order a reader needs them: what it is and how to stand it up, using it,
+      // running it for agents on a server, the reference, then the things worth knowing
+      // before trusting it.
       sidebar: [
         {
           label: 'Start',
@@ -50,7 +54,20 @@ export default defineConfig({
             { label: 'Approvals', slug: 'use/approvals' },
             { label: 'The audit ledger', slug: 'use/audit' },
             { label: 'From an agent', slug: 'use/from-an-agent' },
+            { label: 'Fronted servers and egress', slug: 'use/mcp-serve' },
             { label: 'Services', slug: 'use/services' },
+            { label: 'Gated publishing', slug: 'use/publish' },
+          ],
+        },
+        {
+          label: 'Run',
+          items: [{ label: 'Run as a service', slug: 'run/serve' }],
+        },
+        {
+          label: 'Reference',
+          items: [
+            { label: 'Commands', slug: 'reference/cli' },
+            { label: 'The web interface', slug: 'reference/web-ui' },
           ],
         },
         {

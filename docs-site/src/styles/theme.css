@@ -1,17 +1,19 @@
 /* The landing page's palette and faces, so the two sites are one thing.
-   Every value here appears in landing/src/pages/index.astro's `:root`. */
+   The accent is vibekit's indigo, SuperToolkit's product accent, in its Daylight tokens: the
+   --stk-accent* values are written into the head at build time by accent.mjs, read from vibekit
+   exactly as landing/src/accent.ts reads them for supertoolkit.dev. The grounds below are the
+   landing page's own (landing/src/pages/index.astro, `:root`). */
 :root {
-  --stk-cyan: #20d8d9;
-  --stk-cyan-deep: #00c3e5;
   --stk-display: 'Outfit', var(--sl-font);
 
   --sl-font: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --sl-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Starlight builds its accent ramp from these three. */
-  --sl-color-accent-low: #06343a;
-  --sl-color-accent: #0f9aa6;
-  --sl-color-accent-high: #8ceef0;
+  /* Starlight builds its accent ramp from these three: a pale ground, the accent, and the
+     accent as text. */
+  --sl-color-accent-low: var(--stk-accent-wash);
+  --sl-color-accent: var(--stk-accent);
+  --sl-color-accent-high: var(--stk-accent-text);
 
   --sl-color-bg: #0d1017;
   --sl-color-bg-nav: #0d1017;
@@ -25,21 +27,24 @@
 }
 
 :root[data-theme='light'] {
-  --stk-cyan: #0a9aa5;
-  --stk-cyan-deep: #067f93;
-  --sl-color-accent-low: #cdf3f5;
-  --sl-color-accent: #0a8d98;
-  --sl-color-accent-high: #064950;
+  --sl-color-accent-low: var(--stk-accent-wash);
+  --sl-color-accent: var(--stk-accent);
+  --sl-color-accent-high: var(--stk-accent-text);
   --sl-color-bg: #f8f9fa;
   --sl-color-bg-nav: #ffffff;
   --sl-color-bg-sidebar: #ffffff;
   --sl-color-bg-inline-code: #eef1f4;
   --sl-color-hairline: rgba(32, 40, 61, 0.12);
+  --sl-color-hairline-light: rgba(32, 40, 61, 0.12);
   --sl-color-white: #171c26;
+  /* Without these the dark theme's pale greys carried into light, and body text was
+     unreadable. The landing page's light --code and --muted. */
+  --sl-color-gray-2: #2b3242;
+  --sl-color-gray-3: #5c6678;
 }
 
 h1, h2, h3, .site-title { font-family: var(--stk-display); letter-spacing: -0.02em; }
 
-/* The one thing the landing page spends cyan on, kept here too: the placeholder
-   an agent holds instead of a credential. */
-.placeholder { color: var(--stk-cyan); }
+/* The landing page spends the accent on the placeholder an agent holds instead of a
+   credential; kept here too. */
+.placeholder { color: var(--stk-accent-text); }

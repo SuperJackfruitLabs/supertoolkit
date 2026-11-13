@@ -57,10 +57,36 @@ The redirect must be loopback: the broker receives it itself, so a callback
 anywhere else never arrives, and one reachable from the network would let anyone
 on it deliver a code to you.
 
+A self-hosted instance speaks the same protocol at other addresses. Name both
+endpoints, or neither: exchanging a code at a server that did not issue it never
+succeeds, so the file does not load with only one.
+
+```yaml
+    oauth2:
+      client_id: <your app's client id>
+      authorize_url: https://auth.example.com/oauth2/authorize
+      token_url: https://auth.example.com/oauth2/token
+```
+
 ## 3. No browser on this machine — the device grant
 
 ```sh
 stk connect github --device
+```
+
+As for the browser flow, the client id is your own OAuth app's, named in
+`supertoolkit.yaml` (the device grant exists so a public client needs no
+secret). For a self-hosted instance such as GitHub Enterprise Server, name its
+two endpoints too, both or neither:
+
+```yaml
+services:
+  github:
+    device:
+      client_id: <your app's client id>
+      # only for a self-hosted instance
+      authorization_url: https://github.example.com/login/device/code
+      token_url: https://github.example.com/login/oauth/access_token
 ```
 
 The provider issues a short code. You approve it in a browser **anywhere** — a
@@ -113,10 +139,22 @@ credential exists on the sealing machine while it is sealed, and still exists
 there afterwards. Prefer the device grant or the web interface whenever either
 is possible.
 
+## Proving it works
+
+```sh
+stk verify github
+stk verify github --expect-login your-login --json
+```
+
+`stk verify` makes one read call as the stored credential and prints the login
+it acts as, or the reason it failed, and exits non-zero on failure. It never
+prints a token.
+
 ## Withdrawing a credential
 
 ```sh
 stk revoke github
+stk revoke github --local     # only the local copy
 ```
 
 Deleting our copy does not invalidate the token at the provider. Where the
