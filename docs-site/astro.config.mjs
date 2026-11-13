@@ -64,6 +64,13 @@ export default defineConfig({
           items: [{ label: 'Run as a service', slug: 'run/serve' }],
         },
         {
+          label: 'Reference',
+          items: [
+            { label: 'Commands', slug: 'reference/cli' },
+            { label: 'The web interface', slug: 'reference/web-ui' },
+          ],
+        },
+        {
           label: 'Know',
           items: [
             { label: 'Limitations', slug: 'limitations' },

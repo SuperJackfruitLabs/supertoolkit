@@ -164,7 +164,7 @@ and `private_key` as `field=value` lines on stdin to `stk connect acme-app`.
 
 ### Audit labels
 
-`labels:` on a service copies up to three short values — `station`, `principal`
+`labels:` on a `kind: forge` service copies up to three short values — `station`, `principal`
 and `grant` — onto every audit row for it, so a ledger shared by several callers
 says whose request each was. Any other key, a value over 128 bytes or a control
 character fails the load.

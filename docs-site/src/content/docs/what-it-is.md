@@ -46,9 +46,9 @@ Four of the six operations never put a long-lived secret on the wire at all.
 `stk doctor` tells you which case each connected service is in, derived from
 what is actually stored rather than from what the catalogue expected.
 
-A service declared with `auth: none` holds no credential at all — none (policy
-and audit only): the broker enforces its rules and records every request, and
-injects nothing. See [Services](/use/services/#a-public-endpoint-for-policy-and-audit-only).
+A service declared with `auth: none` holds no credential at all, and is shown as
+none (policy and audit only): the broker enforces its rules and records every
+request, and injects nothing. See [Services](/use/services/#a-public-endpoint-for-policy-and-audit-only).
 
 ## What it is not
 
