@@ -28,7 +28,7 @@ ship() { # <dir> <url>
   echo "==> building $1"
   # --force: the content layer caches into node_modules/.astro, and a stale store
   # reports an empty collection while the dev server works fine.
-  (cd "$root/$1" && npm ci --silent && npx astro build --force)
+  (cd "$root/$1" && npm ci --silent && npx astro build --force && { [ ! -f scripts/check-frame.mjs ] || node scripts/check-frame.mjs; })
   echo "==> deploying $1"
   (cd "$scratch" && wrangler deploy --config "$root/$1/wrangler.jsonc" --cwd "$root/$1")
   echo "==> $2"

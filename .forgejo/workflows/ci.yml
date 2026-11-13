@@ -9,7 +9,62 @@ permissions:
   contents: read
 
 jobs:
+  # Which parts changed. A pull request or push that only touches the sites (landing/, docs-site/)
+  # runs just their builds; anything else, a workflow, or any other trigger runs everything. The
+  # landing page reads internal/catalog at build time, so a change there builds it too.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.plan.outputs.app }}
+      sites: ${{ steps.plan.outputs.sites }}
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: plan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          app=true sites=true
+          if [ -n "$BASE" ] && [ "$BASE" != 0000000000000000000000000000000000000000 ] && files=$(git diff --name-only "$BASE" HEAD); then
+            app=false sites=false
+            while IFS= read -r f; do
+              case "$f" in
+                '') ;;
+                landing/*|docs-site/*) sites=true ;;
+                .forgejo/*|.github/workflows/*|internal/catalog/*|install.sh) app=true sites=true ;;
+                *) app=true ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "sites=$sites" >> "$GITHUB_OUTPUT"
+          echo "app=$app sites=$sites"
+
+  sites:
+    needs: changes
+    if: needs.changes.outputs.sites == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: https://data.forgejo.org/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Build the landing page
+        working-directory: landing
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Build the docs site
+        working-directory: docs-site
+        run: npm ci --no-audit --no-fund && npx astro build
+
   broker:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -50,7 +105,7 @@ jobs:
     # Read-only and a no-op until the repository has a CLAUDE_CI_API_KEY secret. It checks out
     # nothing: the script comes from the base branch and the logs through the API. Forks get
     # no secrets and skip. On a GitHub mirror of the product it does nothing.
-    needs: [broker]
+    needs: [changes, sites, broker]
     if: failure() && github.event_name == 'pull_request' && github.server_url != 'https://github.com'
     runs-on: ubuntu-latest
     timeout-minutes: 10
