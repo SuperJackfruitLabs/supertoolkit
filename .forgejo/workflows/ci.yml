@@ -43,6 +43,29 @@ jobs:
           echo "sites=$sites" >> "$GITHUB_OUTPUT"
           echo "app=$app sites=$sites"
 
+  # The docs checked against the code (internal/docsclaims: every command, flag, variable, key,
+  # route, socket method, tool and service is named in docs-site; the counts the pages state are
+  # the catalogue's) and the generated pages against docs/. On every trigger, docs-only pull
+  # requests included: a page edit is exactly what can drop a mention or a count. The broker job
+  # runs the same Go test inside `go test ./...`.
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: https://data.forgejo.org/actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Docs name the surface, and state the catalogue's counts
+        run: go test ./internal/docsclaims/ ./scripts/docs-touched/
+      - name: Generated pages match docs/
+        run: scripts/sync-docs.sh --check
+
   sites:
     needs: changes
     if: needs.changes.outputs.sites == 'true'
@@ -106,7 +129,7 @@ jobs:
     # Read-only and a no-op until the repository has a CLAUDE_CI_API_KEY secret. It checks out
     # nothing: the script comes from the base branch and the logs through the API. Forks get
     # no secrets and skip. On a GitHub mirror of the product it does nothing.
-    needs: [changes, sites, broker]
+    needs: [changes, docs, sites, broker]
     if: failure() && github.event_name == 'pull_request' && github.server_url != 'https://github.com'
     runs-on: ubuntu-latest
     timeout-minutes: 10
