@@ -9,6 +9,7 @@ on:
       - 'landing/**'
       - 'docs-site/**'
       - 'install.sh'
+      - 'internal/catalog/**'
       - 'scripts/deploy-sites.sh'
       - '.github/workflows/sites.yml'
   workflow_dispatch:
