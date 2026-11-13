@@ -17,7 +17,7 @@ convenient it would be.
 |---|---|
 | **At rest** | AES-256-GCM, in an owner-only file in an owner-only directory. The key is derived with Argon2id from a passphrase held in the OS keychain where one exists. Ciphertext is padded, so the file's size does not report the credential's length. |
 | **In memory** | Only in the broker, only while a request is in flight or a short-lived token is cached. |
-| **On the wire** | Whatever the scheme requires — and for three of the five operations, never the long-lived secret. |
+| **On the wire** | Whatever the scheme requires — and for four of the six operations, never the long-lived secret. |
 | **In the agent** | A placeholder, which means nothing off the host. |
 
 The short-lived access token is cached on disk too, sealed with the same key and
