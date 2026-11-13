@@ -35,7 +35,12 @@
   --sl-color-bg-sidebar: #ffffff;
   --sl-color-bg-inline-code: #eef1f4;
   --sl-color-hairline: rgba(32, 40, 61, 0.12);
+  --sl-color-hairline-light: rgba(32, 40, 61, 0.12);
   --sl-color-white: #171c26;
+  /* Without these the dark theme's pale greys carried into light, and body text was
+     unreadable. The landing page's light --code and --muted. */
+  --sl-color-gray-2: #2b3242;
+  --sl-color-gray-3: #5c6678;
 }
 
 h1, h2, h3, .site-title { font-family: var(--stk-display); letter-spacing: -0.02em; }
