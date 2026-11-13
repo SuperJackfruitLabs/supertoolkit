@@ -55,6 +55,7 @@ export default defineConfig({
             { label: 'The audit ledger', slug: 'use/audit' },
             { label: 'From an agent', slug: 'use/from-an-agent' },
             { label: 'Services', slug: 'use/services' },
+            { label: 'Gated publishing', slug: 'use/publish' },
           ],
         },
         {
