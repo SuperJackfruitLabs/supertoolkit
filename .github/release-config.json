@@ -3,10 +3,9 @@
   "ci": {
     "forge": "https://forge.superjackfruit.com",
     "repo": "SuperJackfruitLabs/supertoolkit",
-    "context": "broker-conformance / broker (push)",
-    "check_command": "go test ./..."
+    "context": "broker-conformance / broker (push)"
   },
-  "build_at_tag": true,
-  "build_command": "bash scripts/release.sh \"$TAG\"",
-  "assets": ["dist/stk_*.tar.gz"]
+  "assets": [
+    "dist/stk_*.tar.gz"
+  ]
 }
