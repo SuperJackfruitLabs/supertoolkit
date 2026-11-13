@@ -1,6 +1,8 @@
 # docs.supertoolkit.dev
 
-Starlight, with the landing page's palette and faces. Its job is to get somebody
+Starlight, with the landing page's palette and faces. The accent is vibekit's
+indigo, read from the package at build time (`accent.mjs`, as
+`landing/src/accent.ts` does for the landing page). Its job is to get somebody
 from "I typed the domain" to a working broker, and then out of their way.
 
 ```

@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { accentCss } from './accent.mjs';
 
 const REPO = 'https://github.com/SuperJackfruitLabs/supertoolkit';
 
@@ -14,11 +15,13 @@ export default defineConfig({
       // The mark beside the name, as on the landing page. See the component for why it
       // replaces Starlight's own rather than using the `logo` option.
       components: { SiteTitle: './src/components/SiteTitle.astro' },
-      // The landing page's palette and faces; see src/styles/theme.css for each value.
+      // The landing page's palette and faces; see src/styles/theme.css for each value. The
+      // accent's values come from vibekit (accent.mjs), in a style element in the head.
       customCss: ['./src/styles/theme.css'],
       favicon: '/favicon.svg',
       editLink: { baseUrl: `${REPO}/edit/main/docs-site/` },
       head: [
+        { tag: 'style', content: accentCss() },
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
         { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
         {
