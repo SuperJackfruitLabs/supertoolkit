@@ -7,11 +7,15 @@
 // platform's bare error, or, with single-page handling, the home page and a 200, which tells a
 // crawler that /anything is a real page.
 //
-// Same tokens and faces as index.astro (kept in step by hand; the two pages share no layout on
-// purpose), nothing more.
+// Same tokens and faces as index.astro (the grounds kept in step by hand; the two pages share no
+// layout on purpose), nothing more. Indigo is vibekit's, from src/accent.ts, as on index.astro.
 import ShareMeta from '../components/ShareMeta.astro';
+import { productAccent } from '../accent';
 
 const DOCS = 'https://docs.supertoolkit.dev';
+const { light: AL, dark: AD } = productAccent('supertoolkit');
+const ACCENT_CSS = `:root { --indigo: ${AD.accent}; --indigo-text: ${AD.text}; }
+@media (prefers-color-scheme: light) { :root { --indigo: ${AL.accent}; --indigo-text: ${AL.text}; } }`;
 const title = 'Not found — SuperToolkit';
 const description = 'There is no page at this address.';
 ---
@@ -29,15 +33,16 @@ const description = 'There is no page at this address.';
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@700&family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@400;500&display=swap" />
+    <style is:inline set:html={ACCENT_CSS}></style>
     <style>
       :root {
-        --bg: #0d1017; --text: #e7eeee; --muted: #8c979c; --indigo: #9a9dff; --indigo-text: #9a9dff;
+        --bg: #0d1017; --text: #e7eeee; --muted: #8c979c;
         --display: 'Outfit', system-ui, sans-serif; --sans: 'IBM Plex Sans', system-ui, sans-serif;
         --mono: 'IBM Plex Mono', ui-monospace, monospace;
         color-scheme: dark light;
       }
       @media (prefers-color-scheme: light) {
-        :root { --bg: #f8f9fa; --text: #171c26; --muted: #5c6678; --indigo: #3d40b8; --indigo-text: #3d40b8; }
+        :root { --bg: #f8f9fa; --text: #171c26; --muted: #5c6678; }
       }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased; }

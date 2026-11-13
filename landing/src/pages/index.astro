@@ -19,13 +19,16 @@
  * the installer is install.sh, copied into public/ at build time. If any of those change, this
  * page is wrong.
  *
- * Colours and faces are listed once in `:root` below. SuperToolkit's colour in the suite is
- * indigo (#5b5fe0, OKLCH hue about 277), frontdoor's own; vibekit has no product accent for it yet.
- * Indigo is spent on three things only: the placeholder, the one invariant, and the approval.
+ * Colours and faces are listed once in `:root` below. SuperToolkit's colour is vibekit's indigo
+ * (PRODUCT_ACCENTS: indigo, OKLCH hue 277), its Daylight tokens for light and dark, read from the
+ * package at build time (src/accent.ts). The suite frame keeps its own SuperToolkit colour (#5b5fe0)
+ * for its bar and header. Indigo is spent on three things only: the placeholder, the one invariant,
+ * and the approval.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ShareMeta from '../components/ShareMeta.astro';
+import { productAccent } from '../accent';
 import SuiteHead from '@superjackfruit/frontdoor/components/SuiteHead.astro';
 import Frame from '@superjackfruit/frontdoor/components/Frame.astro';
 
@@ -33,6 +36,14 @@ const SITE = 'https://supertoolkit.dev';
 const DOCS = 'https://docs.supertoolkit.dev';
 const REPO = 'https://github.com/SuperJackfruitLabs/supertoolkit';
 const FORGE = 'https://forge.superjackfruit.com/SuperJackfruitLabs/supertoolkit';
+// vibekit's indigo: --indigo is the accent as text (accent-text, the page sets it at body size),
+// --indigo-strong the accent itself (the button, the rules), --indigo-tint its pale ground and
+// --indigo-ink text on the accent. The light set also answers the system when nothing is chosen.
+const { light: AL, dark: AD } = productAccent('supertoolkit');
+const vars = (t: typeof AL) => `--indigo: ${t.text}; --indigo-strong: ${t.accent}; --indigo-tint: ${t.wash}; --indigo-ink: ${t.fg};`;
+const ACCENT_CSS = `:root { ${vars(AD)} }
+:root[data-theme='light'] { ${vars(AL)} }
+@media (prefers-color-scheme: light) { :root:not([data-theme='dark']) { ${vars(AL)} } }`;
 const TITLE = 'SuperToolkit — the agent never holds the credential';
 const DESCRIPTION =
   'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Runs on your own machine. Apache-2.0.';
@@ -101,19 +112,19 @@ const code = (s: string) => s.replace(/`([^`]+)`/g, '<code>$1</code>');
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
     />
+    <style is:inline set:html={ACCENT_CSS}></style>
     <style is:global>
       /* The suite's bones: Plex Sans and Plex Mono, a dark-first surface stack, and one display
          face of the product's own, Outfit, the geometric sans the wordmark is drawn in.
-         Contrast (WCAG 2.x):
-           dark   indigo #9a9dff on #0d1017 7.8:1, on surface 7.2:1 · button text #0d1017 on it 7.8:1
-                  muted #8b95a6 on surface 5.8:1
-           light  indigo #3d40b8 on #f8f9fa 7.6:1, on its tint 6.7:1 · button text #fff on #4a4ed4
-                  6.3:1 · muted #5c6678 on white 5.8:1 */
+         Contrast (WCAG 2.x), with vibekit 0.0.15's Daylight indigo:
+           dark   indigo text #838ee7 on #0d1017 6.3:1, on surface 5.9:1, on its tint 4.6:1 ·
+                  button text #17162a on #7f8ae7 5.7:1 · muted #8b95a6 on surface 5.8:1
+           light  indigo text #5a62be on #f8f9fa 5.1:1, on #eef1f4 4.7:1, on its tint 4.7:1 ·
+                  button text #fff8ee on #5f67c9 4.7:1 · muted #5c6678 on white 5.8:1
+         The indigo tokens come from vibekit (ACCENT_CSS above); only the grounds are this page's. */
       :root {
         --bg: #0d1017; --surface: #141923; --inset: #070a0f; --line: rgba(255,255,255,.08);
         --text: #e9edf3; --muted: #8b95a6; --code: #c9d1dc;
-        --indigo: #9a9dff; --indigo-strong: #9a9dff; --indigo-ink: #0d1017; --indigo-deep: #5b5fe0;
-        --indigo-tint: rgba(154,157,255,.14);
         --warn: #f4a526; --warn-tint: rgba(244,165,38,.14);
         --sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
         --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -126,8 +137,7 @@ const code = (s: string) => s.replace(/`([^`]+)`/g, '<code>$1</code>');
       :root[data-theme='light'] {
         --bg: #f8f9fa; --surface: #ffffff; --inset: #eef1f4; --line: rgba(32,40,61,.12);
         --text: #171c26; --muted: #5c6678; --code: #2b3242;
-        --indigo: #3d40b8; --indigo-strong: #4a4ed4; --indigo-ink: #ffffff; --indigo-deep: #3d40b8;
-        --indigo-tint: rgba(74,78,212,.1); --warn: #8a5a06; --warn-tint: rgba(244,165,38,.18);
+        --warn: #8a5a06; --warn-tint: rgba(244,165,38,.18);
         color-scheme: light;
       }
       :root[data-theme='dark'] { color-scheme: dark; }
@@ -135,8 +145,7 @@ const code = (s: string) => s.replace(/`([^`]+)`/g, '<code>$1</code>');
         :root:not([data-theme='dark']) {
           --bg: #f8f9fa; --surface: #ffffff; --inset: #eef1f4; --line: rgba(32,40,61,.12);
           --text: #171c26; --muted: #5c6678; --code: #2b3242;
-          --indigo: #3d40b8; --indigo-strong: #4a4ed4; --indigo-ink: #ffffff; --indigo-deep: #3d40b8;
-          --indigo-tint: rgba(74,78,212,.1); --warn: #8a5a06; --warn-tint: rgba(244,165,38,.18);
+          --warn: #8a5a06; --warn-tint: rgba(244,165,38,.18);
           color-scheme: light;
         }
       }
@@ -366,7 +375,7 @@ stk run -- your-agent`}</code></pre>
       .swap-label { color: var(--muted); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 8px; }
       .swap-note { color: var(--muted); font-size: .85rem; margin: 10px 0 0; }
       .swap-mid { display: grid; justify-items: center; gap: 6px; color: var(--muted); font-size: .72rem; }
-      .arrow { width: 46px; height: 2px; background: linear-gradient(90deg, var(--indigo-deep), var(--indigo)); position: relative; }
+      .arrow { width: 46px; height: 2px; background: linear-gradient(90deg, var(--indigo-strong), var(--indigo)); position: relative; }
       .arrow::after { content: ''; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: var(--indigo); }
       .redacted { color: var(--muted); }
       @media (max-width: 760px) {

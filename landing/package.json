@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",
-    "@superjackfruit/frontdoor": "file:vendor/superjackfruit-frontdoor-0.0.13.tgz",
-    "@superjackfruit/vibekit": "file:vendor/superjackfruit-vibekit-0.0.14.tgz",
+    "@superjackfruit/frontdoor": "file:vendor/superjackfruit-frontdoor-0.0.14.tgz",
+    "@superjackfruit/vibekit": "file:vendor/superjackfruit-vibekit-0.0.15.tgz",
     "astro": "^7.3.2"
   }
 }
