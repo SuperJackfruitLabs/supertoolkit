@@ -25,9 +25,12 @@ command must match the docs site's install page. If the two disagree, the page
 is wrong. The service list is read from `internal/catalog/catalog.go` at build time; the comment
 at the top of `src/pages/index.astro` says where every other string comes from.
 
-**Colour.** SuperToolkit's colour in the suite is indigo (`#5b5fe0`, OKLCH hue about 277), which
-frontdoor gives it; vibekit has no product accent for it yet. The mark in `public/favicon.svg` is
-frontdoor's `brand/supertoolkit.svg`, and the PNG icons are rendered from it.
+**Colour.** SuperToolkit's colour is vibekit's indigo (OKLCH hue 277), named by
+`PRODUCT_ACCENTS.supertoolkit` since vibekit 0.0.15. `src/accent.ts` reads its Daylight tokens for
+light and dark from the package's `accents.css` at build time, so the page follows vibekit rather
+than a copy; only the grounds are the page's own. The suite frame keeps its own SuperToolkit colour,
+`#5b5fe0`, for its bar and header, and the mark in `public/favicon.svg` is frontdoor's
+`brand/supertoolkit.svg`, byte for byte (the PNG icons are rendered from it).
 
 **Discovery.** `public/llms.txt` (the docs site serves none, so the frame links this one), a
 sitemap (`@astrojs/sitemap`), JSON-LD in the page head, and `public/og.png`, rendered from the
