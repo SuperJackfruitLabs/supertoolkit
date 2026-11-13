@@ -1,0 +1,24 @@
+# SuperToolkit
+
+> A credential broker for agents: the agent asks for an effect by name and never holds, reads or receives the credential that causes it.
+
+SuperToolkit (`stk`) runs on your own machine, on Linux and macOS. A broker holds credentials in a process the agent cannot read; clients are started with `HTTPS_PROXY` pointing at it and a placeholder (`stk:ref:<service>:v1`) where their token would be, and the broker substitutes, signs, mints, refreshes or exchanges on the wire. Policy is one committed file with safe defaults: a read is agent-callable, a write needs approval. Every request is recorded in an audit ledger that holds a fingerprint of the credential, never its value. Agents use it over MCP (`stk mcp`, four tools). Apache-2.0, installed with a checksum-verified installer.
+
+## Docs
+
+- [What it is](https://docs.supertoolkit.dev/): the product and the one invariant
+- [Install](https://docs.supertoolkit.dev/install/): the installer, or build from source
+- [Limitations](https://docs.supertoolkit.dev/limitations/): what it does not do, and why
+
+## Links
+
+- [Home](https://supertoolkit.dev)
+- [Installer](https://supertoolkit.dev/install.sh)
+- [Source repository](https://github.com/SuperJackfruitLabs/supertoolkit)
+- [Source on the forge](https://forge.superjackfruit.com/SuperJackfruitLabs/supertoolkit)
+- [Releases](https://github.com/SuperJackfruitLabs/supertoolkit/releases)
+
+## Optional
+
+- [Super Jackfruit Labs](https://superjackfruit.com): the company behind SuperToolkit
+- [Super Jackfruit Labs llms.txt](https://superjackfruit.com/llms.txt): all products in the family

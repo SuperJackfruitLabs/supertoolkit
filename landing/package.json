@@ -3,13 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev --port 4329",
-    "build": "astro build",
-    "preview": "astro preview --port 4329",
+    "dev": "astro dev --port 4509",
+    "build": "astro build && node scripts/check-frame.mjs",
+    "preview": "astro preview --port 4509",
+    "check:frame": "node scripts/check-frame.mjs",
     "prebuild": "cp ../install.sh public/install.sh",
     "predev": "cp ../install.sh public/install.sh"
   },
   "dependencies": {
-    "astro": "^5.14.1"
+    "@astrojs/sitemap": "^3.7.4",
+    "@superjackfruit/frontdoor": "file:vendor/superjackfruit-frontdoor-0.0.13.tgz",
+    "@superjackfruit/vibekit": "file:vendor/superjackfruit-vibekit-0.0.14.tgz",
+    "astro": "^7.3.2"
   }
 }

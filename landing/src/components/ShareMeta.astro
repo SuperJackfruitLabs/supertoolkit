@@ -1,18 +1,41 @@
 ---
-/** Link preview tags. Absolute URLs: several unfurlers ignore a relative og:image. */
-interface Props { site: string; title: string; description: string; }
-const { site, title, description } = Astro.props;
+/**
+ * Canonical URL, icon, and the tags a link preview is built from.
+ *
+ * One component rather than a block per page, because the two pages here share no layout and
+ * link-preview tags copied twice drift two ways. The canonical URL is derived from `Astro.site`
+ * and the page's own path. og:image is absolute because several unfurlers ignore a relative one.
+ * A page that is not a real address (the 404) passes `canonical={false}`. The image is
+ * public/og.png, 1200×630, rendered from the suite's one OG template — see og/README.md.
+ */
+interface Props {
+  title: string;
+  description: string;
+  canonical?: boolean;
+}
+
+const { title, description, canonical: hasCanonical = true } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const image = new URL('/og.png', Astro.site).href;
+const imageAlt = 'SuperToolkit — the agent never holds the credential';
 ---
-<meta name="description" content={description} />
+
+{hasCanonical && <link rel="canonical" href={canonical} />}
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />
+
 <meta property="og:type" content="website" />
-<meta property="og:url" content={site} />
+<meta property="og:site_name" content="SuperToolkit" />
 <meta property="og:title" content={title} />
 <meta property="og:description" content={description} />
-<meta property="og:image" content={`${site}/og.png`} />
+{hasCanonical && <meta property="og:url" content={canonical} />}
+<meta property="og:image" content={image} />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:image:alt" content="supertoolkit — the agent never holds the credential" />
+<meta property="og:image:alt" content={imageAlt} />
+
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content={title} />
 <meta name="twitter:description" content={description} />
-<meta name="twitter:image" content={`${site}/og.png`} />
+<meta name="twitter:image" content={image} />
+<meta name="twitter:image:alt" content={imageAlt} />
