@@ -54,6 +54,7 @@ export default defineConfig({
             { label: 'Approvals', slug: 'use/approvals' },
             { label: 'The audit ledger', slug: 'use/audit' },
             { label: 'From an agent', slug: 'use/from-an-agent' },
+            { label: 'Fronted servers and egress', slug: 'use/mcp-serve' },
             { label: 'Services', slug: 'use/services' },
             { label: 'Gated publishing', slug: 'use/publish' },
           ],
