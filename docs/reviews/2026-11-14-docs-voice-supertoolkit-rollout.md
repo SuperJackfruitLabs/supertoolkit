@@ -74,7 +74,7 @@ No behavioral fact, command, value, default, field, enum, limit, or deployment s
 | `security.md` | description said “What supertoolkit protects against” | description uses “SuperToolkit” | Voice guide rule 8; `AGENTS.md:1` |
 | `limitations.md` | generated body/source said “What supertoolkit does not do” and “supertoolkit ships none” | body/source use “SuperToolkit” | Voice guide rule 8; `AGENTS.md:1`; generated copy remains synchronized by `scripts/sync-docs.sh` |
 
-Lowercase text remains only where it is exact material: the repository/path/domain name, `supertoolkit.yaml`, generated binary messages, and the documented denial string.
+Lowercase text remains only where it is exact material: the repository/path/domain name, `supertoolkit.yaml`, generated binary messages, the documented denial string, and the unchanged generator-owned frontmatter description on `limitations.md`.
 
 ## Deployment claims that remain UNVERIFIED
 
@@ -104,4 +104,13 @@ No humor was added to any exact region.
 
 ## Real checks
 
-To be filled with the exact docs-only commands and outputs after the final content and ledger are committed.
+The local host did not have Go on `PATH`, so the first combined invocation stopped before running any check with `go: command not found`. I downloaded the official `go1.26.11.linux-amd64` archive into this profile's scratch directory, verified its published SHA-256 checksum, and reran the docs-only lane with that toolchain. The repository remained clean after dependency installation and build.
+
+Commands are exactly the substantive docs-only CI steps from `.forgejo/workflows/ci.yml:54-60`:
+
+- `go test ./internal/docsclaims/ ./scripts/docs-touched/`: pass — `internal/docsclaims` passed in 0.537 s; `scripts/docs-touched` passed in 0.003 s.
+- `scripts/sync-docs.sh --check`: pass — `generated pages are current`.
+- `npm ci --no-audit --no-fund` in `docs-site`: pass — 429 packages added in 7 s.
+- `npm run build` in `docs-site`: pass — Astro built 18 pages in 4.15 s; Pagefind indexed 18 HTML files; the sitemap was generated.
+
+The successful build emitted the existing non-fatal Starlight warning that the optional `i18n` collection does not exist or is empty. No changed page or configuration error was reported.
