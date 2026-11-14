@@ -198,20 +198,20 @@ sharing one store are not a supported migration. Do not remove a live cache lock
 file to bypass a refusal. Managed profiles must pin their broker version and
 account for old owned processes during upgrade and recovery.
 
-## The repository's staging configuration
+## The staging deployment
 
-At this revision, `deploy/staging/` is intended to install the broker as user `stk` for a separate
-agent uid. It declares one service, `git-public` (`auth: none`), and configures that agent user's
-git through `~/.gitconfig`. That is configuration, not confinement: the agent still runs commands
-as an ordinary user with network access, so `/usr/bin/git -c http.proxy= …` or any other client
-that ignores the proxy can go straight out, unrecorded. The broker bounds and records what goes
-*through* it. Enforcing that every process owned by the agent uid goes through it would require a
-separate host egress boundary; this repository does not claim one.
+`deploy/staging/` runs the broker as user `stk` on the staging host, for a Salaam agent that
+runs under its own uid. It fronts one service, `git-public` (`auth: none`), and Salaam's git is
+pointed at it through `~/.gitconfig`. That is configuration, not confinement: the agent runs
+commands as an ordinary user with network access, so `/usr/bin/git -c http.proxy= …` or any
+other client that ignores the proxy goes straight out, unrecorded. The broker bounds and records
+what goes *through* it. Enforcing that nothing goes around it needs egress filtering for the
+agent's uid, which staging does not have yet.
 
-The checked-in policy declares `egress: public-only`, so hosts outside policy are decided by
-address rather than tunnelled undecided. Its `fetch` server is `network: confined`: the server
-gets its own user and network namespace and reaches the network through the broker. These are
-claims about the versioned configuration, not evidence of what is live on a private host.
+Fronted MCP servers can be served directly (`stk mcp serve <server>`), each tool call decided and
+audited, and a host outside policy is decided by address (`egress:`) rather than passed through:
+staging declares `egress: public-only`, so nothing is tunnelled undecided. Its `fetch` server is
+`network: watched` rather than `confined` — see the next section for why, and what that costs.
 
 ## A fronted server's own network: blocked, or only detected
 
