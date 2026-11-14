@@ -3,9 +3,9 @@ title: Services
 description: The thirteen services in the catalogue, what the broker does for each, and the services you declare yourself.
 ---
 
-The catalogue is deliberately short. Breadth is not the product: there are
-hundreds of MCP servers already, and an entry here is only needed where the
-broker fronts a service directly.
+The catalogue is deliberately short. You already have hundreds of MCP servers
+to choose from; we add an entry only where the broker fronts a service directly.
+Breadth is not the trick here. A precise request boundary is.
 
 The thirteen services are chosen so that every auth scheme and every credential
 placement has a **live connector** behind it rather than only a constant.
@@ -36,6 +36,9 @@ stk add github slack x
 Adding a service prints how its capabilities are classified — how many are
 agent-callable reads and how many need approval.
 
+That summary tells you what the safe defaults bought before you connect a
+credential or hand the service to an agent.
+
 The two `superpipeline-approvals-*` services are **native-only**: stk uses them
 itself, for [approvals hosted on SuperPipeline](/use/approvals/#approvals-hosted-on-superpipeline)
 and for [gated publishing](/use/publish/). No agent profile can name them, and
@@ -45,6 +48,9 @@ Organization-plane service credential with one scope, connected with
 stdin.
 
 ## Some notes the table cannot carry
+
+The table is exact; these notes explain why a few rows needed their particular
+shape.
 
 **Stripe** keeps scheme-aware substitution honest. Its secret key travels as the
 Basic username, so the broker decodes the header, replaces the value and
@@ -102,6 +108,9 @@ Then `stk connect forge-main` (the token on stdin) and `stk verify forge-main`,
 which makes one read call as that credential and prints the login it acts as,
 or the reason it failed. `api_prefix:` sets the path the API is served under
 when it is not the provider's default.
+
+The verification result names the provider identity you connected without
+printing the token. You can check the account before the first allowed write.
 
 **Presets are enforced.** The broker decides every request to a forge before it
 fetches the credential: a request no rule allows gets a `403` that names the
@@ -162,6 +171,9 @@ For any host other than `api.github.com` the API is served under `/api/v3`,
 which is the default `api_prefix`. Connect it with `app_id`, `installation_id`
 and `private_key` as `field=value` lines on stdin to `stk connect acme-app`.
 
+Once connected, the installation token is minted for the configured repository
+set. The private key stays in the broker's store instead of joining the agent.
+
 ### Audit labels
 
 `labels:` on a `kind: forge` service copies up to three short values — `station`, `principal`
@@ -175,6 +187,9 @@ character fails the load.
 reads the store for it and injects nothing; its rules still decide every request
 and `stk audit` still records it. Anonymous git over HTTPS is the case it is
 for:
+
+This is still useful: you get policy and an audit trail for anonymous traffic,
+without pretending there is a secret to protect.
 
 ```yaml
 services:
