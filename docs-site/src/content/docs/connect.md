@@ -53,7 +53,7 @@ services:
       redirect_uri: http://localhost:8080/callback
 ```
 
-supertoolkit ships no client id. A shared one would make every installation look
+SuperToolkit ships no client id. A shared one would make every installation look
 like the same app to the provider, and be a single point of revocation for
 everyone. A client id is public by OAuth's design — it names an app and
 authorises nothing — so it is safe in a committed file. A client secret is not,

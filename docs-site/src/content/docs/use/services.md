@@ -188,9 +188,6 @@ reads the store for it and injects nothing; its rules still decide every request
 and `stk audit` still records it. Anonymous git over HTTPS is the case it is
 for:
 
-This is still useful: you get policy and an audit trail for anonymous traffic,
-without pretending there is a secret to protect.
-
 ```yaml
 services:
   git-public:
@@ -206,6 +203,9 @@ services:
       - allow: "POST /{owner}/{repo}/git-upload-pack"
       - deny: "POST /*/*/git-receive-pack"
 ```
+
+This is still useful: you get policy and an audit trail for anonymous traffic,
+without pretending there is a secret to protect.
 
 A push opens with `GET …/info/refs?service=git-receive-pack`; the broker decides
 that request as the push it begins, so a denied push is refused at its first
