@@ -171,8 +171,9 @@ For any host other than `api.github.com` the API is served under `/api/v3`,
 which is the default `api_prefix`. Connect it with `app_id`, `installation_id`
 and `private_key` as `field=value` lines on stdin to `stk connect acme-app`.
 
-Once connected, the installation token is minted for the configured repository
-set. The private key stays in the broker's store instead of joining the agent.
+When an allowed request needs authentication, the broker mints an installation
+token for the configured repository set. The private key stays in the broker's
+store instead of joining the agent.
 
 ### Audit labels
 

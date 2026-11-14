@@ -6,7 +6,8 @@ description: Four MCP tools instead of a thousand, and running a child under the
 ## As an MCP server
 
 We can give an agent the whole brokered catalogue without dropping the whole
-catalogue into its context. Install the small discovery surface for your client:
+catalogue into its context. Generate the small discovery configuration for your
+client:
 
 ```sh
 stk mcp install claude-code     # prints the configuration; no secret in it
@@ -26,9 +27,10 @@ A hundred services cost four tool definitions of context instead of a thousand.
 The agent discovers what it needs when it needs it, and the enforcement point is
 the same one the CLI uses.
 
-After installation, the client sees four stable tools and can discover the
-service-specific actions only when it needs them. Context stays small; policy
-does not move.
+These commands print configuration; they do not edit your client. Put the
+printed `mcpServers` entry in the path the command names, then reload the client.
+It now sees four stable tools and can discover service-specific actions only
+when it needs them. Context stays small; policy does not move.
 
 An effect at `approval` returns:
 

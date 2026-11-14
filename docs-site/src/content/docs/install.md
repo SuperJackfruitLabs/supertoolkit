@@ -20,8 +20,9 @@ mismatch stops it: it refuses rather than warns. It then puts `stk` in
 `/usr/local/bin` if that is writable, otherwise `~/.local/bin`, and prints
 `stk version`.
 
-When the command finishes, you have a checksum-verified `stk` on your `PATH` and
-the version it installed in the terminal output.
+When the command finishes, you have a checksum-verified `stk` at the path it
+prints, along with the installed version. If that directory is not on your
+`PATH`, the installer says so instead of pretending the next command will work.
 
 | Variable | Default | |
 |---|---|---|
@@ -63,14 +64,16 @@ one, under systemd: see [Run as a service](/run/serve/), and `stk install`.
 stk init
 ```
 
-This creates a local certificate authority, a sealed credential store, and a
-starter `supertoolkit.yaml`. It prints where each lives and **where the store
-key came from** — an OS keychain, or a file beside the ciphertext. That
-difference matters and is reported rather than hidden; see
+This creates a local certificate authority, the state directory and key that
+will protect each sealed credential file, and a starter `supertoolkit.yaml`.
+The credential file itself appears when you connect a service. `stk init`
+prints every path and **where the store key came from** — an OS keychain, or a
+file beside the ciphertext. That difference matters and is reported rather
+than hidden; see
 [Limitations](/limitations/#the-store-key-is-only-as-good-as-the-platform).
 
-You now have the CA, store, and policy file the broker needs—and an explicit
-answer about where the key protecting the store came from.
+You now have the CA, key and policy file the broker needs—and an explicit answer
+about where the key that will protect connected credentials came from.
 
 The CA is created once per install and persists. On macOS, Go programs ignore
 `SSL_CERT_FILE` and read the system keychain, so tools written in Go — `gh`
@@ -112,6 +115,6 @@ credentials first, and as far as possible at the providers too:
 stk revoke <service>
 ```
 
-The revoke command withdraws what it can before you remove local state, so the
-uninstall does not leave a credential valid merely because its ciphertext is
-gone.
+The command tries provider revocation first, then removes the local copy. Its
+output says whether the provider invalidated the credential or it may still be
+valid, so deleting ciphertext is never mistaken for withdrawing access.

@@ -18,9 +18,11 @@ exists to hold it.
 
 ## How it works
 
-We run the broker as its own OS user on a Unix socket. You start clients — CLIs,
-MCP servers, anything that speaks HTTP — with `HTTPS_PROXY` pointing at it and a
-**placeholder** where their token would be:
+For one child, `stk run` starts an in-process broker and a loopback proxy. For
+long-running agents, run `stk serve` as its own OS user; clients reach its Unix
+control socket and loopback proxy. In either mode, you start HTTP clients with
+`HTTPS_PROXY` pointing at the broker and a **placeholder** where their token
+would be:
 
 ```sh
 GH_TOKEN=stk:ref:github:v1

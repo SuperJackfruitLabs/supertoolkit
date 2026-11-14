@@ -14,7 +14,7 @@ into the broker without putting it in command arguments.
 
 | Command | |
 |---|---|
-| `stk init` | create the local CA, the sealed store and a starter `supertoolkit.yaml` ([Install](/install/#first-run)) |
+| `stk init` | create the local CA, store key and state directory, and a starter `supertoolkit.yaml` ([Install](/install/#first-run)); sealed credential files appear when services are connected |
 | `stk add <service>...` | add services, with safe default policy ([Services](/use/services/)) |
 | `stk connect <service>` | store a credential, read from stdin ([Connect](/connect/)) |
 | `stk connect <service> --browser` | OAuth 2.0 authorization code with PKCE |
