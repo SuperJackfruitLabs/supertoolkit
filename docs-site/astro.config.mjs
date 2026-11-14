@@ -1,7 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import { accentCss } from './accent.mjs';
+import sjlDocs from '@superjackfruit/docs-theme';
 
 const REPO = 'https://github.com/SuperJackfruitLabs/supertoolkit';
 
@@ -9,35 +9,37 @@ export default defineConfig({
   site: 'https://docs.supertoolkit.dev',
   integrations: [
     starlight({
-      title: 'supertoolkit',
+      title: 'SuperToolkit',
       description:
         'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Self-hosted, Apache-2.0.',
-      // The mark beside the name, as on the landing page. See the component for why it
-      // replaces Starlight's own rather than using the `logo` option.
-      components: { SiteTitle: './src/components/SiteTitle.astro' },
-      // The landing page's palette and faces; see src/styles/theme.css for each value. The
-      // accent's values come from vibekit (accent.mjs), in a style element in the head.
-      customCss: ['./src/styles/theme.css'],
+      // The suite's docs theme: vibekit's indigo, the faces, the street, status badges, the footers,
+      // the 404 and llms.txt. See @superjackfruit/docs-theme's README.
+      plugins: [
+        sjlDocs({
+          product: 'supertoolkit',
+          // It works and is released (v0.0.x binaries), and the Limitations page names its gaps.
+          status: 'half-lit',
+          // /llms.txt, /llms-full.txt and /llms-small.txt, for agents reading these docs. The
+          // description is the one supertoolkit.dev's own llms.txt carries (landing/public/llms.txt).
+          llms: {
+            description:
+              'A credential broker for agents: the agent asks for an effect by name and never holds, ' +
+              'reads or receives the credential that causes it. SuperToolkit (`stk`) runs on your own ' +
+              'machine, on Linux and macOS. A broker holds credentials in a process the agent cannot ' +
+              'read; clients are started with `HTTPS_PROXY` pointing at it and a placeholder ' +
+              '(`stk:ref:<service>:v1`) where their token would be, and the broker substitutes, signs, ' +
+              'mints, refreshes or exchanges on the wire. Policy is one committed file with safe ' +
+              'defaults: a read is agent-callable, a write needs approval. Every request is recorded in ' +
+              'an audit ledger that holds a fingerprint of the credential, never its value. Agents use ' +
+              'it over MCP (`stk mcp`, four tools). Apache-2.0, installed with a checksum-verified ' +
+              'installer.',
+          },
+        }),
+      ],
       favicon: '/favicon.svg',
       editLink: { baseUrl: `${REPO}/edit/main/docs-site/` },
-      head: [
-        { tag: 'style', content: accentCss() },
-        { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
-        { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
-        {
-          tag: 'link',
-          attrs: {
-            rel: 'stylesheet',
-            href:
-              'https://fonts.googleapis.com/css2?family=Outfit:wght@600;700' +
-              '&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap',
-          },
-        },
-      ],
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
-      // In the order a reader needs them: what it is and how to stand it up, using it,
-      // running it for agents on a server, the reference, then the things worth knowing
-      // before trusting it.
+      // The suite's five groups, in the order a reader needs them. No page moved, so no URL changed.
       sidebar: [
         {
           label: 'Start',
@@ -48,19 +50,24 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Use',
+          label: 'Use it',
           items: [
             { label: 'Policy and profiles', slug: 'use/policy' },
             { label: 'Approvals', slug: 'use/approvals' },
             { label: 'The audit ledger', slug: 'use/audit' },
-            { label: 'From an agent', slug: 'use/from-an-agent' },
-            { label: 'Fronted servers and egress', slug: 'use/mcp-serve' },
             { label: 'Services', slug: 'use/services' },
             { label: 'Gated publishing', slug: 'use/publish' },
           ],
         },
         {
-          label: 'Run',
+          label: 'Build on it',
+          items: [
+            { label: 'From an agent', slug: 'use/from-an-agent' },
+            { label: 'Fronted servers and egress', slug: 'use/mcp-serve' },
+          ],
+        },
+        {
+          label: 'Run it',
           items: [{ label: 'Run as a service', slug: 'run/serve' }],
         },
         {
@@ -68,14 +75,9 @@ export default defineConfig({
           items: [
             { label: 'Commands', slug: 'reference/cli' },
             { label: 'The web interface', slug: 'reference/web-ui' },
-          ],
-        },
-        {
-          label: 'Know',
-          items: [
+            { label: 'Security model', slug: 'security' },
             { label: 'Limitations', slug: 'limitations' },
             { label: 'What is measured', slug: 'measurements' },
-            { label: 'Security model', slug: 'security' },
           ],
         },
       ],

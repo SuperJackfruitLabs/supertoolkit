@@ -1,23 +1,46 @@
 ---
-title: supertoolkit
+title: SuperToolkit
 description: A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire.
 template: splash
-hero:
-  tagline: The agent never holds, reads, or receives a credential. Not configurable, no override.
-  actions:
-    - text: Install
-      link: /install/
-      icon: right-arrow
-    - text: Read the limitations
-      link: /limitations/
-      variant: minimal
-    - text: Source
-      link: https://github.com/SuperJackfruitLabs/supertoolkit
-      icon: external
-      variant: minimal
+status: half-lit
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import BentoHome from '@superjackfruit/docs-theme/components/BentoHome.astro';
+import FlowSteps from '@superjackfruit/docs-theme/components/FlowSteps.astro';
+import WetPaint from '@superjackfruit/docs-theme/components/WetPaint.astro';
+import JackAside from '@superjackfruit/docs-theme/components/JackAside.astro';
+
+<BentoHome
+  claim="The agent gets the effect, never the credential."
+  sub="Your agent asks for something by name: read this repository, open that issue. SuperToolkit decides whether it may (by default a read goes ahead and a write waits for you), puts the real credential on the wire on the way out, and writes down what happened. The agent holds a placeholder, stk:ref:github:v1, which is worth exactly nothing to whoever finds it. Hard to leak a key you were never given."
+  actions={[
+    { text: 'Install', link: '/install/' },
+    { text: 'Read the limitations', link: '/limitations/', variant: 'secondary' },
+  ]}
+  quickstart={{
+    command: "git clone https://github.com/SuperJackfruitLabs/supertoolkit && cd supertoolkit && go test ./e2e/ -v -run 'TestChildReachesProvider|TestForgeRulesAllowThenDeny|TestForgeDenied'",
+    label: 'Quick start: broker a request, with the provider faked',
+    note: "Needs Go 1.26 (the repository's go.mod) and curl, and nothing else: the provider is a local stand-in and the token is made up. Three tests: curl reaches the provider with a credential it never held, a forge preset lets a POST through and answers a DELETE with 403 before the provider sees it, and that refusal lands in the ledger with its rule and no secret. To broker your own services, start with Install.",
+  }}
+  agent={{ task: "Then explain how SuperToolkit would broker my agent's GitHub access, and list what I need before I connect a credential." }}
+  ask={{ examples: ['Why did I get a 403 that says "Nothing was sent"?', 'Can my agent read the token from its environment?', 'Why does gh refuse the certificate on my Mac?', 'How do I let an agent open pull requests but never merge them?'] }}
+  flowTitle="How a brokered request flows (step through it; it waits for you)"
+>
+  <FlowSteps
+    label="Request step"
+    steps={[
+      { label: 'Agent', body: 'stk run -- your-agent starts the agent with HTTPS_PROXY pointing at the broker, the broker\'s CA, and a placeholder where each credential would be. NO_PROXY is cleared, because it is a confirmed bypass. The agent makes an ordinary HTTPS request with the placeholder in it.', items: [{ text: 'FORGEJO_TOKEN=stk:ref:forge-main:v1', card: true }] },
+      { label: 'Proxy', body: 'The request reaches the broker, not the provider. The broker terminates TLS with its own local CA and looks up the service configured for that host.', items: [{ text: 'DELETE /api/v1/repos/acme/widgets/issues/1', card: true }] },
+      { label: 'Decision', body: 'For a forge, its preset and your rules decide before the credential is even read: a deny always wins, and anything not allowed is denied. No preset allows DELETE. A refusal is answered at once with a 403 that names the rule: "supertoolkit denied this request: rule builtin:default-deny (no-rule). Nothing was sent."', items: [{ text: 'POST …/issues (preset: issues)', win: true }, { text: 'DELETE …/issues/1 → 403', out: true }] },
+      { label: 'Injected', body: 'Only an allowed request makes the broker read the credential from its sealed store. It puts the real token where the placeholder was, or signs the request, or mints a short-lived token, as the service needs.', items: [{ text: 'stk:ref:forge-main:v1', out: true }, { text: 'Bearer <real token>', win: true }] },
+      { label: 'Provider', body: 'The provider gets an ordinary request with a real credential, and its answer streams back to the agent as it arrives. The credential never entered the agent\'s process.', items: [{ text: 'the provider answers ✓', win: true }] },
+      { label: 'Audit', body: 'Each request leaves a row in the audit ledger (stk audit): service, method, path, outcome, and a fingerprint where the credential would be, never the value. A refused request names its rule instead, since it never touched the credential.', items: [{ text: '403 denied: builtin:default-deny', out: true }, { text: 'credential: sha256:… (a fingerprint)', card: true }] },
+    ]}
+  />
+</BentoHome>
+
+## Why a broker
 
 The standard way to give an agent a tool is to put an API key in an MCP config
 file. That file is plaintext, any process can read it, and the agent reads it to
@@ -64,3 +87,17 @@ one.
 Nothing inside a proxy can detect a client that never speaks to it. What can be
 done is detect it from outside, which is what `stk doctor --probe` is for. Run
 it before trusting a new client. See [Limitations](/limitations/).
+
+<WetPaint>
+  SuperToolkit works, and it is early: v0.0.9, released on 9 November 2026, is the current
+  release. [Limitations](/limitations/) says what it does not do and why. Read it before trusting
+  the broker with something that matters.
+</WetPaint>
+
+<JackAside>
+  I read these docs so you don't have to read all of them at once. Ask me in the box up top. I
+  hold no credentials either, and if the answer isn't in here I'll say so rather than make one up.
+</JackAside>
+
+For agents, the same docs are plain text: [`/llms.txt`](/llms.txt) indexes them, and
+[`/llms-full.txt`](/llms-full.txt) is every page in one file.

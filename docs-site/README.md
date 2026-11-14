@@ -1,9 +1,7 @@
 # docs.supertoolkit.dev
 
-Starlight, with the landing page's palette and faces. The accent is vibekit's
-indigo, read from the package at build time (`accent.mjs`, as
-`landing/src/accent.ts` does for the landing page). Its job is to get somebody
-from "I typed the domain" to a working broker, and then out of their way.
+Starlight, wearing the suite's docs theme. Its job is to get somebody from "I
+typed the domain" to a working broker, and then out of their way.
 
 ```
 npm ci && npm run dev      # http://localhost:4330
@@ -12,6 +10,26 @@ npm run build              # dist/
 
 Deployed on merge to main by `.github/workflows/sites.yml`, which runs
 `scripts/deploy-sites.sh`. To deploy by hand: `scripts/deploy-sites.sh docs`.
+
+## What is deliberate about it
+
+**It wears the suite's docs theme**, `@superjackfruit/docs-theme` (vendored under
+`vendor/` with the frontdoor and vibekit tarballs it needs, the same tarballs the
+other products' docs sites carry). The whole design config is
+`sjlDocs({ product: 'supertoolkit', status: 'half-lit' })` in `astro.config.mjs`:
+vibekit's indigo, the suite's faces (self-hosted), the street, status badges,
+Copy Markdown, the suite footer, the 404 and llms.txt. The home is the theme's
+`BentoHome`. The status is half-lit because the broker works and is released,
+and [Limitations](https://docs.supertoolkit.dev/limitations/) names its gaps.
+`public/favicon.svg` is a copy of `landing/public/favicon.svg`.
+
+**The sidebar uses the suite's groups**: Start, Use it, Build on it, Run it,
+Reference. The theme warns at build time when a top-level group is anything else.
+
+**For agents**: `/llms.txt`, `/llms-full.txt` and `/llms-small.txt`
+(`starlight-llms-txt`, through the theme, with the description
+`landing/public/llms.txt` carries), and every page as Markdown at its own
+address plus `.md`.
 
 **The pages here are derived from the repository's own documents** — `README.md`,
 `docs/limitations.md`, `docs/measurements.md`. Where they disagree, the

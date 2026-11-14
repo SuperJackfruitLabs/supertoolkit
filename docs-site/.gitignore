@@ -1,3 +1,5 @@
 dist/
 node_modules/
 .astro/
+# The suite docs theme and the tarballs it needs, vendored like the landing page's.
+!vendor/*.tgz
