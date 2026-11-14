@@ -3,10 +3,10 @@ title: Gated publishing
 description: stk publish posts to X only after a SuperPipeline gate approved the exact bytes, and never posts twice.
 ---
 
-`stk publish` is a durable command path for one effect that a person decides on
-SuperPipeline and stk then carries out automatically: a post to X. The agent
-proposes the exact bytes; a person approves those bytes on a SuperPipeline gate;
-stk posts them, and only them, and records where they went.
+Let's take one effect all the way from proposed bytes to a recorded delivery.
+`stk publish` is a durable path for a post to X: the agent proposes the exact
+bytes, a person approves those bytes on a SuperPipeline gate, and stk posts them
+automatically—only them—and records where they went.
 
 ```sh
 stk publish submit < request.json   # store the exact request; prints its id and digest
@@ -17,6 +17,9 @@ stk publish recover                 # finish or fence anything a crash left half
 **Exit status 3 means the gate is waiting for a person.** It is neither success
 (0) nor failure (1): `perform` prints `{"id": …, "state": "awaiting_decision"}`
 and nothing has been sent. Run it again later.
+
+The three commands give you a durable request, a gated attempt, and a recovery
+path. At no point does “still waiting” masquerade as delivery.
 
 ## What it needs
 
@@ -44,6 +47,9 @@ It stores those bytes and prints the effect's id, its request digest and its
 state. The board and subject ids are lookup references, not authority: only
 stk's own authenticated read-back of the gate can authorize the send.
 
+Submit ends with the exact bytes frozen under an id and digest. That is the
+object a person will approve; later edits cannot hitch a ride on the decision.
+
 ## Perform
 
 `perform` loads the stored bytes back from disk, then asks SuperPipeline
@@ -57,6 +63,9 @@ SuperPipeline or an unreadable answer all fail closed.
 
 After X accepts the post, stk reads it back to find its live URL, and records
 that URL on the SuperPipeline card with the write credential.
+
+Perform therefore ends with evidence on both sides: the live post can be read
+back, and its URL is attached to the card that carried the decision.
 
 A SuperPipeline-gated effect cannot be decided locally: `stk approvals allow`
 and `deny` both refuse it without changing its state.
@@ -76,3 +85,7 @@ see whether the exact approved post exists, without writing.
 crash left sending, unknown, delivered-but-unrecorded or allowed to retry, and
 refuses any that expired without a confirmed decision. A provider's 4xx or 5xx
 is a confirmed answer, recorded as it is, and never treated as delivery.
+
+Recovery gives every interrupted effect a safe terminal state or an explicit
+fence. The one result it never manufactures is permission to send the same bytes
+again on a guess.

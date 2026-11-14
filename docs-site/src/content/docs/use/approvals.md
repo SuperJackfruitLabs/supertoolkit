@@ -3,9 +3,10 @@ title: Approvals
 description: What happens when an agent proposes an effect you have to decide.
 ---
 
-An effect at `approval` is submitted, returns `pending` with an id, and
-**performs nothing** until somebody decides. With nothing to decide through, the
-effect simply does not happen: the queue fails closed.
+Here is the promise we need an approval gate to keep: an effect at `approval` is
+submitted, returns `pending` with an id, and **performs nothing** until somebody
+decides. With nothing to decide through, the effect simply does not happen. The
+queue fails closed.
 
 ## Deciding
 
@@ -25,6 +26,9 @@ Or in the web interface, which shows the same queue:
 ```sh
 stk ui
 ```
+
+Either path brings you to the same pending effect. After you decide it, every
+other view sees the same answer; there is no second queue waiting in the wings.
 
 The queue is shared by every process on the machine, so an approval raised by an
 agent through `stk mcp` can be decided from the CLI or the browser. Decide-once
@@ -49,6 +53,9 @@ waiting agent reports the outcome rather than running it a second time.
 
 "Approved, and it failed" is a true record and is kept as one. The outcome
 carries the provider's status or the reason it did not work.
+
+So approval buys an attempted effect, not a flattering label. You can see both
+the decision and what the provider actually did with it.
 
 ## What the screen shows
 
@@ -94,6 +101,10 @@ declared. Connect each with an Organization-plane service credential that has
 that one scope (`stk connect superpipeline-approvals-write`, then `-read`, the
 credential on stdin), then `stk reload`.
 
+After reload, new approval effects appear on that board instead of the local
+queue. The agent still receives only a pending id; the credentials used to host
+the decision remain native to stk.
+
 With a board named, an effect at `approval`:
 
 1. is submitted as hosted, and the agent is answered `pending` with
@@ -114,6 +125,9 @@ With a board named, an effect at `approval`:
 policy names a board, `stk approvals` and `stk ui` refuse every local decision.
 **Failure is closed**: if SuperPipeline cannot be reached, the effect waits,
 is retried, and then expires. It never falls back to a local decision.
+
+That leaves one source of authority for the effect. A network failure can delay
+or expire it, but cannot quietly move the decision somewhere easier.
 
 ## The limit worth knowing
 
