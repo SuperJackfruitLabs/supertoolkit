@@ -81,13 +81,13 @@ The draft pass corrected several official-casing defects but missed additional b
 | `install.md` | the uninstall payoff could be read as guaranteeing that provider access was withdrawn | it says provider revocation is attempted first, the local copy is then removed, and the output distinguishes invalidated from possibly still valid | `internal/credcmd/revoke.go:68-107` |
 | `use/from-an-agent.md` | the step said `stk mcp install` installed the discovery surface and implied the client saw it immediately | it says the command only prints configuration, tells the reader to place it at the printed path and reload, then states the four-tool result | `internal/mcpcmd/mcpcmd.go:79-109` |
 | `use/services.md` | “Once connected, the installation token is minted” implied that `stk connect` performs the exchange | the token is minted when an allowed request needs authentication; connect stores the app material | `internal/setup/setup.go:137-180`; `internal/secrets/secrets.go:111-147,281-290` |
-
+| `limitations.md` | the live-staging statement named an internal agent | the same claim says “an agent” and “the agent's git,” preserving the possibly true deployment statement without publishing an internal agent name | Voice guide rule 8; task privacy requirement |
 
 Lowercase text remains only where it is exact material: the repository/path/domain name, `supertoolkit.yaml`, generated binary messages, and the documented denial string.
 
 ## Deployment claims that remain UNVERIFIED
 
-- **UNVERIFIED / publication blocker:** `limitations.md` says the live staging deployment runs the broker as user `stk` for a separate-uid Salaam agent, fronts `git-public`, uses `egress: public-only`, and runs `fetch` as `network: watched`. `deploy/staging/supertoolkit.yaml:20-71` and `deploy/staging/deploy.sh:18-137` prove intended repository configuration, not what is live; the base policy currently says `network: confined`, so it cannot establish the page's `watched` statement. A request for a pinned private-estate/provisioning revision or operator confirmation was posted on card `card_39154d0373974490` on 2026-11-14 and remained unanswered at the end of Verify. Per the operator's 2026-11-14 review instruction, the possibly true live claim stays in the page and is not rewritten from repository evidence. Publication is clear when an immutable owning-source revision or explicit operator confirmation establishes the live statement, or when the operator directs a factual update.
+- **UNVERIFIED / publication blocker:** `limitations.md` says the live staging deployment runs the broker as user `stk` for a separate-uid agent, fronts `git-public`, has no uid-level egress filtering, uses `egress: public-only`, and runs `fetch` as `network: watched`. `deploy/staging/supertoolkit.yaml:20-71` and `deploy/staging/deploy.sh:18-137` prove intended repository configuration, not what is live; the base policy currently says `network: confined`, so it cannot establish the page's `watched` statement. A request for a pinned private-estate/provisioning revision or operator confirmation was posted on card `card_39154d0373974490` on 2026-11-14 and remained unanswered at the end of Verify. Per the operator's 2026-11-14 review instruction, the possibly true live claim stays in the page and is not rewritten from repository evidence. Publication is clear when an immutable owning-source revision or explicit operator confirmation establishes the live statement, or when the operator directs a factual update.
 
 ## Mechanical claims ratchet
 
@@ -115,17 +115,17 @@ No humor was added to any exact region.
 
 - Published-page census: pass — 17 `.md`/`.mdx` pages found and all 17 have both a voice-review row and a claims-evidence row in this ledger.
 - Base-citation audit: pass — 133 cited line ranges across 84 unique path/range citations were resolved with `git show` at `28f816c62a0e328bc4718e7d0ebf000329916764`; every path existed and every range was in bounds. Verify corrected two out-of-bounds draft citations (`e2e/forge_test.go:212-357` and `docs/measurements.md:1-96`) to the actual base ranges recorded above.
-- Privacy scan: pass — the 17 published sources contain no real `run_`/`card_`/agent/station ids, common credential-shaped values, private host names `workbench`/`forge-primary`, or `/home/salaam`/`/home/agentpod` paths. Public product names, documentation addresses, generic OS identities and synthetic ids remain.
+- Privacy scan: pass — the 17 published sources contain no internal agent names, real `run_`/`card_`/agent/station ids, common credential-shaped values, private host names `workbench`/`forge-primary`, or `/home/salaam`/`/home/agentpod` paths. Public product names, documentation addresses, generic OS identities and synthetic ids remain.
 - `git diff --check`: pass.
 
 The host had no Go on `PATH`. Verify downloaded the official `go1.26.11.linux-amd64` archive into the profile scratch directory and verified SHA-256 `9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec` before use. Node was `v26.7.0`; npm was `11.19.0`.
 
 The substantive docs steps are exactly `.forgejo/workflows/ci.yml:54-60`:
 
-- `go test ./internal/docsclaims/ ./scripts/docs-touched/`: pass on the final verify tree — `internal/docsclaims` 0.524 s; `scripts/docs-touched` passed from cache (the preceding clean run was 0.002 s).
+- `go test ./internal/docsclaims/ ./scripts/docs-touched/`: pass on the final verify tree — `internal/docsclaims` 0.533 s; `scripts/docs-touched` 0.003 s.
 - `scripts/sync-docs.sh --check`: pass — `generated pages are current`.
-- `npm ci --no-audit --no-fund` in `docs-site`: pass — 429 packages added in 5 s.
-- `npm run build` in `docs-site`: pass on the final verify tree — Astro built 18 pages in 3.73 s; Pagefind indexed 18 HTML files; sitemap generated.
+- `npm ci --no-audit --no-fund` in `docs-site`: pass — 429 packages added in 6 s.
+- `npm run build` in `docs-site`: pass on the final verify tree — Astro built 18 pages in 3.36 s; Pagefind indexed 18 HTML files; sitemap generated.
 
 The generated-description correction touches `scripts/sync-docs.sh`, so the pushed head correctly routes to full CI rather than pretending to be docs-only. Verify also ran the full local commands from the workflow:
 
