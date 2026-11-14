@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.0",
-    "@superjackfruit/vibekit": "file:../landing/vendor/superjackfruit-vibekit-0.0.15.tgz",
-    "astro": "^7.3.2"
+    "@superjackfruit/docs-theme": "file:vendor/superjackfruit-docs-theme-0.0.2.tgz",
+    "@superjackfruit/frontdoor": "file:vendor/superjackfruit-frontdoor-0.0.15.tgz",
+    "@superjackfruit/vibekit": "file:vendor/superjackfruit-vibekit-0.0.16.tgz",
+    "astro": "^7.3.2",
+    "starlight-llms-txt": "^0.12.0"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
