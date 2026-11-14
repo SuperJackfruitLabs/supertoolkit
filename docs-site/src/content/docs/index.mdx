@@ -42,12 +42,13 @@ import JackAside from '@superjackfruit/docs-theme/components/JackAside.astro';
 
 ## Why a broker
 
-The standard way to give an agent a tool is to put an API key in an MCP config
-file. That file is plaintext, any process can read it, and the agent reads it to
-start the server — so the credential ends up in the agent's own context, and
-from there in the transcript and wherever transcripts are kept.
+Let's begin with the problem we are actually solving. The standard way to give
+an agent a tool is to put an API key in an MCP config file. That file is
+plaintext, any process can read it, and the agent reads it to start the server —
+so the credential ends up in the agent's own context, and from there in the
+transcript and wherever transcripts are kept.
 
-supertoolkit holds the credential in a process the agent cannot read, and puts
+SuperToolkit holds the credential in a process the agent cannot read, and puts
 it on the wire on the way out. The agent's environment carries a placeholder:
 
 ```sh
@@ -55,6 +56,7 @@ GH_TOKEN=stk:ref:github:v1
 ```
 
 If the agent reads that, it has read nothing. It means nothing off this host.
+You still get the effect; the key never joins the conversation.
 
 <CardGrid>
   <Card title="Six operations" icon="setting">
@@ -84,9 +86,11 @@ A client that ignores proxy configuration entirely goes around the broker, and
 plausible 401 back, which reads as a credential problem rather than a routing
 one.
 
-Nothing inside a proxy can detect a client that never speaks to it. What can be
-done is detect it from outside, which is what `stk doctor --probe` is for. Run
-it before trusting a new client. See [Limitations](/limitations/).
+Nothing inside a proxy can detect a client that never speaks to it. We can
+detect the bypass from outside, which is what `stk doctor --probe` is for. Run
+it before trusting a new client. You will know whether the client is on the
+brokered path before a real credential depends on the answer. See
+[Limitations](/limitations/).
 
 <WetPaint>
   SuperToolkit works, and it is early: v0.0.9, released on 9 November 2026, is the current

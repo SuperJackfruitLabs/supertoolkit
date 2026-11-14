@@ -3,9 +3,9 @@ title: Connect a service
 description: Four ways to get a credential into the broker, in order of preference.
 ---
 
-The credential travels from the provider to the broker. Not through a hub, not
-through us. Three of the four ways below hold to that exactly; the fourth says
-plainly where it does not.
+We are going to move a credential from its provider into your broker—not through
+a hub and not through us. Three of the four paths below hold to that exactly;
+the fourth says plainly where it does not.
 
 ```sh
 stk add github          # add the service, with safe default policy
@@ -14,6 +14,9 @@ stk connect github      # the credential, read from stdin — never a flag
 
 A flag would land in shell history and in the process table, so the credential
 is read from stdin only.
+
+After those two commands, the service exists in policy and its credential is
+sealed in the store. Nothing secret was placed in an argument.
 
 ## 1. Paste it
 
@@ -24,6 +27,9 @@ stk connect github                  # then paste, then ctrl-D
 
 For a token you already hold. Nothing is printed back but the number of fields
 sealed and where.
+
+That count is your payoff: it confirms what was sealed without echoing any of
+the material back to the terminal.
 
 ## 2. A browser on this machine — OAuth 2.0 with PKCE
 
@@ -56,6 +62,10 @@ and is read from stdin.
 The redirect must be loopback: the broker receives it itself, so a callback
 anywhere else never arrives, and one reachable from the network would let anyone
 on it deliver a code to you.
+
+When the browser flow returns, the broker holds the refresh token and can acquire
+access tokens on demand. The browser never has to hand a token back through your
+shell.
 
 A self-hosted instance speaks the same protocol at other addresses. Name both
 endpoints, or neither: exchanging a code at a server that did not issue it never
@@ -107,6 +117,10 @@ Where the provider issues a refresh token, it is kept, and the connection renews
 itself. Where it does not, the command says so rather than leaving you to find
 out at the expiry.
 
+Once you approve the short code, the broker receives the resulting token
+directly. The machine with the browser has approved access without becoming the
+credential courier.
+
 Configure notifications so the code reaches you when nobody is watching the
 terminal:
 
@@ -115,6 +129,9 @@ notify:
   webhook: https://ntfy.sh/your-topic
   file: /var/log/stk-notify.log
 ```
+
+With either destination configured, the approval prompt has somewhere to land
+even when the broker's terminal is unattended.
 
 ## 4. Last resort — encrypted hand-over
 
@@ -134,6 +151,9 @@ stk handover open github
 The broker publishes a key that can only seal. Only its private half opens the
 envelope, and a tampered one fails rather than yielding partial material.
 
+Opening the envelope leaves the broker with the sealed credential and proves
+that this broker—not the sealing machine—held the private half needed to read it.
+
 **This path costs something the others do not**, and the commands say so: the
 credential exists on the sealing machine while it is sealed, and still exists
 there afterwards. Prefer the device grant or the web interface whenever either
@@ -150,6 +170,9 @@ stk verify github --expect-login your-login --json
 it acts as, or the reason it failed, and exits non-zero on failure. It never
 prints a token.
 
+You now have the useful proof: the provider says which account this credential
+acts as, while the credential itself remains absent from the output.
+
 ## Withdrawing a credential
 
 ```sh
@@ -161,3 +184,7 @@ Deleting our copy does not invalidate the token at the provider. Where the
 provider offers revocation we call it; where it does not, the output says the
 credential may still be valid and gives you the page that can withdraw it. It
 never claims more than it did.
+
+At the end, you know whether only the local copy is gone or the provider has
+invalidated the credential too. That distinction is too important for a victory
+message to blur.

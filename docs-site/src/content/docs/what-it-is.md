@@ -1,23 +1,25 @@
 ---
-title: What supertoolkit is
+title: What SuperToolkit is
 description: A credential broker for agents, and the single invariant it is built around.
 ---
 
-A toolkit for agents with credential and auth management built in. An agent asks
-for an effect by name and never holds the secret that causes it.
+SuperToolkit gives agents credential and auth management without giving them
+credentials. Your agent asks for an effect by name; we keep the secret that
+causes it on the other side of the broker.
 
 ## The one invariant
 
 > **The agent never holds, reads, or receives a credential.**
 
-Not configurable, no override. There is no endpoint that returns one — not for
-an agent, not for the CLI, not for the web interface. Which effects an agent may
-*trigger* is policy you set. That line is the product; everything else is detail.
+It is not configurable, and there is no override. No endpoint returns a
+credential — not to an agent, the CLI, or the web interface. You set policy for
+the effects an agent may *trigger*. That line is the product; everything else
+exists to hold it.
 
 ## How it works
 
-A broker runs as its own OS user on a Unix socket. Clients — CLIs, MCP servers,
-anything that speaks HTTP — are started with `HTTPS_PROXY` pointing at it and a
+We run the broker as its own OS user on a Unix socket. You start clients — CLIs,
+MCP servers, anything that speaks HTTP — with `HTTPS_PROXY` pointing at it and a
 **placeholder** where their token would be:
 
 ```sh
@@ -25,8 +27,9 @@ GH_TOKEN=stk:ref:github:v1
 ```
 
 The broker recognises that placeholder on the wire and does whatever the service
-needs. Clients need no modification, because they are configured exactly as they
-would be without a broker — they simply hold a value that is worth nothing.
+needs. You do not modify the client: configure it exactly as you would without a
+broker, except the value it holds is worth nothing. The request still works; the
+credential never becomes client state.
 
 ## The six credential operations
 
@@ -52,9 +55,9 @@ request, and injects nothing. See [Services](/use/services/#a-public-endpoint-fo
 
 ## What it is not
 
-It is not a hosted service, and there is nothing to sign in to. It is not an
-agent framework — it sits beside whatever you already run. It does not open
-traffic for hosts you have not configured: everything else is tunnelled
+You are not signing in to a hosted service, and we are not asking you to adopt
+an agent framework. SuperToolkit sits beside whatever you already run. It does
+not open traffic for hosts you have not configured: everything else is tunnelled
 unopened (and recorded), so the blast radius of interception is exactly your
 service list — unless an [`egress:`](/use/mcp-serve/#egress-decided-by-address)
 policy with `methods:` asks for those connections to be opened and checked.
