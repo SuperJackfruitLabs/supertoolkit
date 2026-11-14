@@ -3,10 +3,14 @@ title: Commands
 description: Every stk command and flag, with the page that explains it.
 ---
 
-Every command and flag `stk` has. `stk help` (or `--help`, `-h`) prints the same
+This is the exact command surface when you know what you want to do and need the
+spelling, flag, or deeper page. `stk help` (or `--help`, `-h`) prints the same
 list; `stk version` (or `--version`, `-v`) prints the version.
 
 ## Set up and connect
+
+Start here to create local state, add a service, and move credential material
+into the broker without putting it in command arguments.
 
 | Command | |
 |---|---|
@@ -23,6 +27,9 @@ list; `stk version` (or `--version`, `-v`) prints the version.
 
 ## Run an agent
 
+These commands put policy and audit around an agent, an MCP server, or a single
+effect.
+
 | Command | |
 |---|---|
 | `stk run -- <command>` | run a command with a broker in front of it ([From an agent](/use/from-an-agent/)) |
@@ -38,6 +45,9 @@ list; `stk version` (or `--version`, `-v`) prints the version.
 
 ## Run the broker for agents
 
+Use the daemon commands when several long-running clients should share one
+broker and one live policy.
+
 | Command | |
 |---|---|
 | `stk serve` | the broker daemon, with `--proxy-listen`, `--allow-uid`, `--operator-uid`, `--socket-mode`, `--local-commands-socket`, `--local-commands-mode` ([Run as a service](/run/serve/)) |
@@ -46,6 +56,9 @@ list; `stk version` (or `--version`, `-v`) prints the version.
 | `stk env [--json]` | print the proxy URL, CA and placeholders for the fixed proxy |
 
 ## Check it
+
+These checks tell you what is configured and whether a client really uses the
+brokered path.
 
 | Command | |
 |---|---|
@@ -72,3 +85,7 @@ reject them:
 
 The protocol, the manifest shapes and what the controller must check are in the
 repository's [`docs/managed-mcp.md`](https://github.com/SuperJackfruitLabs/supertoolkit/blob/main/docs/managed-mcp.md).
+
+For ordinary operation, stop above this section. These names are stable protocol
+entry points for a supervising controller, not shortcuts around the public
+commands.
