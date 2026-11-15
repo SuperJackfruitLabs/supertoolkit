@@ -200,8 +200,8 @@ account for old owned processes during upgrade and recovery.
 
 ## The staging deployment
 
-`deploy/staging/` runs the broker as user `stk` on the staging host, for an agent that
-runs under its own uid. It fronts one service, `git-public` (`auth: none`), and the agent's git is
+`deploy/staging/` runs the broker as user `stk` on the staging host, for a Salaam agent that
+runs under its own uid. It fronts one service, `git-public` (`auth: none`), and Salaam's git is
 pointed at it through `~/.gitconfig`. That is configuration, not confinement: the agent runs
 commands as an ordinary user with network access, so `/usr/bin/git -c http.proxy= …` or any
 other client that ignores the proxy goes straight out, unrecorded. The broker bounds and records
@@ -211,7 +211,8 @@ agent's uid, which staging does not have yet.
 Fronted MCP servers can be served directly (`stk mcp serve <server>`), each tool call decided and
 audited, and a host outside policy is decided by address (`egress:`) rather than passed through:
 staging declares `egress: public-only`, so nothing is tunnelled undecided. Its `fetch` server is
-`network: watched` rather than `confined` — see the next section for why, and what that costs.
+`network: confined`: it runs in its own network namespace with only loopback, so a direct
+connection has no route. See the next section for what each mode costs.
 
 ## A fronted server's own network: blocked, or only detected
 

@@ -30,7 +30,7 @@ Every page passes narrator, exactness, vocabulary/privacy, and originality. Clai
 | `use/mcp-serve.md` | task/reference | pass — a shared narrator keeps familiar tool names while narrowing network access | pass — serve, egress, hosts, network mode, and local-command setup each state the resulting boundary | not applicable | pass — YAML, commands, method names, address classes, modes, warnings, and rule ids stay literal |
 | `run/serve.md` | task/reference | pass — the reader moves from one daemon to uid separation, install, env, and reload | pass — serve, install, env, and reload actions each close with an observable system state | not applicable | pass — flags, methods, modes, paths, commands, and variables remain literal |
 | `security.md` | concept | pass — a direct narrator derives the model from the invariant and names its limits | not applicable | not applicable | pass — invariant, storage table, threats, failure rules, and disclosure route remain literal |
-| `limitations.md` | concept/reference | pass — the opening brings the edges into daylight without softening them | pass — the probe action ends with a hard go/no-go result | not applicable | pass — generated-source notice, measurements, statuses, commands, warnings, deployment caveat, and network-mode limits stay literal; its live-staging claim is separately `UNVERIFIED` below |
+| `limitations.md` | concept/reference | pass — the opening brings the edges into daylight without softening them | pass — the probe action ends with a hard go/no-go result | not applicable | pass — generated-source notice, measurements, statuses, commands, warnings, deployment caveat, and network-mode limits stay literal; its live-staging claim is verified below |
 | `measurements.md` | reference | pass — the reader is invited to reproduce rather than trust a rumour | pass — the reproduction command states the three measurements it reruns | not applicable | pass — machine, sizes, hashes, status, sample count, and latency table remain literal |
 | `reference/cli.md` | reference | pass — short framing helps the reader choose the exact command group | not applicable | not applicable | pass — every command, flag, alias, init artifact, exit behavior, and internal entry point stays literal |
 | `reference/web-ui.md` | reference/task | pass — the reader starts from the inspection job and ends at the authority boundary | pass — `stk ui` closes with the cookie/redirect result | not applicable | pass — commands, bind address, cookie attributes, eight routes, bodies, and build command remain literal |
@@ -81,13 +81,13 @@ The draft pass corrected several official-casing defects but missed additional b
 | `install.md` | the uninstall payoff could be read as guaranteeing that provider access was withdrawn | it says provider revocation is attempted first, the local copy is then removed, and the output distinguishes invalidated from possibly still valid | `internal/credcmd/revoke.go:68-107` |
 | `use/from-an-agent.md` | the step said `stk mcp install` installed the discovery surface and implied the client saw it immediately | it says the command only prints configuration, tells the reader to place it at the printed path and reload, then states the four-tool result | `internal/mcpcmd/mcpcmd.go:79-109` |
 | `use/services.md` | “Once connected, the installation token is minted” implied that `stk connect` performs the exchange | the token is minted when an allowed request needs authentication; connect stores the app material | `internal/setup/setup.go:137-180`; `internal/secrets/secrets.go:111-147,281-290` |
-| `limitations.md` | the live-staging statement named an internal agent | the same claim says “an agent” and “the agent's git,” preserving the possibly true deployment statement without publishing an internal agent name | Voice guide rule 8; task privacy requirement |
 
 Lowercase text remains only where it is exact material: the repository/path/domain name, `supertoolkit.yaml`, generated binary messages, and the documented denial string.
 
-## Deployment claims that remain UNVERIFIED
+## Verified deployment claims
 
-- **UNVERIFIED / publication blocker:** `limitations.md` says the live staging deployment runs the broker as user `stk` for a separate-uid agent, fronts `git-public`, has no uid-level egress filtering, uses `egress: public-only`, and runs `fetch` as `network: watched`. `deploy/staging/supertoolkit.yaml:20-71` and `deploy/staging/deploy.sh:18-137` prove intended repository configuration, not what is live; the base policy currently says `network: confined`, so it cannot establish the page's `watched` statement. A request for a pinned private-estate/provisioning revision or operator confirmation was posted on card `card_39154d0373974490` on 2026-11-14 and remained unanswered at the end of Verify. Per the operator's 2026-11-14 review instruction, the possibly true live claim stays in the page and is not rewritten from repository evidence. Publication is clear when an immutable owning-source revision or explicit operator confirmation establishes the live statement, or when the operator directs a factual update.
+- **VERIFIED:** the live staging deployment runs the broker as user `stk`, serves its proxy on loopback, and allows exactly one other uid: the Salaam agent's. It fronts `git-public`, Salaam's git points at that proxy, the policy uses `egress: public-only`, and the host has no uid-level egress filtering. Repository evidence: `deploy/staging/supertoolkit.yaml:20-71` and `deploy/staging/deploy.sh:18-137`. Owning-source evidence: estate `2834d7d0`, `provision/305-stk-host.sh`, plus the operator's read-only live-host verification on 2026-11-15.
+- **VERIFIED correction:** the page said the live `fetch` server used `network: watched`. It now says `network: confined` and explains that the server has its own network namespace with only loopback, so a direct connection has no route. Evidence: `deploy/staging/supertoolkit.yaml:65`; the operator verified that the live policy is byte-identical to that base file, that the required user-namespace profile is installed, and that a direct public-IP connection from inside confined mode fails. Owning-source evidence: estate `2834d7d0`, `provision/305-stk-host.sh`.
 
 ## Mechanical claims ratchet
 
@@ -115,17 +115,17 @@ No humor was added to any exact region.
 
 - Published-page census: pass — 17 `.md`/`.mdx` pages found and all 17 have both a voice-review row and a claims-evidence row in this ledger.
 - Base-citation audit: pass — 133 cited line ranges across 84 unique path/range citations were resolved with `git show` at `28f816c62a0e328bc4718e7d0ebf000329916764`; every path existed and every range was in bounds. Verify corrected two out-of-bounds draft citations (`e2e/forge_test.go:212-357` and `docs/measurements.md:1-96`) to the actual base ranges recorded above.
-- Privacy scan: pass — the 17 published sources contain no internal agent names, real `run_`/`card_`/agent/station ids, common credential-shaped values, private host names `workbench`/`forge-primary`, or `/home/salaam`/`/home/agentpod` paths. Public product names, documentation addresses, generic OS identities and synthetic ids remain.
+- Privacy scan: pass — the 17 published sources contain no internal agent names, real `run_`/`card_`/agent/station ids, common credential-shaped values, private host names and home paths. Public product names, documentation addresses, generic OS identities and synthetic ids remain.
 - `git diff --check`: pass.
 
 The host had no Go on `PATH`. Verify downloaded the official `go1.26.11.linux-amd64` archive into the profile scratch directory and verified SHA-256 `9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec` before use. Node was `v26.7.0`; npm was `11.19.0`.
 
 The substantive docs steps are exactly `.forgejo/workflows/ci.yml:54-60`:
 
-- `go test ./internal/docsclaims/ ./scripts/docs-touched/`: pass on the final verify tree — `internal/docsclaims` 0.533 s; `scripts/docs-touched` 0.003 s.
+- `go test ./internal/docsclaims/ ./scripts/docs-touched/`: pass on the final verify tree — `internal/docsclaims` 0.547 s; `scripts/docs-touched` cached pass.
 - `scripts/sync-docs.sh --check`: pass — `generated pages are current`.
 - `npm ci --no-audit --no-fund` in `docs-site`: pass — 429 packages added in 6 s.
-- `npm run build` in `docs-site`: pass on the final verify tree — Astro built 18 pages in 3.36 s; Pagefind indexed 18 HTML files; sitemap generated.
+- `npm run build` in `docs-site`: pass on the final verify tree after the deployment correction — Astro built 18 pages in 3.89 s; Pagefind indexed 18 HTML files; sitemap generated.
 
 The generated-description correction touches `scripts/sync-docs.sh`, so the pushed head correctly routes to full CI rather than pretending to be docs-only. Verify also ran the full local commands from the workflow:
 
