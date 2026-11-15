@@ -3,11 +3,11 @@ title: Run as a service
 description: stk serve, the control socket and who may decide, stk install under systemd, the fixed proxy and stk env, and stk reload.
 ---
 
-`stk run` starts a broker for one command and stops it afterwards. On a machine
-where agents run all the time, run one broker as a daemon instead, and, where an
-agent runs as its own OS user, run the broker as another one, so the agent
-cannot read the sealed store, its key or the approvals. The agent still reaches
-the broker, over a control socket and a loopback proxy.
+`stk run` starts a broker for one command and stops it afterwards. When your
+agents run all the time, we can give them one daemon instead. Run the broker as a
+different OS user from the agent, and the agent cannot read the sealed store,
+its key, or the approvals. It still reaches the broker over a control socket and
+a loopback proxy.
 
 ## `stk serve`
 
@@ -19,6 +19,9 @@ stk serve --proxy-listen 127.0.0.1:8899 --allow-uid 1001 --socket-mode 0660
 `stk serve` runs the broker and listens on the control socket, `stk.sock` in
 the state directory (or `STK_SOCKET`). `stk mcp`, `stk mcp serve`,
 `stk approvals` and `stk reload` talk to it when it answers.
+
+Once `serve` is listening, those commands share one live policy, queue, and
+ledger instead of starting a private broker apiece.
 
 | Flag | |
 |---|---|
@@ -55,6 +58,9 @@ Without `--allow-uid`, `stk serve` warns at every start: any process running as
 the daemon's uid, an agent included, is then an operator and can decide its own
 approvals. The gate is only as real as the uid split under it.
 
+That warning is the checkpoint: before you call the service isolated, confirm
+the agent uid and operator uid do not collapse back into the same account.
+
 ## `stk install`: its own OS user, under systemd
 
 ```sh
@@ -84,6 +90,9 @@ state directory holds a store but no `stk-passphrase.key`, rather than add a new
 passphrase over a store sealed under another key. It does not add agent users
 to the group: with `--group`, run `usermod -aG <group> <agent-user>` yourself.
 Then `systemctl enable --now <unit-name>`; the report prints the exact command.
+
+After that command, systemd owns the broker lifecycle and the generated service
+has the uid split, state paths, and proxy port from the plan you reviewed.
 
 On a station installed this way, decide with `sudo stk approvals allow <id>`
 (root) or `sudo -u stk stk approvals allow <id>` (the service user), unless
@@ -129,6 +138,10 @@ key as URL userinfo (`HTTPS_PROXY`, `HTTP_PROXY`), the CA path
 `NODE_USE_ENV_PROXY=1` and `STK_BROKERED=1`. Run it as a user that can read the
 state directory.
 
+Evaluating those assignments gives the client a live authenticated proxy, the
+broker CA, and placeholders for configured services. It still does not receive
+a service credential.
+
 The proxy key is not a service credential. It gates *use of the broker* and
 nothing else: holding it lets a client use the routes policy already allows,
 and unlocks no secret. Before printing it, `stk env` checks that the listener
@@ -151,6 +164,10 @@ keeps the old policy and reports why. A service removed from the file stops
 being brokered, and its stored credential is kept (`stk revoke` removes a
 credential). Policy is read per request, so a tunnel opened before a reload
 enforces the new rules on its next request.
+
+A successful reload applies the new policy without restarting the broker. A
+failed one leaves the last known-good policy serving requests and tells you why
+the replacement was rejected.
 
 ## Where stk keeps things
 

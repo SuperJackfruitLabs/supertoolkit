@@ -3,6 +3,9 @@ title: The web interface
 description: stk ui serves five screens on its own loopback listener behind a one-time link, and the eight API routes behind them.
 ---
 
+When you want to inspect the broker without translating ledger rows in your
+head, start its local interface:
+
 ```sh
 stk ui                          # http://127.0.0.1:7420, opened in your browser
 stk ui --no-open                # print the link only
@@ -21,6 +24,9 @@ person who runs it. Three rules hold it in place:
   as a cookie (`HttpOnly`, `SameSite=Strict`) and is redirected so the token
   leaves the address bar and the history. Without it every route answers `401`.
 
+After the redirect, your browser has the cookie and the token is gone from the
+visible URL. Other callers still receive `401`.
+
 It is just another caller: it may show that a credential is present, its fields
 and the operation that uses it, never its value. A decision made here performs
 the effect in this process, and is recorded as `name (uid N) via stk ui`. While
@@ -28,6 +34,9 @@ the policy names a SuperPipeline approvals board, it refuses every local
 decision, as `stk approvals` does.
 
 ## The API
+
+If you need the exact request surface behind those screens, it is small enough
+to list in full:
 
 The screens read the same JSON the browser fetches. Every route needs the
 cookie; none returns a credential, and a test holds every route to that.
@@ -45,3 +54,6 @@ cookie; none returns a credential, and a test holds every route to that.
 
 A binary built without the web assets serves the API alone and says so on
 `/`; build the assets with `pnpm -C web build`.
+
+So the UI never becomes a second authority: it reads and decides through the
+same local state, and every route stays behind the same one-time session.

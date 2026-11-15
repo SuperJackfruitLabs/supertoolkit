@@ -1,10 +1,12 @@
 # Limitations
 
-What supertoolkit does not do, and why. Each entry is a decision or a
-measurement, not a shrug — and the ones that are decisions say what they would
-cost to change.
+Here is where we put the edges in daylight. What SuperToolkit does not do, and
+why. Each entry is a decision or a measurement, not a shrug — and the ones that
+are decisions say what they would cost to change.
 
-Read this before trusting the broker with something that matters.
+Read this before trusting the broker with something that matters. You should
+leave knowing which failures are loud, which are detectable, and which boundary
+you must provide outside the broker.
 
 ---
 
@@ -40,6 +42,9 @@ is therefore **proof** of a bypass, not a guess.
 **Run the probe before trusting a new client.** A client it reports as
 `bypassed` must not be brokered. The command exits non-zero on `bypassed` or
 `failed`, and `--json` gives a machine-readable list.
+
+That result gives you a hard stop before a real service is involved. An
+`honoured` client can move on; a `bypassed` client needs a different boundary.
 
 ### The safe class, by contrast
 
@@ -162,7 +167,7 @@ done.
 - **The audit ledger rotates at 8 MB, keeping one generation.** An unbounded
   audit log on a small VPS is an outage. If you need more history, ship
   `audit.log` somewhere before it rotates.
-- **One client id per service, in the committed policy file.** supertoolkit
+- **One client id per service, in the committed policy file.** SuperToolkit
   ships none: a shared client id would make every installation look like the
   same app to the provider. You register your own.
 - **The OAuth redirect must be a loopback URL.** The broker listens for the
@@ -206,7 +211,8 @@ agent's uid, which staging does not have yet.
 Fronted MCP servers can be served directly (`stk mcp serve <server>`), each tool call decided and
 audited, and a host outside policy is decided by address (`egress:`) rather than passed through:
 staging declares `egress: public-only`, so nothing is tunnelled undecided. Its `fetch` server is
-`network: watched` rather than `confined` — see the next section for why, and what that costs.
+`network: confined`: it runs in its own network namespace with only loopback, so a direct
+connection has no route. See the next section for what each mode costs.
 
 ## A fronted server's own network: blocked, or only detected
 

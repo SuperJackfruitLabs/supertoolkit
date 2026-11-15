@@ -3,6 +3,9 @@ title: The audit ledger
 description: What was done, under which policy, and what the provider said.
 ---
 
+When you ask what an agent actually did, the ledger should answer without making
+you reconstruct the day from provider dashboards. Start with the newest effects:
+
 ```sh
 stk audit                 # the most recent effects
 stk audit --limit 200
@@ -19,6 +22,9 @@ stk audit --json
 Each line records the service, the capability **by the name you set policy on**,
 the policy that applied, and what the provider answered.
 
+You can now connect an effect to the policy that allowed it and the provider
+response that followed, while the credential remains a fingerprint.
+
 ## No credential is ever recorded
 
 What is kept about the credential is a fingerprint, or the name of the operation
@@ -27,6 +33,9 @@ naming the operation is the honest answer there. There is a test for every
 scheme.
 
 ## Where it lives
+
+We keep one ledger for every local entry point, so the CLI and browser cannot
+develop competing memories of the same request.
 
 An append-only file in the state directory, owner-only. Every process writes the
 same one — a broker, the daemon, an MCP server — so `stk audit` and the web
@@ -41,6 +50,9 @@ mid-write leaves one incomplete record, and a ledger that refuses to open
 because of its last line has lost everything before it.
 
 ## Hosts outside policy
+
+For an unconfigured host, we record only what the broker was actually in a
+position to know. The distinction matters when you read the row later:
 
 A connection to a host you have not configured is recorded too, but only as far
 as the broker can see it:
@@ -59,3 +71,6 @@ as the broker can see it:
 The credential, ever. And, for a host outside policy whose egress has no
 `methods:`, what went through the tunnel: its method, path and body are not
 seen, only the host and the address.
+
+That is the ledger's boundary: enough to explain the decision, never a secret,
+and no invented detail from inside a tunnel the broker did not open.

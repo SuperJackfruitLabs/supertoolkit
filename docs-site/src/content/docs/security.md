@@ -1,9 +1,11 @@
 ---
 title: Security model
-description: What supertoolkit protects against, what it does not, and where the credential actually is.
+description: What SuperToolkit protects against, what it does not, and where the credential actually is.
 ---
 
 ## The invariant
+
+We can draw the whole security model from one line:
 
 > The agent never holds, reads, or receives a credential.
 
@@ -12,6 +14,9 @@ for the web interface. A change that adds one is wrong regardless of how
 convenient it would be.
 
 ## Where a credential lives
+
+The useful question is not whether a credential exists; it is where it can exist
+at each point in the request:
 
 | | |
 |---|---|
@@ -27,12 +32,17 @@ refresh token — which, against a provider that rotates, they would lose.
 
 ## What it protects against
 
+When the boundary holds, these are the failures we keep off the agent's side:
+
 - A credential reaching an agent's context, a transcript, or a log.
 - An agent causing an irreversible effect on its own say-so.
 - Not knowing afterwards what was done.
 - A plaintext key in an MCP configuration file that any process can read.
 
 ## What it does not protect against
+
+The boundary is deliberately narrower than “nothing bad can happen.” Keep these
+cases in view when you decide what to broker:
 
 - **A client that ignores proxy configuration.** It goes around the broker and
   fails silently. Detect it from outside with `stk doctor --probe`, and do not
@@ -53,6 +63,9 @@ refresh token — which, against a provider that rotates, they would lose.
   [Limitations](/limitations/#the-store-key-is-only-as-good-as-the-platform).
 
 ## Failing closed
+
+When SuperToolkit cannot prove the safe path, it chooses the result that does not
+send the effect:
 
 If the broker is unreachable, a client fails. It does not fall back to a direct
 connection — a silent fall back is the worst outcome available, because it looks
@@ -77,3 +90,6 @@ limitations rather than flaws.
 For anything that is not a vulnerability,
 [issues](https://github.com/SuperJackfruitLabs/supertoolkit/issues) are the
 right place.
+
+That split gets a suspected vulnerability into a private advisory while keeping
+ordinary product questions in the public issue tracker.

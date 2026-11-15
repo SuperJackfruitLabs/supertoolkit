@@ -22,7 +22,7 @@ out_dir = root / 'docs-site/src/content/docs'
 
 pages = [
     ('docs/limitations.md', 'Limitations',
-     'What supertoolkit does not do, and why. Each entry is a decision or a measurement.',
+     'What SuperToolkit does not do, and why. Each entry is a decision or a measurement.',
      'This page is generated from `docs/limitations.md` in the repository. Where the two disagree, the repository wins.'),
     ('docs/measurements.md', 'What is measured',
      'Three roadmap items that read "untested" or "unproven", closed with numbers and the machine they came from.',

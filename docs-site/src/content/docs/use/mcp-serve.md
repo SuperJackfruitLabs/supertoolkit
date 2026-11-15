@@ -8,6 +8,9 @@ tools appear as one category behind the four meta-tools. This page covers
 serving a fronted server **under its own tool names**, deciding where its
 traffic may go, and the proxy socket for sandboxed local commands.
 
+We will keep the server's familiar tool names while moving the decisions and
+receipts into SuperToolkit. Then we will narrow the network it can reach.
+
 ## `stk mcp serve`
 
 ```yaml
@@ -33,6 +36,9 @@ It speaks MCP on stdio and answers `initialize`, `ping`, `tools/list` and
 daemon (`stk serve`) at the default socket or `--socket`, and refuses to start
 if none answers.
 
+Once it starts, the client sees the server's own allowed tools. Each call now
+passes through the same policy and audit boundary as the rest of the broker.
+
 - **`tools/list` is filtered by policy.** A tool the profile does not allow, or
   whose policy is `deny`, is not listed.
 - **Every `tools/call` is decided by stk and recorded in `stk audit`**, allowed
@@ -57,6 +63,8 @@ it holds, over the control socket (`mcp.spec`, `mcp.visible`, `mcp.decide`,
 
 `egress:` decides connections to hosts that are not services in your policy. At
 the top level it is the workspace default; on a server, that server's own.
+
+This is where we turn “somewhere on the network” into a policy you can inspect:
 
 ```yaml
 egress:
@@ -92,6 +100,9 @@ With `methods:`, the tunnel is opened with the broker's CA so each request's
 method can be checked (`egress:method`) and its path recorded. Ports are not
 rules: an allowed address is allowed on any port.
 
+The result is bound to the address the broker actually dials. A DNS change or
+redirect does not inherit an earlier decision; it earns a new one.
+
 The proxy learns which server a request is for from the proxy credential's user
 name, `stk+<server>`, which `stk mcp serve` gives its child. A request without
 one gets the workspace `egress`.
@@ -115,6 +126,9 @@ listed name that resolves to this machine or its network is still refused.
 `hosts: []` refuses every host; no `hosts:` key means no hostname check.
 Refusals name the rule (`egress:hosts/not-listed`, `egress:hosts/port`, …).
 
+With `hosts:` in place, an allowed name must pass both gates: the name itself and
+the class of every address it resolves to.
+
 ## A server's own network
 
 A proxy cannot see a client that never speaks to it. For a server stk starts,
@@ -128,6 +142,10 @@ A proxy cannot see a client that never speaks to it. For a server stk starts,
 
 [Limitations](/limitations/#a-fronted-servers-own-network-blocked-or-only-detected)
 has what each costs, and why a Go client never proxies loopback.
+
+Choose `confined` when you need the direct path blocked, `watched` when detection
+is sufficient, and `host` only when configuration—not confinement—is the
+intended boundary. The table tells you which promise each choice actually keeps.
 
 ## The local-commands socket
 
@@ -159,3 +177,6 @@ servers:
   the same user. It serves the proxy only, never the control plane.
 
 It is off unless `--local-commands-socket` is given.
+
+When you enable it, sandboxed commands get one forced identity and one egress
+policy. They cannot rename themselves into a fronted server's wider allowance.

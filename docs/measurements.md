@@ -1,10 +1,14 @@
 # Measurements
 
-Three roadmap items read "untested" or "unproven". A measurement replaces an
-assumption or it is not worth taking, so each one closes here with a number and
-the machine it came from — a benchmark without its machine is a rumour.
+Three roadmap items once read "untested" or "unproven." We replaced each
+assumption with a measurement, and you get the machine beside the number—a
+benchmark without its machine is a rumour.
 
 Reproduce with `go test ./e2e/ -run Measure -v`.
+
+That command reruns the body, mTLS, and latency measurements together, so you can
+compare your machine with the recorded baseline rather than taking the table on
+faith.
 
 **Machine:** darwin/arm64, 8 CPUs, go1.26.4. Taken 2026-10-15.
 Every figure is against a **local** upstream on loopback, which is the point: it
@@ -83,3 +87,7 @@ chased, because 459 µs is still a rounding error against a real request.
 The test asserts only that the brokered median stays within an order of
 magnitude of the direct one. A regression past that is a design change, not a
 slow afternoon.
+
+Taken together, the measurements give us three concrete boundaries: bodies were
+transparent through 8 MB, brokered mTLS failed loudly, and steady-state median
+overhead was 79 µs on the recorded machine.

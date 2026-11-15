@@ -3,14 +3,18 @@ title: Commands
 description: Every stk command and flag, with the page that explains it.
 ---
 
-Every command and flag `stk` has. `stk help` (or `--help`, `-h`) prints the same
+This is the exact command surface when you know what you want to do and need the
+spelling, flag, or deeper page. `stk help` (or `--help`, `-h`) prints the same
 list; `stk version` (or `--version`, `-v`) prints the version.
 
 ## Set up and connect
 
+Start here to create local state, add a service, and move credential material
+into the broker without putting it in command arguments.
+
 | Command | |
 |---|---|
-| `stk init` | create the local CA, the sealed store and a starter `supertoolkit.yaml` ([Install](/install/#first-run)) |
+| `stk init` | create the local CA, store key and state directory, and a starter `supertoolkit.yaml` ([Install](/install/#first-run)); sealed credential files appear when services are connected |
 | `stk add <service>...` | add services, with safe default policy ([Services](/use/services/)) |
 | `stk connect <service>` | store a credential, read from stdin ([Connect](/connect/)) |
 | `stk connect <service> --browser` | OAuth 2.0 authorization code with PKCE |
@@ -22,6 +26,9 @@ list; `stk version` (or `--version`, `-v`) prints the version.
 | `stk revoke <service> [--local]` | withdraw a credential, here and, where the provider offers it, at the provider. `--local` (or `--forget`) removes only the local copy. `stk forget` is the same command |
 
 ## Run an agent
+
+These commands put policy and audit around an agent, an MCP server, or a single
+effect.
 
 | Command | |
 |---|---|
@@ -38,6 +45,9 @@ list; `stk version` (or `--version`, `-v`) prints the version.
 
 ## Run the broker for agents
 
+Use the daemon commands when several long-running clients should share one
+broker and one live policy.
+
 | Command | |
 |---|---|
 | `stk serve` | the broker daemon, with `--proxy-listen`, `--allow-uid`, `--operator-uid`, `--socket-mode`, `--local-commands-socket`, `--local-commands-mode` ([Run as a service](/run/serve/)) |
@@ -46,6 +56,9 @@ list; `stk version` (or `--version`, `-v`) prints the version.
 | `stk env [--json]` | print the proxy URL, CA and placeholders for the fixed proxy |
 
 ## Check it
+
+These checks tell you what is configured and whether a client really uses the
+brokered path.
 
 | Command | |
 |---|---|
@@ -72,3 +85,7 @@ reject them:
 
 The protocol, the manifest shapes and what the controller must check are in the
 repository's [`docs/managed-mcp.md`](https://github.com/SuperJackfruitLabs/supertoolkit/blob/main/docs/managed-mcp.md).
+
+For ordinary operation, stop above this section. These names are stable protocol
+entry points for a supervising controller, not shortcuts around the public
+commands.

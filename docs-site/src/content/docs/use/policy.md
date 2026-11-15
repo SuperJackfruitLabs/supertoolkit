@@ -3,7 +3,8 @@ title: Policy and profiles
 description: One committed file, defaults that fail safe, and profiles that can only narrow.
 ---
 
-Policy is one file, committed to your repository, holding no secrets.
+Policy should be boring to review and safe to commit. We keep it in one file in
+your repository, with no secrets inside it:
 
 ```yaml
 workspace: default
@@ -20,6 +21,9 @@ profiles:
 ```
 
 ## Three answers
+
+Every capability ends at one of three answers. You can read the table from most
+permissive to least; an omitted answer does not sneak in above them.
 
 | Policy | Meaning |
 |---|---|
@@ -39,6 +43,9 @@ reversibility is the distinction that matters:
 A capability nobody has classified is never agent-callable. An unknown effect is
 treated as a write, not as a read.
 
+That gives us the useful default: a new capability waits for a person instead of
+quietly inheriting authority nobody reviewed.
+
 ## Profiles
 
 A profile is a named subset handed to one caller:
@@ -52,6 +59,9 @@ widen it, and an unknown profile does not quietly resolve to the default — it 
 an error, because silently granting the default set to a caller that asked for
 something else is the wrong direction to fail in.
 
+Once you start the MCP server with `reader`, that caller sees only the named
+subset. The profile can close doors; it cannot open one policy already closed.
+
 ## Checking what a caller can see
 
 ```sh
@@ -59,3 +69,6 @@ stk doctor
 ```
 
 reports the profiles declared and, for each, what it exposes.
+
+You can now compare the intended subset with the broker's report before handing
+the profile to an agent.
