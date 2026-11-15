@@ -1,6 +1,6 @@
 # supertoolkit.dev
 
-One page and a 404, wearing the suite frame (`@superjackfruit/frontdoor`, vendored in `vendor/`
+One page and a 404, wearing the suite frame (`@superjackfruitlabs/vibekit-frame`, vendored in `vendor/`
 beside vibekit), like the other product sites. Its job is to explain the product to somebody who
 typed the domain, then send them to the docs or the source.
 

@@ -2,8 +2,8 @@
 // vibekit's generated accents.css holds its values. The page has no vibe switch, so it takes the
 // Daylight look, the suite's default, in light and in dark. No colour here is typed by hand: a
 // vibekit update changes the page, and an accent vibekit no longer has fails the build.
-import { PRODUCT_ACCENTS, type Product } from '@superjackfruit/vibekit/appearance';
-import accentsCss from '@superjackfruit/vibekit/accents.css?raw';
+import { PRODUCT_ACCENTS, type Product } from '@superjackfruitlabs/vibekit-ui/appearance';
+import accentsCss from '@superjackfruitlabs/vibekit-ui/accents.css?raw';
 
 const VIBE = 'daylight';
 

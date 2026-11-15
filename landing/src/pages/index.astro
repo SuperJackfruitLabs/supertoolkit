@@ -2,7 +2,7 @@
 /**
  * supertoolkit.dev — the public page.
  *
- * One page, no framework; the suite frame (@superjackfruit/frontdoor) owns the header, footer and
+ * One page, no framework; the suite frame (@superjackfruitlabs/vibekit-frame) owns the header, footer and
  * theme toggle. Its job is to explain the product to somebody who typed the domain, and then send
  * them to the docs or the source. There is nothing to sign in to: SuperToolkit runs on the reader's
  * own machine, so the page sells nothing it cannot hand over.
@@ -29,8 +29,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ShareMeta from '../components/ShareMeta.astro';
 import { productAccent } from '../accent';
-import SuiteHead from '@superjackfruit/frontdoor/components/SuiteHead.astro';
-import Frame from '@superjackfruit/frontdoor/components/Frame.astro';
+import SuiteHead from '@superjackfruitlabs/vibekit-frame/components/SuiteHead.astro';
+import Frame from '@superjackfruitlabs/vibekit-frame/components/Frame.astro';
 
 const SITE = 'https://supertoolkit.dev';
 const DOCS = 'https://docs.supertoolkit.dev';
