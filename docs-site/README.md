@@ -13,7 +13,7 @@ Deployed on merge to main by `.github/workflows/sites.yml`, which runs
 
 ## What is deliberate about it
 
-**It wears the suite's docs theme**, `@superjackfruit/docs-theme` (vendored under
+**It wears the suite's docs theme**, `@superjackfruitlabs/vibekit-docs` (vendored under
 `vendor/` with the frontdoor and vibekit tarballs it needs, the same tarballs the
 other products' docs sites carry). The whole design config is
 `sjlDocs({ product: 'supertoolkit', status: 'half-lit' })` in `astro.config.mjs`:

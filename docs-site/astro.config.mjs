@@ -1,7 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import sjlDocs from '@superjackfruit/docs-theme';
+import sjlDocs from '@superjackfruitlabs/vibekit-docs';
 
 const REPO = 'https://github.com/SuperJackfruitLabs/supertoolkit';
 
@@ -13,7 +13,7 @@ export default defineConfig({
       description:
         'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Self-hosted, Apache-2.0.',
       // The suite's docs theme: vibekit's indigo, the faces, the street, status badges, the footers,
-      // the 404 and llms.txt. See @superjackfruit/docs-theme's README.
+      // the 404 and llms.txt. See @superjackfruitlabs/vibekit-docs's README.
       plugins: [
         sjlDocs({
           product: 'supertoolkit',
