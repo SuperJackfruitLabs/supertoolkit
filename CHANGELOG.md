@@ -7,6 +7,10 @@ v0.0.9 predate this file: their notes are on the GitHub releases.
 
 ## Unreleased
 
+- The broker no longer presents an expired certificate after running for a day. Each host's
+  certificate lasted 24 hours but was reused for the life of the process, so HTTPS through the
+  broker failed with "certificate has expired" until it was restarted. It is now replaced an
+  hour before it expires.
 - Releases are built by the suite's shared release workflow: the forge's CI must have passed for
   the tag's commit, every archive comes with `SHA256SUMS` and a build-provenance attestation
   (`gh attestation verify <file> -R SuperJackfruitLabs/supertoolkit`), and the notes carry a
