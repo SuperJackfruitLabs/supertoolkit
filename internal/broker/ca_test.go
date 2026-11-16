@@ -148,3 +148,40 @@ func TestAnExpiringCAIsReplaced(t *testing.T) {
 		t.Error("unexpectedly reused the original")
 	}
 }
+
+// A long-running broker must not keep presenting a leaf past its expiry.
+//
+// Leaves were cached for the life of the process, with a 24-hour lifetime, so
+// a broker up for more than a day served an expired certificate for every host
+// it had already intercepted, and clients failed with "certificate has expired".
+func TestALeafNearingExpiryIsReminted(t *testing.T) {
+	ca, err := NewCA("test CA", 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	ca.now = func() time.Time { return start }
+	first, err := ca.leafFor("forge.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := ca.leafFor("forge.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != first {
+		t.Fatal("a fresh leaf should be reused, not re-minted on every handshake")
+	}
+
+	ca.now = func() time.Time { return start.Add(leafLifetime - leafRenewWithin) }
+	later, err := ca.leafFor("forge.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if later == first {
+		t.Fatal("a leaf within its renewal window was reused")
+	}
+	if !ca.now().Before(later.Leaf.NotAfter.Add(-leafRenewWithin)) {
+		t.Fatalf("re-minted leaf expires %v, too soon after %v", later.Leaf.NotAfter, ca.now())
+	}
+}

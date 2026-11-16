@@ -26,6 +26,24 @@ type CA struct {
 
 	mu    sync.Mutex
 	leafs map[string]*tls.Certificate
+
+	// now is the clock leaves are minted and reused by; nil means time.Now.
+	now func() time.Time
+}
+
+// leafLifetime is how long a minted leaf is valid. A cached leaf is replaced
+// once less than leafRenewWithin of it is left, so a long-running broker never
+// presents an expired one.
+const (
+	leafLifetime    = 24 * time.Hour
+	leafRenewWithin = time.Hour
+)
+
+func (c *CA) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
 }
 
 // NewCA creates a certificate authority.
@@ -172,11 +190,12 @@ func (c *CA) Pool() *x509.CertPool {
 // by a CA of their own. Production code uses leafFor through the handshake path.
 func (c *CA) LeafForTest(host string) (*tls.Certificate, error) { return c.leafFor(host) }
 
-// leafFor mints, and then reuses, a leaf for one hostname.
+// leafFor mints, and then reuses until it nears expiry, a leaf for one hostname.
 func (c *CA) leafFor(host string) (*tls.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if l, ok := c.leafs[host]; ok {
+	now := c.clock()
+	if l, ok := c.leafs[host]; ok && now.Before(l.Leaf.NotAfter.Add(-leafRenewWithin)) {
 		return l, nil
 	}
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -190,8 +209,8 @@ func (c *CA) leafFor(host string) (*tls.Certificate, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: host},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(24 * time.Hour),
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.Add(leafLifetime),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
@@ -204,7 +223,11 @@ func (c *CA) leafFor(host string) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("minting a leaf for %s: %w", host, err)
 	}
-	leaf := &tls.Certificate{Certificate: [][]byte{der, c.cert.Raw}, PrivateKey: key}
+	parsed, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, err
+	}
+	leaf := &tls.Certificate{Certificate: [][]byte{der, c.cert.Raw}, PrivateKey: key, Leaf: parsed}
 	c.leafs[host] = leaf
 	return leaf, nil
 }
