@@ -527,4 +527,4 @@ go build -o stk ./cmd/stk
 
 ## Licence
 
-Apache-2.0.
+MIT.

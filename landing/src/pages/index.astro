@@ -46,7 +46,7 @@ const ACCENT_CSS = `:root { ${vars(AD)} }
 @media (prefers-color-scheme: light) { :root:not([data-theme='dark']) { ${vars(AL)} } }`;
 const TITLE = 'SuperToolkit — the agent never holds the credential';
 const DESCRIPTION =
-  'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Runs on your own machine. Apache-2.0.';
+  'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Runs on your own machine. MIT-licensed.';
 
 // The catalogue's services, read from the Go source at build time (the build runs in landing/).
 const catalog = readFileSync(resolve(process.cwd(), '../internal/catalog/catalog.go'), 'utf8');
@@ -66,7 +66,7 @@ const JSON_LD = {
   url: SITE,
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Linux, macOS',
-  license: 'https://www.apache.org/licenses/LICENSE-2.0',
+  license: 'https://opensource.org/license/mit',
   sameAs: [REPO, FORGE],
   publisher: { '@type': 'Organization', name: 'Super Jackfruit Labs', url: 'https://superjackfruit.com' },
 };
@@ -202,7 +202,7 @@ const code = (s: string) => s.replace(/`([^`]+)`/g, '<code>$1</code>');
           <a class="button" href={`${DOCS}/install/`}>Install</a>
           <a class="button ghost" href={DOCS}>Read the docs</a>
         </div>
-        <p class="sub mono">Apache-2.0 · runs on your machine · no account, no telemetry</p>
+        <p class="sub mono">MIT · runs on your machine · no account, no telemetry</p>
       </section>
 
       <section class="band" aria-labelledby="p">

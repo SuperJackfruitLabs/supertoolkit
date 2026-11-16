@@ -11,7 +11,7 @@ export default defineConfig({
     starlight({
       title: 'SuperToolkit',
       description:
-        'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Self-hosted, Apache-2.0.',
+        'A credential broker for agents. The agent asks for an effect by name; the broker substitutes, signs or mints on the wire. Self-hosted, MIT-licensed.',
       // The suite's docs theme: vibekit's indigo, the faces, the street, status badges, the footers,
       // the 404 and llms.txt. See @superjackfruitlabs/vibekit-docs's README.
       plugins: [
@@ -31,7 +31,7 @@ export default defineConfig({
               'mints, refreshes or exchanges on the wire. Policy is one committed file with safe ' +
               'defaults: a read is agent-callable, a write needs approval. Every request is recorded in ' +
               'an audit ledger that holds a fingerprint of the credential, never its value. Agents use ' +
-              'it over MCP (`stk mcp`, four tools). Apache-2.0, installed with a checksum-verified ' +
+              'it over MCP (`stk mcp`, four tools). MIT-licensed, installed with a checksum-verified ' +
               'installer.',
           },
         }),
