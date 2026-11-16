@@ -7,6 +7,8 @@ v0.0.9 predate this file: their notes are on the GitHub releases.
 
 ## Unreleased
 
+## v0.0.10 — 2026-11-16
+
 - The broker no longer presents an expired certificate after running for a day. Each host's
   certificate lasted 24 hours but was reused for the life of the process, so HTTPS through the
   broker failed with "certificate has expired" until it was restarted. It is now replaced an
