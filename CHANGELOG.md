@@ -7,6 +7,9 @@ v0.0.9 predate this file: their notes are on the GitHub releases.
 
 ## Unreleased
 
+- SuperToolkit is now MIT-licensed, like most of the suite. It was Apache-2.0. Third-party notices
+  stay in `NOTICE`.
+
 ## v0.0.10 — 2026-11-16
 
 - The broker no longer presents an expired certificate after running for a day. Each host's
