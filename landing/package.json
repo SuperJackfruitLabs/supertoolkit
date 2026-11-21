@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",
-    "@superjackfruitlabs/vibekit-frame": "^0.0.16",
-    "@superjackfruitlabs/vibekit-ui": "^0.0.18",
+    "@superjackfruitlabs/vibekit-frame": "^0.0.18",
+    "@superjackfruitlabs/vibekit-ui": "^0.0.21",
     "astro": "^7.3.2"
   }
 }
