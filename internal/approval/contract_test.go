@@ -240,7 +240,10 @@ func assertBoardAccepts(t *testing.T, schema *treatytest.Schema, h *Host, e *Eff
 	}
 }
 
-const testSubject = "aps_1e5c9a7f03b24d86"
+const (
+	testSubject = "aps_1e5c9a7f03b24d86"
+	testGate    = "gate_8d02f6a1c94e7b35"
+)
 
 // An empty requester, station, target or argument used to drop its block's value or text
 // (omitempty), and the board refuses a block without one: such a request was refused 400
@@ -339,6 +342,35 @@ func TestContractOnlyAPendingGateIsAwaited(t *testing.T) {
 			t.Errorf("%q: %+v, %v; want awaiting a decision", c.Name, got, err)
 		case !awaited && (err == nil || IsAwaitingDecision(err) || got.State != Refused):
 			t.Errorf("%q: %+v, %v; want refused", c.Name, got, err)
+		}
+	}
+}
+
+// gateId is optional on delivery, and the board refuses a gate id that is not the subject's
+// latest gate, so an empty one must be left out, not sent as "".
+func TestContractDeliveryLeavesOutAnEmptyGateID(t *testing.T) {
+	api := approvalsContract(t)
+	schema := api.Request(t, "recordApprovalDelivery")
+	recorded := responseCases(t, api, "recordApprovalDelivery", "200").Valid[0]
+	for gateID, sent := range map[string]bool{testGate: true, "": false} {
+		var body map[string]any
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			raw, _ := io.ReadAll(r.Body)
+			if err := schema.Validate(raw); err != nil {
+				t.Errorf("delivery body %s: %v", raw, err)
+			}
+			_ = json.Unmarshal(raw, &body)
+			_, _ = w.Write(recorded.Body)
+		}))
+		token := func(context.Context) (string, error) { return "fixture", nil }
+		gate := &SubjectBoundGate{SuperPipelineHTTPClient: &SuperPipelineHTTPClient{BaseURL: srv.URL, HTTP: srv.Client(), DeliveryToken: token}, SubjectID: testSubject}
+		err := gate.RecordDelivered(context.Background(), testBoard, gateID, "sha256:d", "https://x.com/fixture/status/1")
+		srv.Close()
+		if err != nil {
+			t.Fatalf("gate %q: %v", gateID, err)
+		}
+		if got, has := body["gateId"]; has != sent || (sent && got != gateID) {
+			t.Errorf("gate %q: sent %v", gateID, body)
 		}
 	}
 }

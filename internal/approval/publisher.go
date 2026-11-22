@@ -587,16 +587,6 @@ func (c *SuperPipelineHTTPClient) RecordDelivered(ctx context.Context, boardID, 
 	return errors.New("RecordDelivered requires a subject-bound client")
 }
 
-// SubjectBoundGate binds the immutable subject once, avoiding caller-controlled reporting paths.
-type SubjectBoundGate struct {
-	*SuperPipelineHTTPClient
-	SubjectID string
-}
-
-func (c *SubjectBoundGate) RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error {
-	return c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(c.SubjectID)+"/delivery", map[string]string{"expectedDigest": digest, "gateId": gateID, "liveUrl": liveURL}, c.DeliveryToken, c.DeliveryDo, nil)
-}
-
 // XHTTPProvider performs the deterministic X write and exact-text read-back
 // through stk's credentialed transport. Do injects the credential internally;
 // neither GatedRequest nor the caller can supply or observe it.
