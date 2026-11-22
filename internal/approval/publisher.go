@@ -355,7 +355,9 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 		return e, err
 	}
 	rec = publicationRecord{ApprovedDigest: confirmation.Digest, RequestDigest: requestDigest, GateID: confirmation.GateID}
-	if !confirmation.Approved && confirmation.DeliveryMode == "none" && (confirmation.GateStatus == "pending" || confirmation.GateStatus == "open") {
+	// The board's gate statuses are pending, resolved and cancelled; only an undecided
+	// (pending) gate is waited on. Anything else that is not an approval is refused.
+	if !confirmation.Approved && confirmation.DeliveryMode == "none" && confirmation.GateStatus == "pending" {
 		return e, AwaitingDecisionError{}
 	}
 	if !confirmation.Approved || confirmation.DeliveryMode != "automatic" {
@@ -583,16 +585,6 @@ func (c *SuperPipelineHTTPClient) Confirm(ctx context.Context, boardID, subjectI
 func (c *SuperPipelineHTTPClient) RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error {
 	// subject id is part of the verified gate URL in production callers; the endpoint accepts it in the path.
 	return errors.New("RecordDelivered requires a subject-bound client")
-}
-
-// SubjectBoundGate binds the immutable subject once, avoiding caller-controlled reporting paths.
-type SubjectBoundGate struct {
-	*SuperPipelineHTTPClient
-	SubjectID string
-}
-
-func (c *SubjectBoundGate) RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error {
-	return c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(c.SubjectID)+"/delivery", map[string]string{"expectedDigest": digest, "gateId": gateID, "liveUrl": liveURL}, c.DeliveryToken, c.DeliveryDo, nil)
 }
 
 // XHTTPProvider performs the deterministic X write and exact-text read-back

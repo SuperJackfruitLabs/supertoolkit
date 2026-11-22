@@ -799,15 +799,15 @@ services:
 		path string
 		want string
 	}{
-		{"/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify", "superpipeline-approvals-read"},
-		{"/v1/boards/brd_fixture/approval-subjects/aps_fixture/delivery", "superpipeline-approvals-write"},
+		{"/v1/boards/brd_5c0e8a3f1b7d9246/approval-subjects/aps_1e5c9a7f03b24d86/verify", "superpipeline-approvals-read"},
+		{"/v1/boards/brd_5c0e8a3f1b7d9246/approval-subjects/aps_1e5c9a7f03b24d86/delivery", "superpipeline-approvals-write"},
 	} {
 		got, ok := serviceForRequest(services, http.MethodPost, tc.path)
 		if !ok || got.Name != tc.want {
 			t.Fatalf("%s selected %+v, %v; want %s", tc.path, got, ok, tc.want)
 		}
 	}
-	if got, ok := serviceForRequest(services, http.MethodGet, "/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify"); ok || got != nil {
+	if got, ok := serviceForRequest(services, http.MethodGet, "/v1/boards/brd_5c0e8a3f1b7d9246/approval-subjects/aps_1e5c9a7f03b24d86/verify"); ok || got != nil {
 		t.Fatalf("wrong method selected %+v", got)
 	}
 	broker := &Broker{}

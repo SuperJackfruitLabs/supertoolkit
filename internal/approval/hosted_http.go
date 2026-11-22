@@ -56,3 +56,19 @@ func (c *SuperPipelineHTTPClient) ReadApprovalRequest(ctx context.Context, board
 	}
 	return out, json.Unmarshal(raw, &out)
 }
+
+// SubjectBoundGate binds the immutable subject once, avoiding caller-controlled reporting paths.
+type SubjectBoundGate struct {
+	*SuperPipelineHTTPClient
+	SubjectID string
+}
+
+func (c *SubjectBoundGate) RecordDelivered(ctx context.Context, boardID, gateID, digest, liveURL string) error {
+	body := map[string]string{"expectedDigest": digest, "liveUrl": liveURL}
+	// gateId is optional, and the board refuses one that is not the subject's latest gate,
+	// so an empty one is left out rather than sent as "".
+	if gateID != "" {
+		body["gateId"] = gateID
+	}
+	return c.post(ctx, "/v1/boards/"+url.PathEscape(boardID)+"/approval-subjects/"+url.PathEscape(c.SubjectID)+"/delivery", body, c.DeliveryToken, c.DeliveryDo, nil)
+}

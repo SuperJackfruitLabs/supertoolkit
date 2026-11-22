@@ -116,7 +116,7 @@ func TestHTTPClientsJoinSuperPipelineGateToXAndCardRecord(t *testing.T) {
 				ExpectedDigest string `json:"expectedDigest"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
-			_ = json.NewEncoder(w).Encode(GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: body.ExpectedDigest, GateID: "gate_http", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
+			_ = json.NewEncoder(w).Encode(GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: body.ExpectedDigest, GateID: testGate, ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 		case strings.HasSuffix(r.URL.Path, "/delivery"):
 			cardWrites++
 			if r.Header.Get("Authorization") != "Bearer approvals-write" {
@@ -155,7 +155,7 @@ func TestHTTPClientsJoinSuperPipelineGateToXAndCardRecord(t *testing.T) {
 
 func TestAutomaticXPublishingEndToEndRecordsVerifiedLiveURL(t *testing.T) {
 	q, e, req := gatedFixture(t)
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &xStub{sends: []SendResult{{StatusCode: 201}}, reads: []ReadBackResult{{Status: ReadBackFound, LiveURL: "https://x.com/fixture/status/123"}}}
 
 	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
@@ -201,7 +201,7 @@ func TestDigestMismatchRefusesAndDurablyRecordsBothDigests(t *testing.T) {
 	q, e, req := gatedFixture(t)
 	approved := req.Digest()
 	req.Body = append(req.Body, ' ')
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: approved, GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: approved, GateID: testGate}}
 	x := &xStub{}
 	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
 	if err == nil {
@@ -229,7 +229,7 @@ func TestHTTPGateDigestMismatchRefusesAndDurablyRecordsBothDigests(t *testing.T)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(GateConfirmation{
-			Approved: false, DeliveryMode: "automatic", Digest: approved, GateID: "gate_fixture",
+			Approved: false, DeliveryMode: "automatic", Digest: approved, GateID: testGate,
 		})
 	}))
 	defer server.Close()
@@ -261,7 +261,7 @@ func TestNonAutomaticGateOutcomesNeverSend(t *testing.T) {
 	for _, outcome := range []string{"manual", "rejected", "changes_requested", "expired"} {
 		t.Run(outcome, func(t *testing.T) {
 			q, e, req := gatedFixture(t)
-			gate := &gateStub{confirmation: GateConfirmation{Approved: false, DeliveryMode: outcome, Digest: req.Digest(), GateID: "gate_fixture"}}
+			gate := &gateStub{confirmation: GateConfirmation{Approved: false, DeliveryMode: outcome, Digest: req.Digest(), GateID: testGate}}
 			x := &xStub{}
 			got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
 			if err == nil || got.State != Refused {
@@ -287,7 +287,7 @@ func TestProvider4xxAnd5xxAreTrueFailuresWithoutReadBack(t *testing.T) {
 	for _, status := range []int{400, 503} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			q, e, req := gatedFixture(t)
-			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 			x := &xStub{sends: []SendResult{{StatusCode: status}}}
 			got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
 			if err == nil || got.Outcome != "provider_error" {
@@ -304,7 +304,7 @@ func TestUnknownOutcomeReadBackFoundDeliversWithoutRetry(t *testing.T) {
 	for _, transport := range []string{"timeout", "drop"} {
 		t.Run(transport, func(t *testing.T) {
 			q, e, req := gatedFixture(t)
-			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 			x := &xStub{sendErrs: []error{UnknownOutcome(errors.New(transport))}, reads: []ReadBackResult{{Status: ReadBackFound, LiveURL: "https://x.com/a/status/9"}}}
 			got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
 			if err != nil || got.Outcome != "delivered" || x.sendCalls != 1 {
@@ -316,7 +316,7 @@ func TestUnknownOutcomeReadBackFoundDeliversWithoutRetry(t *testing.T) {
 
 func TestNegativeReadBackRemainsFencedWithoutRetry(t *testing.T) {
 	q, e, req := gatedFixture(t)
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &xStub{
 		sends:    []SendResult{{}, {StatusCode: 201}},
 		sendErrs: []error{UnknownOutcome(errors.New("connection dropped")), nil},
@@ -338,7 +338,7 @@ type concurrentRecoveryGate struct {
 
 func (g *concurrentRecoveryGate) Confirm(_ context.Context, _, _, _ string) (GateConfirmation, error) {
 	g.confirms.Add(1)
-	return GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: g.digest, GateID: "gate_fixture", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}, nil
+	return GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: g.digest, GateID: testGate, ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}, nil
 }
 
 func (*concurrentRecoveryGate) RecordDelivered(context.Context, string, string, string, string) error {
@@ -403,11 +403,11 @@ func TestConcurrentRecoveriesKeepNegativeReadBackFenced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q1.decide(e.ID, true, "superpipeline:gate_fixture", true); err != nil {
+	if _, err := q1.decide(e.ID, true, "superpipeline:"+testGate, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := q1.writePublication(e.ID, publicationRecord{
-		Outcome: "outcome_unknown", ApprovedDigest: req.Digest(), RequestDigest: req.Digest(), GateID: "gate_fixture", Attempts: 1,
+		Outcome: "outcome_unknown", ApprovedDigest: req.Digest(), RequestDigest: req.Digest(), GateID: testGate, Attempts: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestRecoveryDuringSlowSendDoesNotPostAgain(t *testing.T) {
 
 func TestAcknowledgedPostIDIsNeverRetriedWhenExactReadBackIsNotFound(t *testing.T) {
 	q, e, req := gatedFixture(t)
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &xStub{
 		sends: []SendResult{{StatusCode: http.StatusCreated, PostID: "acknowledged-post"}},
 		reads: []ReadBackResult{{Status: ReadBackNotFound}, {Status: ReadBackNotFound}},
@@ -524,7 +524,7 @@ func TestAcknowledgedPostIDIsNeverRetriedWhenExactReadBackIsNotFound(t *testing.
 
 func TestInconclusiveReadBackRemainsFenced(t *testing.T) {
 	q, e, req := gatedFixture(t)
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &xStub{sendErrs: []error{UnknownOutcome(errors.New("timeout"))}, reads: []ReadBackResult{{Status: ReadBackInconclusive}, {Status: ReadBackInconclusive}}}
 	p := &Publisher{Queue: q, Gate: gate, X: x}
 	got, err := p.Perform(context.Background(), e.ID, req)
@@ -542,7 +542,7 @@ func TestInconclusiveReadBackRemainsFenced(t *testing.T) {
 
 func TestChangedRequestAfterUnknownOutcomeIsRefusedBeforeReadBackOrRetry(t *testing.T) {
 	q, e, req := gatedFixture(t)
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &xStub{
 		sendErrs: []error{UnknownOutcome(errors.New("timeout"))},
 		reads:    []ReadBackResult{{Status: ReadBackInconclusive}},
@@ -610,7 +610,7 @@ func TestXHTTPProviderVerifiesTheCreatedPostIDNotAnOlderIdenticalPost(t *testing
 
 	q, e, gated := gatedFixture(t)
 	gated.Method, gated.URL, gated.Body, gated.Media = request.Method, request.URL, request.Body, nil
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: gated.Digest(), GateID: "gate_fixture"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: gated.Digest(), GateID: testGate}}
 	got, err := (&Publisher{Queue: q, Gate: gate, X: provider}).Perform(context.Background(), e.ID, gated)
 	if err != nil {
 		t.Fatal(err)
@@ -699,7 +699,7 @@ func TestAutomaticXPublishingUploadsFrozenMediaInOrderAndVerifiesIt(t *testing.T
 
 	q, e, req := gatedFixture(t)
 	req.URL, req.Body, req.Media = server.URL+"/2/tweets", []byte(`{"text":"media fixture"}`), media
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_media"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &XHTTPProvider{Username: "fixture", Do: func(ctx context.Context, request *http.Request) (*http.Response, error) {
 		return server.Client().Do(request.WithContext(ctx))
 	}}
@@ -741,7 +741,7 @@ func TestAutomaticXPublishingMediaFailuresNeverCreateAPost(t *testing.T) {
 			req.URL = server.URL + "/2/tweets"
 			req.Body = []byte(`{"text":"media failure"}`)
 			req.Media = [][]byte{append([]byte("\x89PNG\r\n\x1a\n"), []byte("image")...)}
-			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_media"}}
+			gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 			x := &XHTTPProvider{Username: "fixture", Do: func(ctx context.Context, request *http.Request) (*http.Response, error) {
 				return server.Client().Do(request.WithContext(ctx))
 			}}
@@ -758,7 +758,7 @@ func TestGatedEffectUsesGateExpiryAndKeepsUnknownFenceDuringCleanup(t *testing.T
 	originalNow := q.now()
 	q.now = func() time.Time { return originalNow.Add(2 * time.Minute) }
 	gate := &gateStub{confirmation: GateConfirmation{
-		Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture",
+		Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate,
 		ExpiresAt: originalNow.Add(time.Hour).UTC().Format(time.RFC3339),
 	}}
 	x := &xStub{sends: []SendResult{{StatusCode: http.StatusCreated, PostID: "late"}}, reads: []ReadBackResult{{Status: ReadBackFound, LiveURL: "https://x.com/fixture/status/late"}}}
@@ -767,7 +767,7 @@ func TestGatedEffectUsesGateExpiryAndKeepsUnknownFenceDuringCleanup(t *testing.T
 	}
 
 	q2, fenced, req2 := gatedFixture(t)
-	if _, err := q2.decide(fenced.ID, true, "superpipeline:gate_fixture", true); err != nil {
+	if _, err := q2.decide(fenced.ID, true, "superpipeline:"+testGate, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := q2.writePublication(fenced.ID, publicationRecord{Outcome: "outcome_unknown", RequestDigest: req2.Digest(), ApprovedDigest: req2.Digest(), Attempts: 1}); err != nil {
@@ -867,7 +867,7 @@ func TestAutomaticXPublishingMediaReadBackMismatchStaysFenced(t *testing.T) {
 	req.URL = server.URL + "/2/tweets"
 	req.Body = []byte(`{"text":"media mismatch"}`)
 	req.Media = [][]byte{append([]byte("\x89PNG\r\n\x1a\n"), []byte("image")...)}
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_media"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate}}
 	x := &XHTTPProvider{Username: "fixture", Do: func(ctx context.Context, request *http.Request) (*http.Response, error) {
 		return server.Client().Do(request.WithContext(ctx))
 	}}
@@ -940,7 +940,7 @@ func TestKnownPostIDNormalizesXRepresentations(t *testing.T) {
 
 func TestMissingApprovalExpiryNeverSends(t *testing.T) {
 	q, e, req := gatedFixture(t)
-	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: "gate_fixture", ExpiresAt: "invalid"}}
+	gate := &gateStub{confirmation: GateConfirmation{Approved: true, DeliveryMode: "automatic", Digest: req.Digest(), GateID: testGate, ExpiresAt: "invalid"}}
 	x := &xStub{}
 	got, err := (&Publisher{Queue: q, Gate: gate, X: x}).Perform(context.Background(), e.ID, req)
 	if err == nil || got.State != Refused || x.sendCalls != 0 {
@@ -952,11 +952,11 @@ func TestManualRecoveryStatesAreSurfacedWithoutSending(t *testing.T) {
 	for _, outcome := range []string{"retry_allowed", ""} {
 		t.Run(outcome, func(t *testing.T) {
 			q, e, req := gatedFixture(t)
-			if _, err := q.decide(e.ID, true, "superpipeline:gate_fixture", true); err != nil {
+			if _, err := q.decide(e.ID, true, "superpipeline:"+testGate, true); err != nil {
 				t.Fatal(err)
 			}
 			if outcome != "" {
-				if err := q.writePublication(e.ID, publicationRecord{Outcome: outcome, ApprovedDigest: req.Digest(), RequestDigest: req.Digest(), GateID: "gate_fixture"}); err != nil {
+				if err := q.writePublication(e.ID, publicationRecord{Outcome: outcome, ApprovedDigest: req.Digest(), RequestDigest: req.Digest(), GateID: testGate}); err != nil {
 					t.Fatal(err)
 				}
 			}

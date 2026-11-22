@@ -1,0 +1,1042 @@
+{
+  "operations": {
+    "exchangeServiceToken": {
+      "request": {
+        "valid": {
+          "one audience": {
+            "audience": "https://app.superpipeline.dev"
+          },
+          "another product's audience": {
+            "audience": "https://app.superwitness.dev"
+          }
+        },
+        "invalid": [
+          {
+            "why": "no audience (invalid_target)",
+            "body": {}
+          },
+          {
+            "why": "an audience list: this route takes one (invalid_target)",
+            "body": {
+              "audience": [
+                "https://app.superpipeline.dev"
+              ]
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "a token": {
+              "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+              "token_type": "Bearer",
+              "expires_in": 300
+            }
+          },
+          "invalid": [
+            {
+              "why": "a token_type other than Bearer",
+              "body": {
+                "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+                "token_type": "bearer",
+                "expires_in": 300
+              }
+            },
+            {
+              "why": "no access_token",
+              "body": {
+                "token_type": "Bearer",
+                "expires_in": 300
+              }
+            }
+          ]
+        }
+      }
+    },
+    "exchangeAgentToken": {
+      "request": {
+        "valid": {
+          "one audience": {
+            "principal": "prn_4f1c2a9e8b7d6c5a4e3f",
+            "audience": "https://app.superpipeline.dev"
+          },
+          "two audiences": {
+            "principal": "prn_4f1c2a9e8b7d6c5a4e3f",
+            "audience": [
+              "https://app.superpipeline.dev",
+              "https://app.superpipeline.dev/mcp"
+            ]
+          }
+        },
+        "invalid": [
+          {
+            "why": "no principal (invalid_target)",
+            "body": {
+              "audience": "https://app.superpipeline.dev"
+            }
+          },
+          {
+            "why": "no audience (invalid_target)",
+            "body": {
+              "principal": "prn_4f1c2a9e8b7d6c5a4e3f"
+            }
+          },
+          {
+            "why": "an empty audience list (invalid_target)",
+            "body": {
+              "principal": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "audience": []
+            }
+          },
+          {
+            "why": "more than 8 audiences (invalid_target)",
+            "body": {
+              "principal": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "audience": [
+                "https://app.superpipeline.dev",
+                "https://app.superpipeline.dev/mcp",
+                "https://hub.agentpod.dev",
+                "https://app.superlibrary.dev",
+                "https://app.superwitness.dev",
+                "https://app.superpipeline.dev",
+                "https://app.superpipeline.dev/mcp",
+                "https://hub.agentpod.dev",
+                "https://app.superlibrary.dev"
+              ]
+            }
+          },
+          {
+            "why": "an audience twice (invalid_target)",
+            "body": {
+              "principal": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "audience": [
+                "https://app.superpipeline.dev",
+                "https://app.superpipeline.dev"
+              ]
+            }
+          },
+          {
+            "why": "an audience that is not a string (invalid_target)",
+            "body": {
+              "principal": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "audience": 1
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "a token": {
+              "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+              "token_type": "Bearer",
+              "expires_in": 300
+            }
+          },
+          "invalid": [
+            {
+              "why": "a token_type other than Bearer",
+              "body": {
+                "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+                "token_type": "bearer",
+                "expires_in": 300
+              }
+            },
+            {
+              "why": "no access_token",
+              "body": {
+                "token_type": "Bearer",
+                "expires_in": 300
+              }
+            }
+          ]
+        }
+      }
+    },
+    "exchangeAssertion": {
+      "request": {
+        "valid": {
+          "a Matrix sender": {
+            "identity": {
+              "system": "matrix",
+              "externalId": "@asha:matrix.superjackfruit.com"
+            },
+            "audience": "https://app.superpipeline.dev"
+          },
+          "two audiences": {
+            "identity": {
+              "system": "superpipeline",
+              "externalId": "u_8812"
+            },
+            "audience": [
+              "https://app.superpipeline.dev",
+              "https://hub.agentpod.dev"
+            ]
+          }
+        },
+        "invalid": [
+          {
+            "why": "a caller-supplied principal (invalid_request)",
+            "body": {
+              "identity": {
+                "system": "matrix",
+                "externalId": "@asha:matrix.superjackfruit.com"
+              },
+              "audience": "https://app.superpipeline.dev",
+              "principal": "prn_0a1b2c3d4e5f6a7b8c9d"
+            }
+          },
+          {
+            "why": "an extra field in identity (invalid_request)",
+            "body": {
+              "identity": {
+                "system": "matrix",
+                "externalId": "@asha:matrix.superjackfruit.com",
+                "principalId": "prn_0a1b2c3d4e5f6a7b8c9d"
+              },
+              "audience": "https://app.superpipeline.dev"
+            }
+          },
+          {
+            "why": "a plane system (invalid_request)",
+            "body": {
+              "identity": {
+                "system": "better-auth",
+                "externalId": "prn_0a1b2c3d4e5f6a7b8c9d"
+              },
+              "audience": "https://app.superpipeline.dev"
+            }
+          },
+          {
+            "why": "an empty externalId (invalid_request)",
+            "body": {
+              "identity": {
+                "system": "matrix",
+                "externalId": ""
+              },
+              "audience": "https://app.superpipeline.dev"
+            }
+          },
+          {
+            "why": "an externalId over 255 characters (invalid_request)",
+            "body": {
+              "identity": {
+                "system": "matrix",
+                "externalId": "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "audience": "https://app.superpipeline.dev"
+            }
+          },
+          {
+            "why": "no identity (invalid_request)",
+            "body": {
+              "audience": "https://app.superpipeline.dev"
+            }
+          },
+          {
+            "why": "an empty audience list (invalid_target)",
+            "body": {
+              "identity": {
+                "system": "matrix",
+                "externalId": "@asha:matrix.superjackfruit.com"
+              },
+              "audience": []
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "a token": {
+              "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+              "token_type": "Bearer",
+              "expires_in": 120
+            }
+          },
+          "invalid": [
+            {
+              "why": "a token_type other than Bearer",
+              "body": {
+                "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+                "token_type": "bearer",
+                "expires_in": 120
+              }
+            },
+            {
+              "why": "no access_token",
+              "body": {
+                "token_type": "Bearer",
+                "expires_in": 120
+              }
+            }
+          ]
+        }
+      }
+    },
+    "exchangeDeviceToken": {
+      "request": {
+        "valid": {
+          "the credential's workspace": {
+            "audience": "https://app.superlibrary.dev"
+          },
+          "another workspace": {
+            "audience": "https://hub.agentpod.dev",
+            "org": "org_1f2e3d4c5b6a79880a1b"
+          }
+        },
+        "invalid": [
+          {
+            "why": "no audience (invalid_target)",
+            "body": {
+              "org": "org_7e6d5c4b3a291807f6e5"
+            }
+          },
+          {
+            "why": "an org outside the id grammar (invalid_target)",
+            "body": {
+              "audience": "https://hub.agentpod.dev",
+              "org": "org_ACME"
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "a token": {
+              "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+              "token_type": "Bearer",
+              "expires_in": 300
+            }
+          },
+          "invalid": [
+            {
+              "why": "a token_type other than Bearer",
+              "body": {
+                "access_token": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QifQ.eyJzdWIiOiJwcm5fNGYxYzJhOWU4YjdkNmM1YTRlM2YifQ.dGVzdC1zaWduYXR1cmUtbm90LXJlYWw",
+                "token_type": "bearer",
+                "expires_in": 300
+              }
+            },
+            {
+              "why": "no access_token",
+              "body": {
+                "token_type": "Bearer",
+                "expires_in": 300
+              }
+            }
+          ]
+        }
+      }
+    },
+    "completeDeviceGrant": {
+      "responses": {
+        "200": {
+          "valid": {
+            "a device credential": {
+              "device_credential": "dev_5b4a39281706f5e4d3c2:q8Zr2V0xN4pL7tY1wK3sH6mB9cD5fG2jA0eU8iO4nRu"
+            }
+          },
+          "invalid": [
+            {
+              "why": "the standard's token response",
+              "body": {
+                "access_token": "session-token",
+                "token_type": "Bearer",
+                "expires_in": 3600
+              }
+            },
+            {
+              "why": "a service credential",
+              "body": {
+                "device_credential": "svc_5b4a39281706f5e4d3c2:q8Zr2V0xN4pL7tY1wK3sH6mB9cD5fG2jA0eU8iO4nRu"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "createAgent": {
+      "request": {
+        "valid": {
+          "an agent": {
+            "kind": "agent",
+            "handle": "release-bot",
+            "displayName": "Release bot"
+          }
+        },
+        "invalid": [
+          {
+            "why": "a kind other than agent (invalid_request)",
+            "body": {
+              "kind": "service",
+              "handle": "release-bot",
+              "displayName": "Release bot"
+            }
+          },
+          {
+            "why": "no handle (invalid_request)",
+            "body": {
+              "kind": "agent",
+              "displayName": "Release bot"
+            }
+          },
+          {
+            "why": "a handle with capitals (invalid_handle)",
+            "body": {
+              "kind": "agent",
+              "handle": "Release-Bot",
+              "displayName": "Release bot"
+            }
+          },
+          {
+            "why": "a handle under 3 characters (invalid_handle)",
+            "body": {
+              "kind": "agent",
+              "handle": "rb",
+              "displayName": "Release bot"
+            }
+          },
+          {
+            "why": "an empty displayName (invalid_request)",
+            "body": {
+              "kind": "agent",
+              "handle": "release-bot",
+              "displayName": ""
+            }
+          },
+          {
+            "why": "a blank displayName (invalid_request)",
+            "body": {
+              "kind": "agent",
+              "handle": "release-bot",
+              "displayName": "   "
+            }
+          },
+          {
+            "why": "a displayName over 120 characters (invalid_request)",
+            "body": {
+              "kind": "agent",
+              "handle": "release-bot",
+              "displayName": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR"
+            }
+          }
+        ]
+      },
+      "responses": {
+        "201": {
+          "valid": {
+            "its id": {
+              "id": "prn_4f1c2a9e8b7d6c5a4e3f"
+            }
+          },
+          "invalid": [
+            {
+              "why": "an id outside the grammar",
+              "body": {
+                "id": "agent-1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "listPrincipals": {
+      "responses": {
+        "200": {
+          "valid": {
+            "none": [],
+            "a workspace": [
+              {
+                "id": "prn_4f1c2a9e8b7d6c5a4e3f",
+                "kind": "agent",
+                "handle": "release-bot",
+                "displayName": "Release bot",
+                "organizationId": "org_7e6d5c4b3a291807f6e5",
+                "suspended": false,
+                "grant": {
+                  "mayDispatch": [],
+                  "mayGrantReach": false,
+                  "scopes": [
+                    "claim",
+                    "run"
+                  ]
+                }
+              },
+              {
+                "id": "prn_0a1b2c3d4e5f6a7b8c9d",
+                "kind": "human",
+                "handle": "asha",
+                "displayName": "Asha Rao",
+                "organizationId": "org_7e6d5c4b3a291807f6e5",
+                "suspended": false,
+                "role": "admin",
+                "grant": {
+                  "mayDispatch": [
+                    "prn_4f1c2a9e8b7d6c5a4e3f"
+                  ],
+                  "mayGrantReach": true,
+                  "scopes": []
+                }
+              },
+              {
+                "id": "prn_c3d2e1f0a9b8c7d6e5f4",
+                "kind": "service",
+                "handle": "superpipeline",
+                "displayName": "SuperPipeline",
+                "organizationId": "org_7e6d5c4b3a291807f6e5",
+                "suspended": false,
+                "grant": {
+                  "mayDispatch": [],
+                  "mayGrantReach": false,
+                  "scopes": [
+                    "token:agent",
+                    "token:assert",
+                    "principals:read",
+                    "identities:read"
+                  ]
+                }
+              }
+            ]
+          },
+          "invalid": [
+            {
+              "why": "a principal with no grant",
+              "body": [
+                {
+                  "id": "prn_4f1c2a9e8b7d6c5a4e3f",
+                  "kind": "agent",
+                  "handle": "release-bot",
+                  "displayName": "Release bot",
+                  "organizationId": "org_7e6d5c4b3a291807f6e5",
+                  "suspended": false
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "readPrincipal": {
+      "responses": {
+        "200": {
+          "valid": {
+            "an agent": {
+              "id": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "kind": "agent",
+              "handle": "release-bot",
+              "displayName": "Release bot",
+              "organizationId": "org_7e6d5c4b3a291807f6e5",
+              "suspended": false,
+              "grant": {
+                "mayDispatch": [],
+                "mayGrantReach": false,
+                "scopes": [
+                  "claim",
+                  "run"
+                ]
+              }
+            },
+            "a person, with their role": {
+              "id": "prn_0a1b2c3d4e5f6a7b8c9d",
+              "kind": "human",
+              "handle": "asha",
+              "displayName": "Asha Rao",
+              "organizationId": "org_7e6d5c4b3a291807f6e5",
+              "suspended": false,
+              "role": "admin",
+              "grant": {
+                "mayDispatch": [
+                  "prn_4f1c2a9e8b7d6c5a4e3f"
+                ],
+                "mayGrantReach": true,
+                "scopes": []
+              }
+            },
+            "a suspended agent with no grant": {
+              "id": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "kind": "agent",
+              "handle": "release-bot",
+              "displayName": "Release bot",
+              "organizationId": "org_7e6d5c4b3a291807f6e5",
+              "suspended": true,
+              "grant": {
+                "mayDispatch": [],
+                "mayGrantReach": false,
+                "scopes": []
+              }
+            }
+          },
+          "invalid": [
+            {
+              "why": "an unknown kind",
+              "body": {
+                "id": "prn_4f1c2a9e8b7d6c5a4e3f",
+                "kind": "bot",
+                "handle": "release-bot",
+                "displayName": "Release bot",
+                "organizationId": "org_7e6d5c4b3a291807f6e5",
+                "suspended": false,
+                "grant": {
+                  "mayDispatch": [],
+                  "mayGrantReach": false,
+                  "scopes": [
+                    "claim",
+                    "run"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "suspendPrincipal": {
+      "responses": {
+        "200": {
+          "valid": {
+            "done": {
+              "ok": true
+            }
+          },
+          "invalid": [
+            {
+              "why": "ok false",
+              "body": {
+                "ok": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    "unsuspendPrincipal": {
+      "responses": {
+        "200": {
+          "valid": {
+            "done": {
+              "ok": true
+            }
+          },
+          "invalid": [
+            {
+              "why": "ok false",
+              "body": {
+                "ok": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    "putGrant": {
+      "request": {
+        "valid": {
+          "dispatch and reach": {
+            "mayDispatch": [
+              "prn_4f1c2a9e8b7d6c5a4e3f",
+              "prn_9a8b7c6d5e4f3a2b1c0d"
+            ],
+            "mayGrantReach": true
+          },
+          "with product scopes": {
+            "mayDispatch": [],
+            "mayGrantReach": false,
+            "scopes": [
+              "claim",
+              "run",
+              "evidence:read"
+            ]
+          }
+        },
+        "invalid": [
+          {
+            "why": "no mayGrantReach (invalid_grant)",
+            "body": {
+              "mayDispatch": []
+            }
+          },
+          {
+            "why": "no mayDispatch (invalid_grant)",
+            "body": {
+              "mayGrantReach": false
+            }
+          },
+          {
+            "why": "an unknown field (invalid_grant)",
+            "body": {
+              "mayDispatch": [],
+              "mayGrantReach": false,
+              "role": "admin"
+            }
+          },
+          {
+            "why": "a dispatch target that is not a prn (invalid_grant)",
+            "body": {
+              "mayDispatch": [
+                "release-bot"
+              ],
+              "mayGrantReach": false
+            }
+          },
+          {
+            "why": "a malformed scope (invalid_grant)",
+            "body": {
+              "mayDispatch": [],
+              "mayGrantReach": false,
+              "scopes": [
+                "Claim Cards"
+              ]
+            }
+          },
+          {
+            "why": "a scope over 128 characters (invalid_grant)",
+            "body": {
+              "mayDispatch": [],
+              "mayGrantReach": false,
+              "scopes": [
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "done": {
+              "ok": true
+            }
+          },
+          "invalid": [
+            {
+              "why": "ok false",
+              "body": {
+                "ok": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    "putIdentity": {
+      "request": {
+        "valid": {
+          "a Matrix id": {
+            "externalId": "@release-bot:matrix.superjackfruit.com"
+          }
+        },
+        "invalid": [
+          {
+            "why": "no externalId (invalid_request)",
+            "body": {}
+          },
+          {
+            "why": "an empty externalId (invalid_request)",
+            "body": {
+              "externalId": ""
+            }
+          },
+          {
+            "why": "an externalId over 255 characters (invalid_request)",
+            "body": {
+              "externalId": "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "done": {
+              "ok": true
+            }
+          },
+          "invalid": [
+            {
+              "why": "ok false",
+              "body": {
+                "ok": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    "listIdentities": {
+      "responses": {
+        "200": {
+          "valid": {
+            "none": [],
+            "two links": [
+              {
+                "system": "matrix",
+                "externalId": "@asha:matrix.superjackfruit.com"
+              },
+              {
+                "system": "better-auth",
+                "externalId": "prn_0a1b2c3d4e5f6a7b8c9d"
+              }
+            ]
+          },
+          "invalid": [
+            {
+              "why": "a link with no externalId",
+              "body": [
+                {
+                  "system": "matrix"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "findByIdentity": {
+      "responses": {
+        "200": {
+          "valid": {
+            "a person": {
+              "principalId": "prn_0a1b2c3d4e5f6a7b8c9d",
+              "kind": "human",
+              "suspended": false
+            },
+            "a suspended agent": {
+              "principalId": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "kind": "agent",
+              "suspended": true
+            }
+          },
+          "invalid": [
+            {
+              "why": "no suspended",
+              "body": {
+                "principalId": "prn_0a1b2c3d4e5f6a7b8c9d",
+                "kind": "human"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "decidePolicy": {
+      "request": {
+        "valid": {
+          "a stage": {
+            "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+            "action": "take",
+            "resource": {
+              "board": "brd_f47143722126442c",
+              "stage": "build"
+            }
+          },
+          "with labels, capabilities and a card": {
+            "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+            "action": "take",
+            "resource": {
+              "board": "brd_f47143722126442c",
+              "stage": "build",
+              "labels": [
+                "urgent"
+              ],
+              "capabilities": [
+                "deploy"
+              ],
+              "card": "crd_2c9e1f"
+            }
+          }
+        },
+        "invalid": [
+          {
+            "why": "an action other than take (invalid_request)",
+            "body": {
+              "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "action": "claim",
+              "resource": {
+                "board": "brd_f47143722126442c",
+                "stage": "build"
+              }
+            }
+          },
+          {
+            "why": "an unknown field (invalid_request)",
+            "body": {
+              "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "action": "take",
+              "resource": {
+                "board": "brd_f47143722126442c",
+                "stage": "build"
+              },
+              "context": {}
+            }
+          },
+          {
+            "why": "an unknown resource field (invalid_request)",
+            "body": {
+              "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "action": "take",
+              "resource": {
+                "board": "brd_f47143722126442c",
+                "stage": "build",
+                "priority": 1
+              }
+            }
+          },
+          {
+            "why": "an empty subject (invalid_request)",
+            "body": {
+              "subject": "",
+              "action": "take",
+              "resource": {
+                "board": "brd_f47143722126442c",
+                "stage": "build"
+              }
+            }
+          },
+          {
+            "why": "no stage (invalid_request)",
+            "body": {
+              "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "action": "take",
+              "resource": {
+                "board": "brd_f47143722126442c"
+              }
+            }
+          },
+          {
+            "why": "more than 50 labels (invalid_request)",
+            "body": {
+              "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "action": "take",
+              "resource": {
+                "board": "brd_f47143722126442c",
+                "stage": "build",
+                "labels": [
+                  "l0",
+                  "l1",
+                  "l2",
+                  "l3",
+                  "l4",
+                  "l5",
+                  "l6",
+                  "l7",
+                  "l8",
+                  "l9",
+                  "l10",
+                  "l11",
+                  "l12",
+                  "l13",
+                  "l14",
+                  "l15",
+                  "l16",
+                  "l17",
+                  "l18",
+                  "l19",
+                  "l20",
+                  "l21",
+                  "l22",
+                  "l23",
+                  "l24",
+                  "l25",
+                  "l26",
+                  "l27",
+                  "l28",
+                  "l29",
+                  "l30",
+                  "l31",
+                  "l32",
+                  "l33",
+                  "l34",
+                  "l35",
+                  "l36",
+                  "l37",
+                  "l38",
+                  "l39",
+                  "l40",
+                  "l41",
+                  "l42",
+                  "l43",
+                  "l44",
+                  "l45",
+                  "l46",
+                  "l47",
+                  "l48",
+                  "l49",
+                  "l50"
+                ]
+              }
+            }
+          },
+          {
+            "why": "a label over 64 characters (invalid_request)",
+            "body": {
+              "subject": "prn_4f1c2a9e8b7d6c5a4e3f",
+              "action": "take",
+              "resource": {
+                "board": "brd_f47143722126442c",
+                "stage": "build",
+                "labels": [
+                  "lllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "no policy": {
+              "allow": true,
+              "reasons": [
+                "no-policy"
+              ],
+              "policyVersion": null,
+              "limits": [],
+              "decisionId": null
+            },
+            "allowed, with a limit": {
+              "allow": true,
+              "reasons": [
+                "allowed"
+              ],
+              "policyVersion": 3,
+              "limits": [
+                {
+                  "id": "nightly",
+                  "maxRuns": 20,
+                  "windowHours": 24
+                }
+              ],
+              "decisionId": "pdc_8d7c6b5a4f3e2d1c0b9a"
+            },
+            "denied by a rule": {
+              "allow": false,
+              "reasons": [
+                "no-deploys-on-friday"
+              ],
+              "policyVersion": 3,
+              "limits": [],
+              "decisionId": "pdc_0b9a8d7c6b5a4f3e2d1c"
+            }
+          },
+          "invalid": [
+            {
+              "why": "no allow",
+              "body": {
+                "reasons": [
+                  "no-policy"
+                ],
+                "policyVersion": null,
+                "limits": [],
+                "decisionId": null
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

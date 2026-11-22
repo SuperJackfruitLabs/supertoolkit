@@ -1,0 +1,796 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SuperPipeline approvals",
+    "version": "1",
+    "description": "The service-token routes a broker (SuperToolkit) uses to host an approval on a board and read the decision back, and the routes an automatic publisher uses to confirm a gate's approval and report its delivery. Written from SuperPipeline's apps/api/src/service-routes.ts and the board handlers it calls. Every refusal is the error.v1 envelope with the status statusForCode gives its code. Response bodies are open: a reader ignores properties it does not know."
+  },
+  "x-treaty-error-envelope": "error.v1",
+  "paths": {
+    "/v1/boards/{boardId}/approval-requests": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/boardId"
+        }
+      ],
+      "post": {
+        "operationId": "createApprovalRequest",
+        "summary": "Host a broker's approval request on the board",
+        "description": "Creates a request bound to an stk-capability/v1 subject, or returns the one this principal already created under the same requestId (200). A replay naming a different question or subject is refused with REQUEST_ID_CONFLICT. A subject that has already expired is refused with INVALID_APPROVAL_REQUEST. The board offers its own options (allow_once, deny); the caller sends none.",
+        "security": [
+          {
+            "serviceToken": ["approval-requests:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "BOARD_NOT_FOUND",
+          "NOT_INITIALIZED",
+          "INVALID_JSON",
+          "INVALID_APPROVAL_REQUEST",
+          "REQUEST_ID_CONFLICT"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "This principal already created the identical request under this requestId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestReplayed"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/boards/{boardId}/approval-requests/{approvalRequestId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/boardId"
+        },
+        {
+          "$ref": "#/components/parameters/approvalRequestId"
+        }
+      ],
+      "get": {
+        "operationId": "readApprovalRequest",
+        "summary": "Read a broker approval request's decision back",
+        "description": "Any service principal holding approval-requests:read or approval-requests:write reads it, not only its creator. The body is the view itself, not wrapped.",
+        "security": [
+          {
+            "serviceToken": ["approval-requests:read"]
+          },
+          {
+            "serviceToken": ["approval-requests:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "BOARD_NOT_FOUND",
+          "APPROVAL_REQUEST_NOT_FOUND"
+        ],
+        "responses": {
+          "200": {
+            "description": "The request and its decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRequestView"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/boards/{boardId}/approval-subjects/{approvalSubjectId}/verify": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/boardId"
+        },
+        {
+          "$ref": "#/components/parameters/approvalSubjectId"
+        }
+      ],
+      "post": {
+        "operationId": "verifyApprovalSubject",
+        "summary": "Confirm a gate's automatic-delivery approval to a publisher",
+        "description": "approved is true only when the subject is active, its gate is resolved with approve_automatic on this subject's digest, expectedDigest is the outbound request's digest, and the subject has not expired. approved false is still a 200: the caller reads deliveryMode and gateStatus to tell a pending decision from a refusal. A subject with no gate or no outbound request digest is refused with APPROVAL_SUBJECT_NOT_VERIFIED.",
+        "security": [
+          {
+            "serviceToken": ["approvals:read"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "BOARD_NOT_FOUND",
+          "INVALID_JSON",
+          "INVALID_BODY",
+          "APPROVAL_SUBJECT_NOT_VERIFIED"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyApprovalSubject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The board's confirmation, approved or not",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalSubjectConfirmation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/boards/{boardId}/approval-subjects/{approvalSubjectId}/delivery": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/boardId"
+        },
+        {
+          "$ref": "#/components/parameters/approvalSubjectId"
+        }
+      ],
+      "post": {
+        "operationId": "recordApprovalDelivery",
+        "summary": "Report an automatic publisher's live post",
+        "description": "The board re-confirms the approval first (APPROVAL_SUBJECT_NOT_VERIFIED when it is not approved, or when gateId names another gate), then records the live URL. SuperPipeline records the report; it does not claim to have read the post back. Reporting the same URL again succeeds; a different URL is refused. liveUrl must be an absolute https URL (INVALID_LIVE_URL), and an approval still held until its release time is refused with APPROVAL_HELD.",
+        "security": [
+          {
+            "serviceToken": ["approvals:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "BOARD_NOT_FOUND",
+          "INVALID_JSON",
+          "INVALID_BODY",
+          "INVALID_LIVE_URL",
+          "APPROVAL_SUBJECT_NOT_VERIFIED",
+          "APPROVAL_HELD"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordApprovalDelivery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The delivery is recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalDeliveryRecorded"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "An Accounts-issued service access token (principalKind service) for a workspace mapped to a SuperPipeline tenant. The scopes each route needs are listed on its security requirement. The tenant comes from the token, so a board in another tenant is not found."
+      }
+    },
+    "parameters": {
+      "boardId": {
+        "name": "boardId",
+        "in": "path",
+        "required": true,
+        "description": "The board. The service routes match only brd_ and 16 lowercase hex digits.",
+        "schema": {
+          "type": "string",
+          "pattern": "^brd_[0-9a-f]{16}$"
+        }
+      },
+      "approvalRequestId": {
+        "name": "approvalRequestId",
+        "in": "path",
+        "required": true,
+        "description": "The board's id for the request, from createApprovalRequest.",
+        "schema": {
+          "type": "string",
+          "pattern": "^apr_[0-9a-f]{16}$"
+        }
+      },
+      "approvalSubjectId": {
+        "name": "approvalSubjectId",
+        "in": "path",
+        "required": true,
+        "description": "The approval subject a gate binds.",
+        "schema": {
+          "type": "string",
+          "pattern": "^aps_[0-9a-f]{16}$"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed JSON (INVALID_JSON), a body of the wrong shape, or a value the board refuses",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/error.v1.json"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No valid service token for a mapped workspace",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/error.v1.json"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The token lacks the route's scope",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/error.v1.json"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such board in this tenant, or no such record on it",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/error.v1.json"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The request conflicts with what the board holds",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/error.v1.json"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Expiry": {
+        "type": "string",
+        "description": "An RFC 3339 date-time with seconds and an explicit offset (2030-01-02T03:04:05Z, 2030-01-02T08:34:05.5+05:30). The same form as dev.superpipeline.question.v2's subject.expires_at, minus null: an stk-capability/v1 subject always expires.",
+        "format": "date-time",
+        "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])T([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(\\.\\d+)?(Z|[+-]([01]\\d|2[0-3]):[0-5]\\d)$"
+      },
+      "PreviewBlock": {
+        "description": "One block of what a person must see, as the board accepts it from a poster: strict, with every listed property present. A field needs its value and a text block its text, even when empty. The board bounds blocks to the wire's limits (dev.superpipeline.question.v2's previewBlock) when it carries them, marking the preview incomplete if it cut one.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "text"],
+            "properties": {
+              "type": {
+                "const": "text"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 16000
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 16000
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "label", "value"],
+            "properties": {
+              "type": {
+                "const": "field"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 16000
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 16000
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "label", "url"],
+            "properties": {
+              "type": {
+                "const": "link"
+              },
+              "label": {
+                "type": "string",
+                "maxLength": 16000
+              },
+              "url": {
+                "type": "string",
+                "maxLength": 16000
+              }
+            }
+          }
+        ]
+      },
+      "StkCapabilitySubject": {
+        "type": "object",
+        "description": "A broker approval's subject (charter: waiting cards and broker approvals reach chat §3): the digest of the exact request, its expiry, and a preview of everything it will do. Strict, as the board parses it. Always revision 1: a changed request is a new approval request. The digest is opaque and compared byte for byte.",
+        "additionalProperties": false,
+        "required": [
+          "schema",
+          "id",
+          "digest",
+          "revision",
+          "expires_at",
+          "preview",
+          "preview_complete"
+        ],
+        "properties": {
+          "schema": {
+            "const": "stk-capability/v1"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "digest": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "revision": {
+            "const": 1
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Expiry"
+          },
+          "preview": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/PreviewBlock"
+            }
+          },
+          "preview_complete": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateApprovalRequest": {
+        "type": "object",
+        "description": "Other top-level properties are ignored.",
+        "required": ["requestId", "question", "subject"],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's idempotency key, scoped to the creating principal."
+          },
+          "question": {
+            "type": "string",
+            "description": "What the person is asked. Trimmed, then 1 to 1000 characters.",
+            "pattern": "^\\s*\\S(?:[\\s\\S]{0,998}\\S)?\\s*$"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/StkCapabilitySubject"
+          }
+        }
+      },
+      "ApprovalRequestState": {
+        "enum": ["pending", "approved", "denied", "expired"],
+        "description": "expired is a pending request past its subject's expiry."
+      },
+      "ApprovalRequestCreated": {
+        "type": "object",
+        "required": ["approvalRequestId", "state"],
+        "properties": {
+          "approvalRequestId": {
+            "type": "string",
+            "pattern": "^apr_[0-9a-f]{16}$"
+          },
+          "state": {
+            "const": "pending"
+          }
+        }
+      },
+      "ApprovalRequestReplayed": {
+        "type": "object",
+        "description": "The request this principal created earlier under the same requestId, in whatever state it is in now.",
+        "required": ["approvalRequestId", "state"],
+        "properties": {
+          "approvalRequestId": {
+            "type": "string",
+            "pattern": "^apr_[0-9a-f]{16}$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ApprovalRequestState"
+          }
+        }
+      },
+      "ApprovalRequestView": {
+        "type": "object",
+        "description": "A broker approval as the broker reads it back. decidedBy is who the board recorded deciding, never a caller-supplied name. Undecided (pending or expired) requests carry no option, decider or time; an approved one carries allow_once and a denied one deny.",
+        "required": [
+          "approvalRequestId",
+          "requestId",
+          "state",
+          "option",
+          "decidedBy",
+          "decidedAt",
+          "subject",
+          "expiresAt"
+        ],
+        "properties": {
+          "approvalRequestId": {
+            "type": "string",
+            "pattern": "^apr_[0-9a-f]{16}$"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ApprovalRequestState"
+          },
+          "option": {
+            "enum": ["allow_once", "deny", null]
+          },
+          "decidedBy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": ["principalId", "label"],
+                "properties": {
+                  "principalId": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "decidedAt": {
+            "type": ["string", "null"]
+          },
+          "subject": {
+            "type": "object",
+            "required": ["id", "digest"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              }
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "The subject's expires_at, as it was stored."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["state"],
+              "properties": {
+                "state": {
+                  "enum": ["pending", "expired"]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "option": {
+                  "const": null
+                },
+                "decidedBy": {
+                  "type": "null"
+                },
+                "decidedAt": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": ["state"],
+              "properties": {
+                "state": {
+                  "const": "approved"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "option": {
+                  "const": "allow_once"
+                },
+                "decidedBy": {
+                  "type": "object"
+                },
+                "decidedAt": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": ["state"],
+              "properties": {
+                "state": {
+                  "const": "denied"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "option": {
+                  "const": "deny"
+                },
+                "decidedBy": {
+                  "type": "object"
+                },
+                "decidedAt": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "VerifyApprovalSubject": {
+        "type": "object",
+        "description": "Other properties are ignored.",
+        "required": ["expectedDigest"],
+        "properties": {
+          "expectedDigest": {
+            "type": "string",
+            "description": "The digest of the outbound request the publisher is about to send."
+          }
+        }
+      },
+      "ApprovalSubjectConfirmation": {
+        "type": "object",
+        "required": [
+          "approved",
+          "deliveryMode",
+          "subjectId",
+          "digest",
+          "gateId",
+          "expiresAt",
+          "gateStatus"
+        ],
+        "properties": {
+          "approved": {
+            "type": "boolean"
+          },
+          "deliveryMode": {
+            "enum": ["automatic", "manual", "none"],
+            "description": "From the gate's decision: approve_automatic, approve_manual, or anything else (undecided included)."
+          },
+          "subjectId": {
+            "type": "string",
+            "pattern": "^aps_[0-9a-f]{16}$"
+          },
+          "digest": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The approved outbound request's digest. Compare it with your own before acting."
+          },
+          "gateId": {
+            "type": "string",
+            "pattern": "^gate_[0-9a-f]{16}$",
+            "description": "The latest gate bound to the subject."
+          },
+          "expiresAt": {
+            "description": "When the approval lapses, or the empty string when the subject records none (then approved is false).",
+            "anyOf": [
+              {
+                "const": ""
+              },
+              {
+                "$ref": "#/components/schemas/Expiry"
+              }
+            ]
+          },
+          "gateStatus": {
+            "enum": ["pending", "resolved", "cancelled"]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["approved"],
+              "properties": {
+                "approved": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "deliveryMode": {
+                  "const": "automatic"
+                },
+                "gateStatus": {
+                  "const": "resolved"
+                },
+                "expiresAt": {
+                  "$ref": "#/components/schemas/Expiry"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "RecordApprovalDelivery": {
+        "type": "object",
+        "description": "Other properties are ignored.",
+        "required": ["expectedDigest", "liveUrl"],
+        "properties": {
+          "expectedDigest": {
+            "type": "string"
+          },
+          "liveUrl": {
+            "type": "string",
+            "description": "The live post. The board refuses anything but an absolute https URL with INVALID_LIVE_URL, and stores it normalised."
+          },
+          "gateId": {
+            "type": "string",
+            "description": "When given, the gate the publisher was approved on; a different gate is refused with APPROVAL_SUBJECT_NOT_VERIFIED."
+          }
+        }
+      },
+      "ApprovalDeliveryRecorded": {
+        "type": "object",
+        "required": [
+          "deliveryMode",
+          "gateId",
+          "subjectId",
+          "digest",
+          "liveUrl"
+        ],
+        "properties": {
+          "deliveryMode": {
+            "const": "automatic"
+          },
+          "gateId": {
+            "type": "string",
+            "pattern": "^gate_[0-9a-f]{16}$"
+          },
+          "subjectId": {
+            "type": "string",
+            "pattern": "^aps_[0-9a-f]{16}$"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "liveUrl": {
+            "type": "string",
+            "pattern": "^https://",
+            "description": "The URL as the board stored it, normalised (WHATWG URL serialisation)."
+          }
+        }
+      }
+    }
+  }
+}

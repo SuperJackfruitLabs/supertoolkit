@@ -109,6 +109,15 @@ jobs:
         run: GOBIN="$PWD/.bin" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
       - name: Lint (ratchet)
         run: go run ./scripts/lint-go
+      # treaty.json: the crossings stk produces and consumes, and the treaty files under
+      # testdata/treaty/ the contract tests read. verify checks the manifest against treaty's
+      # registry and that every copy is byte-identical to the pinned release (`treaty sync`
+      # rewrites them). Go does not import treaty's TypeScript; it reads the copies.
+      - uses: https://data.forgejo.org/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Contracts match the pinned treaty release
+        run: npx -y @superjackfruitlabs/treaty-contracts@0.0.15 verify
 
   check:
     needs: [changes, docs, sites, broker]

@@ -1,0 +1,1459 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Accounts plane API",
+    "version": "1",
+    "description": "The Accounts routes other products call: the token exchanges, principals, grants, identities and the policy decision. Every refusal is `flat-error.v1`: `{ \"error\": \"<snake_code>\" }`, with `scope` beside an insufficient_scope and `usableAt` beside an identity_pending. Malformed JSON reads as an empty body and gets the route's body refusal. The sign-in flows (OAuth 2.1, OIDC discovery, the RFC 8628 device flow) are the standards, crossing accounts.sign-in; only Accounts' own body on the device flow's token endpoint is described here."
+  },
+  "x-treaty-error-envelope": "flat-error.v1",
+  "servers": [
+    {
+      "url": "https://accounts.superjackfruit.com"
+    }
+  ],
+  "paths": {
+    "/api/token/service": {
+      "post": {
+        "operationId": "exchangeServiceToken",
+        "summary": "A service's own access token for one audience",
+        "description": "The caller's svc_ credential, exchanged for a token whose subject is the service itself (amr service). The service must be allowed the audience.",
+        "security": [
+          {
+            "serviceCredential": []
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "invalid_target",
+          "suspended",
+          "not_permitted",
+          "unknown_principal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Token"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/NotPermitted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/token/agent": {
+      "post": {
+        "operationId": "exchangeAgentToken",
+        "summary": "An access token for an agent of the caller's workspace",
+        "description": "The subject is the agent, `act.sub` the calling service (amr exchange). The grant must hold token:agent; a grant without it is not_permitted, not insufficient_scope. An agent of another workspace is not_permitted.",
+        "security": [
+          {
+            "serviceCredential": ["token:agent"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "invalid_target",
+          "suspended",
+          "not_permitted",
+          "unknown_principal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Token"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/NotPermitted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/token/assertion": {
+      "post": {
+        "operationId": "exchangeAssertion",
+        "summary": "An access token for a person acting from chat",
+        "description": "Accounts resolves the person from a linked identity; a caller-supplied prn_ is never accepted. The token lives 120 seconds, carries no grant scope, and `act.sub` is the calling service (amr assertion). The grant must hold token:assert. A link the person made themselves is identity_pending until its hold is over.",
+        "security": [
+          {
+            "serviceCredential": ["token:assert"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "invalid_request",
+          "invalid_target",
+          "not_permitted",
+          "unknown_identity",
+          "not_human",
+          "identity_pending",
+          "unknown_principal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssertionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Token"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "description": "Refused: not_permitted or identity_pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json",
+                  "description": "identity_pending says when the link starts to act as `usableAt`.",
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "error": {
+                            "const": "identity_pending"
+                          }
+                        },
+                        "required": ["error"]
+                      },
+                      "then": {
+                        "required": ["usableAt"],
+                        "properties": {
+                          "usableAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "not_human: the identity is not a person's",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json"
+                }
+              }
+            }
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/token/device": {
+      "post": {
+        "operationId": "exchangeDeviceToken",
+        "summary": "A person's access token from their device credential",
+        "description": "The caller's dev_ credential, exchanged for a token whose subject is the person (amr device). It carries no grant scope. `org` picks another workspace the person belongs to; it defaults to the credential's.",
+        "security": [
+          {
+            "deviceCredential": []
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "invalid_target",
+          "suspended",
+          "not_permitted",
+          "unknown_principal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Token"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/NotPermitted"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/auth/device/token": {
+      "post": {
+        "operationId": "completeDeviceGrant",
+        "summary": "The device flow's token endpoint, Accounts' success body",
+        "description": "RFC 8628's device access token request. The request and its pending, slow-down and expiry answers are the standard (crossing accounts.sign-in) and are not described here. Accounts replaces the standard's successful token response with a device credential, `dev_<20 hex>:<43 base64url>`, minted for the workspace that was active when the sign-in was approved, and refuses with access_denied when none was.",
+        "x-treaty-standard": "RFC 8628",
+        "security": [],
+        "x-treaty-error-codes": ["access_denied", "server_error"],
+        "responses": {
+          "200": {
+            "description": "The device credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCredential"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "access_denied: no workspace was active when the sign-in was approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json",
+                  "properties": {
+                    "error_description": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "server_error: the approved session was gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/principals": {
+      "post": {
+        "operationId": "createAgent",
+        "summary": "Create an agent in the caller's workspace",
+        "description": "The agent starts with an empty grant.",
+        "security": [
+          {
+            "serviceCredential": ["principals:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "invalid_request",
+          "invalid_handle",
+          "handle_taken"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "handle_taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json"
+                }
+              }
+            }
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listPrincipals",
+        "summary": "Every principal of the caller's workspace, up to 500",
+        "description": "Humans are the workspace's members. Sorted by kind, then handle.",
+        "security": [
+          {
+            "serviceCredential": ["principals:read"]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["human", "agent", "service"]
+            }
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "invalid_request"
+        ],
+        "responses": {
+          "200": {
+            "description": "The principals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "maxItems": 500,
+                  "items": {
+                    "$ref": "#/components/schemas/Principal"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/principals/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A principal of the caller's workspace. Anything else, another workspace's included, is unknown_principal.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "readPrincipal",
+        "security": [
+          {
+            "serviceCredential": ["principals:read"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "unknown_principal"
+        ],
+        "responses": {
+          "200": {
+            "description": "The principal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Principal"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/principals/{id}/suspend": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A principal of the caller's workspace. Anything else, another workspace's included, is unknown_principal.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "suspendPrincipal",
+        "summary": "Suspend an agent",
+        "description": "Agents only, and never the caller itself: anything else is not_permitted. Suspending a suspended agent keeps its first time.",
+        "security": [
+          {
+            "serviceCredential": ["principals:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "not_permitted",
+          "unknown_principal"
+        ],
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/principals/{id}/unsuspend": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A principal of the caller's workspace. Anything else, another workspace's included, is unknown_principal.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "unsuspendPrincipal",
+        "summary": "Lift an agent's suspension",
+        "description": "Agents only, and never the caller itself: anything else is not_permitted.",
+        "security": [
+          {
+            "serviceCredential": ["principals:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "not_permitted",
+          "unknown_principal"
+        ],
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/principals/{id}/grants": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A principal of the caller's workspace. Anything else, another workspace's included, is unknown_principal.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putGrant",
+        "summary": "Replace a principal's grant",
+        "description": "Every mayDispatch id must be an agent of the workspace, or the grant is invalid_grant. `scopes` absent keeps the stored scopes. Plane-reserved scopes (token:*, principals:*, grants:*, identities:*, policy:*) are kept as they are and never added here: naming one the target lacks is not_permitted. A service never writes its own grant.",
+        "security": [
+          {
+            "serviceCredential": ["grants:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "invalid_grant",
+          "not_permitted",
+          "unknown_principal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/principals/{id}/identities/{system}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A principal of the caller's workspace. Anything else, another workspace's included, is unknown_principal.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "system",
+          "in": "path",
+          "required": true,
+          "description": "Any other system is invalid_system.",
+          "schema": {
+            "$ref": "#/components/schemas/LinkableSystem"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putIdentity",
+        "summary": "Link an agent or service to an external id",
+        "description": "Replaces the principal's link in that system. Linking the same id again is a no-op. A person is not_permitted: their links are made by the person.",
+        "security": [
+          {
+            "serviceCredential": ["identities:write"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "invalid_request",
+          "invalid_system",
+          "not_permitted",
+          "unknown_principal",
+          "identity_taken"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "identity_taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json"
+                }
+              }
+            }
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/principals/{id}/identities": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "A principal of the caller's workspace. Anything else, another workspace's included, is unknown_principal.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listIdentities",
+        "summary": "A principal's linked external ids",
+        "security": [
+          {
+            "serviceCredential": ["identities:read"]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "system",
+            "in": "query",
+            "required": false,
+            "description": "Only this system's link.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "unknown_principal"
+        ],
+        "responses": {
+          "200": {
+            "description": "The links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Identity"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/identities/{system}/{externalId}": {
+      "parameters": [
+        {
+          "name": "system",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "externalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "findByIdentity",
+        "summary": "The principal of the caller's workspace that holds an external id",
+        "description": "A link still in its hold answers 404 identity_pending, deliberately: a reader that does not know the code reads it as nobody and fails closed.",
+        "security": [
+          {
+            "serviceCredential": ["identities:read"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "unknown_identity",
+          "identity_pending"
+        ],
+        "responses": {
+          "200": {
+            "description": "The principal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "unknown_identity, or identity_pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../../common/flat-error.v1.json",
+                  "description": "identity_pending says when the link starts to act as `usableAt`. It is a 404 here, not a 403.",
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "error": {
+                            "const": "identity_pending"
+                          }
+                        },
+                        "required": ["error"]
+                      },
+                      "then": {
+                        "required": ["usableAt"],
+                        "properties": {
+                          "usableAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    },
+    "/api/policy/decide": {
+      "post": {
+        "operationId": "decidePolicy",
+        "summary": "May this agent take this work, under the workspace's dispatch policy",
+        "description": "AuthZEN-shaped. No policy allows with `no-policy`, records nothing and returns null policyVersion and decisionId. Under a policy, a subject that is not an agent of the workspace is denied `unknown-subject`, a suspended one `suspended`, and every decision is recorded.",
+        "security": [
+          {
+            "serviceCredential": ["policy:decide"]
+          }
+        ],
+        "x-treaty-error-codes": [
+          "invalid_credential",
+          "suspended",
+          "insufficient_scope",
+          "invalid_request"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/InvalidCredential"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "423": {
+            "$ref": "#/components/responses/Suspended"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceCredential": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "svc_<20 hex>:<43 base64url>",
+        "description": "A service credential, `Authorization: Bearer svc_<20 lowercase hex>:<43 base64url>`. The scopes listed on a route are the ones its grant must hold."
+      },
+      "deviceCredential": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "dev_<20 hex>:<43 base64url>",
+        "description": "A person's device credential, `Authorization: Bearer dev_<20 lowercase hex>:<43 base64url>`, from the device flow."
+      }
+    },
+    "responses": {
+      "Token": {
+        "description": "The access token",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TokenResponse"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "The body or query does not match the route",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/flat-error.v1.json"
+            }
+          }
+        }
+      },
+      "InvalidCredential": {
+        "description": "invalid_credential: no valid credential",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/flat-error.v1.json"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Refused: insufficient_scope, or the route's own refusal",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/flat-error.v1.json",
+              "description": "insufficient_scope names the scope the route needs as `scope`.",
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "error": {
+                        "const": "insufficient_scope"
+                      }
+                    },
+                    "required": ["error"]
+                  },
+                  "then": {
+                    "required": ["scope"],
+                    "properties": {
+                      "scope": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "NotPermitted": {
+        "description": "not_permitted",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/flat-error.v1.json"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Not visible to the caller",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/flat-error.v1.json"
+            }
+          }
+        }
+      },
+      "Suspended": {
+        "description": "suspended: the caller or the principal it names is suspended",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "../../common/flat-error.v1.json"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "PrincipalId": {
+        "type": "string",
+        "pattern": "^prn_[0-9a-f]{20}$"
+      },
+      "OrgId": {
+        "type": "string",
+        "pattern": "^org_[0-9a-f]{20}$"
+      },
+      "Audience": {
+        "type": "string",
+        "description": "A registered audience, such as https://app.superpipeline.dev. Any other is invalid_target."
+      },
+      "LinkableSystem": {
+        "type": "string",
+        "enum": ["matrix", "superpipeline", "agentpod"]
+      },
+      "ServiceTokenRequest": {
+        "type": "object",
+        "required": ["audience"],
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/Audience"
+          }
+        }
+      },
+      "AgentTokenRequest": {
+        "type": "object",
+        "required": ["principal", "audience"],
+        "properties": {
+          "principal": {
+            "type": "string",
+            "description": "The agent's prn_ id."
+          },
+          "audience": {
+            "description": "One audience, or up to 8 distinct ones.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Audience"
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/components/schemas/Audience"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AssertionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["identity", "audience"],
+        "properties": {
+          "identity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["system", "externalId"],
+            "properties": {
+              "system": {
+                "$ref": "#/components/schemas/LinkableSystem"
+              },
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              }
+            }
+          },
+          "audience": {
+            "description": "One audience, or up to 8 distinct ones.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Audience"
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 8,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/components/schemas/Audience"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "DeviceTokenRequest": {
+        "type": "object",
+        "required": ["audience"],
+        "properties": {
+          "audience": {
+            "$ref": "#/components/schemas/Audience"
+          },
+          "org": {
+            "$ref": "#/components/schemas/OrgId"
+          }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "required": ["access_token", "token_type", "expires_in"],
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A signed JWT; its claims are crossing accounts.token-claims."
+          },
+          "token_type": {
+            "const": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "300, or 120 for an assertion."
+          }
+        }
+      },
+      "DeviceCredential": {
+        "type": "object",
+        "required": ["device_credential"],
+        "properties": {
+          "device_credential": {
+            "type": "string",
+            "pattern": "^dev_[0-9a-f]{20}:[A-Za-z0-9_-]{43}$"
+          }
+        }
+      },
+      "CreateAgentRequest": {
+        "type": "object",
+        "required": ["kind", "handle", "displayName"],
+        "properties": {
+          "kind": {
+            "const": "agent"
+          },
+          "handle": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{2,31}$",
+            "description": "Any other is invalid_handle."
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "\\S",
+            "description": "Trimmed; blank is invalid_request."
+          }
+        }
+      },
+      "Created": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          }
+        }
+      },
+      "Ok": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        }
+      },
+      "Grant": {
+        "type": "object",
+        "required": ["mayDispatch", "mayGrantReach", "scopes"],
+        "properties": {
+          "mayDispatch": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrincipalId"
+            }
+          },
+          "mayGrantReach": {
+            "type": "boolean"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Principal": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "handle",
+          "displayName",
+          "organizationId",
+          "suspended",
+          "grant"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["human", "agent", "service"]
+          },
+          "handle": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "organizationId": {
+            "$ref": "#/components/schemas/OrgId"
+          },
+          "suspended": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["owner", "admin", "member"],
+            "description": "A person's role in the caller's workspace; absent for agents and services."
+          },
+          "grant": {
+            "$ref": "#/components/schemas/Grant"
+          }
+        }
+      },
+      "GrantRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["mayDispatch", "mayGrantReach"],
+        "properties": {
+          "mayDispatch": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrincipalId"
+            },
+            "description": "Agents of the workspace; anything else is invalid_grant."
+          },
+          "mayGrantReach": {
+            "type": "boolean"
+          },
+          "scopes": {
+            "type": "array",
+            "description": "Absent keeps the stored scopes. A malformed scope is invalid_grant.",
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9._-]*(:[a-z0-9._*-]+)*$"
+            }
+          }
+        }
+      },
+      "IdentityRequest": {
+        "type": "object",
+        "required": ["externalId"],
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        }
+      },
+      "Identity": {
+        "type": "object",
+        "required": ["system", "externalId"],
+        "properties": {
+          "system": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          }
+        }
+      },
+      "ResolvedIdentity": {
+        "type": "object",
+        "required": ["principalId", "kind", "suspended"],
+        "properties": {
+          "principalId": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["human", "agent", "service"]
+          },
+          "suspended": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DecideRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "action", "resource"],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The agent's prn_ id."
+          },
+          "action": {
+            "const": "take"
+          },
+          "resource": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["board", "stage"],
+            "properties": {
+              "board": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "stage": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "labels": {
+                "type": "array",
+                "maxItems": 50,
+                "default": [],
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "capabilities": {
+                "type": "array",
+                "maxItems": 50,
+                "default": [],
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                }
+              },
+              "card": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      },
+      "Decision": {
+        "type": "object",
+        "required": [
+          "allow",
+          "reasons",
+          "policyVersion",
+          "limits",
+          "decisionId"
+        ],
+        "properties": {
+          "allow": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`allowed`, `no-policy`, `unknown-subject`, `suspended`, `policy-error`, or the ids of the rules that forbade it."
+          },
+          "policyVersion": {
+            "type": ["integer", "null"]
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "maxRuns", "windowHours"],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "maxRuns": {
+                  "type": "integer"
+                },
+                "windowHours": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "decisionId": {
+            "type": ["string", "null"],
+            "pattern": "^pdc_[0-9a-f]{20}$"
+          }
+        }
+      }
+    }
+  }
+}

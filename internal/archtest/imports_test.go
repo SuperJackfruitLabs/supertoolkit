@@ -23,7 +23,7 @@ const modulePath = "github.com/SuperJackfruitLabs/supertoolkit"
 var layers = [][]string{
 	// Leaves: they import nothing else in the module.
 	{"approval", "catalog", "daemon", "deviceflow", "egress", "install", "isolation", "ledger",
-		"managedmcp", "mcphost", "netjail", "notify", "oauth2flow", "rules"},
+		"managedmcp", "mcphost", "netjail", "notify", "oauth2flow", "rules", "treatytest"},
 	// Over the catalogue: the credential operations, policy, and provider verification.
 	{"credential", "policy", "verify"},
 	// The egress proxy, the sealed hand-over, the MCP meta-tools and fronted-server gate, the web

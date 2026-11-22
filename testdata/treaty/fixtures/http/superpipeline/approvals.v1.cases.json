@@ -1,0 +1,2608 @@
+{
+  "operations": {
+    "createApprovalRequest": {
+      "request": {
+        "valid": {
+          "a SuperToolkit request for one write": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": "https://api.x.com/2/tweets"
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": "station-a"
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Argument text",
+                  "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                }
+              ],
+              "preview_complete": true
+            }
+          },
+          "no arguments, as stk words it": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": "https://api.x.com/2/tweets"
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": "station-a"
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Arguments",
+                  "text": "(none)"
+                }
+              ],
+              "preview_complete": true
+            }
+          },
+          "a preview cut to fit, marked incomplete": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": "https://api.x.com/2/tweets"
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": "station-a"
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Argument text",
+                  "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                }
+              ],
+              "preview_complete": false
+            }
+          },
+          "empty values sent as empty strings": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": ""
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": ""
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Argument text",
+                  "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                }
+              ],
+              "preview_complete": true
+            }
+          },
+          "a link block, a text block with no label and an offset expiry": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T15:45:00.5+05:30",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": "https://api.x.com/2/tweets"
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": "station-a"
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Argument text",
+                  "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                },
+                {
+                  "type": "link",
+                  "label": "Draft",
+                  "url": "https://example.com/drafts/1"
+                },
+                {
+                  "type": "text",
+                  "text": "One more thing"
+                }
+              ],
+              "preview_complete": true
+            }
+          },
+          "an unknown top-level property is ignored": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": "https://api.x.com/2/tweets"
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": "station-a"
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Argument text",
+                  "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                }
+              ],
+              "preview_complete": true
+            },
+            "note": "ignored"
+          },
+          "an empty preview": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [],
+              "preview_complete": true
+            }
+          },
+          "a question with surrounding whitespace, trimmed to 1000": {
+            "requestId": "3f9a1c0b7e24",
+            "question": "  qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\n",
+            "subject": {
+              "schema": "stk-capability/v1",
+              "id": "3f9a1c0b7e24",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "revision": 1,
+              "expires_at": "2026-11-22T10:15:00Z",
+              "preview": [
+                {
+                  "type": "field",
+                  "label": "Service",
+                  "value": "x"
+                },
+                {
+                  "type": "field",
+                  "label": "Capability",
+                  "value": "post"
+                },
+                {
+                  "type": "text",
+                  "label": "Target",
+                  "text": "https://api.x.com/2/tweets"
+                },
+                {
+                  "type": "field",
+                  "label": "Station",
+                  "value": "station-a"
+                },
+                {
+                  "type": "field",
+                  "label": "Requested by",
+                  "value": "agent-7"
+                },
+                {
+                  "type": "field",
+                  "label": "Profile",
+                  "value": "(unnamed)"
+                },
+                {
+                  "type": "field",
+                  "label": "Expires",
+                  "value": "2026-11-22T10:15:00Z"
+                },
+                {
+                  "type": "field",
+                  "label": "Request digest",
+                  "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                {
+                  "type": "text",
+                  "label": "Argument text",
+                  "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                }
+              ],
+              "preview_complete": true
+            }
+          }
+        },
+        "invalid": [
+          {
+            "why": "a field block with no value: SuperToolkit's omitempty drops an empty Station",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a text block with no text: SuperToolkit's omitempty drops an empty Target",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a field block with no label",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a block of an unknown type",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  },
+                  {
+                    "type": "image",
+                    "label": "x",
+                    "url": "https://example.com/a.png"
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a block with a property the board does not know",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x",
+                    "text": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a subject of another schema",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "harness-permission/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a subject of a later stk schema",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v2",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "revision 2: a changed request is a new request",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 2,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "no requestId",
+            "body": {
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "an empty requestId",
+            "body": {
+              "requestId": "",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a requestId over 128 characters",
+            "body": {
+              "requestId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a question over 1000 characters",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a question of whitespace only",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": " \n\t ",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "no question",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "no subject",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?"
+            }
+          },
+          {
+            "why": "an expiry without seconds",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "an expiry without an offset",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a null expiry: an stk subject always expires",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": null,
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a subject with a property the board does not know",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true,
+                "account": "acct_1"
+              }
+            }
+          },
+          {
+            "why": "a subject with no preview_complete",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "why": "a subject id over 256 characters",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "an empty digest",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "x"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "65 preview blocks",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  },
+                  {
+                    "type": "field",
+                    "label": "k",
+                    "value": "v"
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a block value over 16000 characters",
+            "body": {
+              "requestId": "3f9a1c0b7e24",
+              "question": "Allow agent-7 on station-a to x/post: Post the 0.0.16 release note?",
+              "subject": {
+                "schema": "stk-capability/v1",
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "revision": 1,
+                "expires_at": "2026-11-22T10:15:00Z",
+                "preview": [
+                  {
+                    "type": "field",
+                    "label": "Service",
+                    "value": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Capability",
+                    "value": "post"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Target",
+                    "text": "https://api.x.com/2/tweets"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Station",
+                    "value": "station-a"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Requested by",
+                    "value": "agent-7"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Profile",
+                    "value": "(unnamed)"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Expires",
+                    "value": "2026-11-22T10:15:00Z"
+                  },
+                  {
+                    "type": "field",
+                    "label": "Request digest",
+                    "value": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  {
+                    "type": "text",
+                    "label": "Argument text",
+                    "text": "treaty 0.0.16 is out: every crossing, phase 1."
+                  }
+                ],
+                "preview_complete": true
+              }
+            }
+          },
+          {
+            "why": "a body that is not an object",
+            "body": [
+              "requestId"
+            ]
+          }
+        ]
+      },
+      "responses": {
+        "201": {
+          "valid": {
+            "a new request": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "state": "pending"
+            }
+          },
+          "invalid": [
+            {
+              "why": "a request id the routes would not match",
+              "body": {
+                "approvalRequestId": "apr_3f9a1c0b7e24",
+                "state": "pending"
+              }
+            },
+            {
+              "why": "no state",
+              "body": {
+                "approvalRequestId": "apr_4b7e0c19d2a35f68"
+              }
+            }
+          ]
+        },
+        "200": {
+          "valid": {
+            "a replay while pending": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "state": "pending"
+            },
+            "a replay after approval": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "state": "approved"
+            },
+            "a replay after expiry": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "state": "expired"
+            }
+          },
+          "invalid": [
+            {
+              "why": "a state the board never writes",
+              "body": {
+                "approvalRequestId": "apr_4b7e0c19d2a35f68",
+                "state": "open"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "readApprovalRequest": {
+      "responses": {
+        "200": {
+          "valid": {
+            "pending": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "requestId": "3f9a1c0b7e24",
+              "state": "pending",
+              "option": null,
+              "decidedBy": null,
+              "decidedAt": null,
+              "subject": {
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+              },
+              "expiresAt": "2026-11-22T10:15:00Z"
+            },
+            "approved by an owner": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "requestId": "3f9a1c0b7e24",
+              "state": "approved",
+              "option": "allow_once",
+              "decidedBy": {
+                "principalId": "prn_0f3a9c2b7d814e65a1c7",
+                "label": "Workspace owner"
+              },
+              "decidedAt": "2026-11-22T10:06:41.512Z",
+              "subject": {
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+              },
+              "expiresAt": "2026-11-22T10:15:00Z"
+            },
+            "denied": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "requestId": "3f9a1c0b7e24",
+              "state": "denied",
+              "option": "deny",
+              "decidedBy": {
+                "principalId": "prn_0f3a9c2b7d814e65a1c7",
+                "label": "Workspace owner"
+              },
+              "decidedAt": "2026-11-22T10:07:02.004Z",
+              "subject": {
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+              },
+              "expiresAt": "2026-11-22T10:15:00Z"
+            },
+            "expired undecided": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "requestId": "3f9a1c0b7e24",
+              "state": "expired",
+              "option": null,
+              "decidedBy": null,
+              "decidedAt": null,
+              "subject": {
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+              },
+              "expiresAt": "2026-11-22T10:15:00Z"
+            },
+            "a property a later version adds is ignored": {
+              "approvalRequestId": "apr_4b7e0c19d2a35f68",
+              "requestId": "3f9a1c0b7e24",
+              "state": "pending",
+              "option": null,
+              "decidedBy": null,
+              "decidedAt": null,
+              "subject": {
+                "id": "3f9a1c0b7e24",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+              },
+              "expiresAt": "2026-11-22T10:15:00Z",
+              "note": "new"
+            }
+          },
+          "invalid": [
+            {
+              "why": "approved without the option",
+              "body": {
+                "approvalRequestId": "apr_4b7e0c19d2a35f68",
+                "requestId": "3f9a1c0b7e24",
+                "state": "approved",
+                "option": null,
+                "decidedBy": {
+                  "principalId": "prn_0f3a9c2b7d814e65a1c7",
+                  "label": "Workspace owner"
+                },
+                "decidedAt": "2026-11-22T10:06:41.512Z",
+                "subject": {
+                  "id": "3f9a1c0b7e24",
+                  "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                "expiresAt": "2026-11-22T10:15:00Z"
+              }
+            },
+            {
+              "why": "pending with a decider",
+              "body": {
+                "approvalRequestId": "apr_4b7e0c19d2a35f68",
+                "requestId": "3f9a1c0b7e24",
+                "state": "pending",
+                "option": null,
+                "decidedBy": {
+                  "principalId": "prn_0f3a9c2b7d814e65a1c7",
+                  "label": "Workspace owner"
+                },
+                "decidedAt": null,
+                "subject": {
+                  "id": "3f9a1c0b7e24",
+                  "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                "expiresAt": "2026-11-22T10:15:00Z"
+              }
+            },
+            {
+              "why": "an option the board does not offer",
+              "body": {
+                "approvalRequestId": "apr_4b7e0c19d2a35f68",
+                "requestId": "3f9a1c0b7e24",
+                "state": "approved",
+                "option": "allow_always",
+                "decidedBy": {
+                  "principalId": "prn_0f3a9c2b7d814e65a1c7",
+                  "label": "Workspace owner"
+                },
+                "decidedAt": "2026-11-22T10:06:41.512Z",
+                "subject": {
+                  "id": "3f9a1c0b7e24",
+                  "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                },
+                "expiresAt": "2026-11-22T10:15:00Z"
+              }
+            },
+            {
+              "why": "wrapped in approvalRequest",
+              "body": {
+                "approvalRequest": {
+                  "approvalRequestId": "apr_4b7e0c19d2a35f68",
+                  "requestId": "3f9a1c0b7e24",
+                  "state": "pending",
+                  "option": null,
+                  "decidedBy": null,
+                  "decidedAt": null,
+                  "subject": {
+                    "id": "3f9a1c0b7e24",
+                    "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+                  },
+                  "expiresAt": "2026-11-22T10:15:00Z"
+                }
+              }
+            },
+            {
+              "why": "no subject",
+              "body": {
+                "approvalRequestId": "apr_4b7e0c19d2a35f68",
+                "requestId": "3f9a1c0b7e24",
+                "state": "pending",
+                "option": null,
+                "decidedBy": null,
+                "decidedAt": null,
+                "expiresAt": "2026-11-22T10:15:00Z"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "verifyApprovalSubject": {
+      "request": {
+        "valid": {
+          "SuperToolkit's confirm": {
+            "expectedDigest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+          },
+          "an unknown property is ignored": {
+            "expectedDigest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+            "gateId": "gate_8d02f6a1c94e7b35"
+          }
+        },
+        "invalid": [
+          {
+            "why": "no expectedDigest",
+            "body": {}
+          },
+          {
+            "why": "a digest that is not a string",
+            "body": {
+              "expectedDigest": 7
+            }
+          },
+          {
+            "why": "a body that is not an object",
+            "body": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "approved for automatic delivery": {
+              "approved": true,
+              "deliveryMode": "automatic",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "expiresAt": "2026-11-22T10:15:00Z",
+              "gateStatus": "resolved"
+            },
+            "awaiting a decision": {
+              "approved": false,
+              "deliveryMode": "none",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "expiresAt": "2026-11-22T10:15:00Z",
+              "gateStatus": "pending"
+            },
+            "approved for manual delivery only": {
+              "approved": false,
+              "deliveryMode": "manual",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "expiresAt": "2026-11-22T10:15:00Z",
+              "gateStatus": "resolved"
+            },
+            "the gate was cancelled": {
+              "approved": false,
+              "deliveryMode": "none",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "expiresAt": "2026-11-22T10:15:00Z",
+              "gateStatus": "cancelled"
+            },
+            "approved but expired": {
+              "approved": false,
+              "deliveryMode": "automatic",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "expiresAt": "2026-11-21T10:15:00Z",
+              "gateStatus": "resolved"
+            },
+            "no expiry recorded": {
+              "approved": false,
+              "deliveryMode": "automatic",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "expiresAt": "",
+              "gateStatus": "resolved"
+            }
+          },
+          "invalid": [
+            {
+              "why": "gateStatus open, which SuperToolkit accepts and the board never sends",
+              "body": {
+                "approved": false,
+                "deliveryMode": "none",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "gateId": "gate_8d02f6a1c94e7b35",
+                "expiresAt": "2026-11-22T10:15:00Z",
+                "gateStatus": "open"
+              }
+            },
+            {
+              "why": "the RPC type's shape, without expiresAt and gateStatus",
+              "body": {
+                "approved": true,
+                "deliveryMode": "automatic",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "gateId": "gate_8d02f6a1c94e7b35"
+              }
+            },
+            {
+              "why": "approved for manual delivery",
+              "body": {
+                "approved": true,
+                "deliveryMode": "manual",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "gateId": "gate_8d02f6a1c94e7b35",
+                "expiresAt": "2026-11-22T10:15:00Z",
+                "gateStatus": "resolved"
+              }
+            },
+            {
+              "why": "approved with no expiry",
+              "body": {
+                "approved": true,
+                "deliveryMode": "automatic",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "gateId": "gate_8d02f6a1c94e7b35",
+                "expiresAt": "",
+                "gateStatus": "resolved"
+              }
+            },
+            {
+              "why": "approved while the gate is pending",
+              "body": {
+                "approved": true,
+                "deliveryMode": "automatic",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "gateId": "gate_8d02f6a1c94e7b35",
+                "expiresAt": "2026-11-22T10:15:00Z",
+                "gateStatus": "pending"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "recordApprovalDelivery": {
+      "request": {
+        "valid": {
+          "SuperToolkit's report": {
+            "expectedDigest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+            "gateId": "gate_8d02f6a1c94e7b35",
+            "liveUrl": "https://x.com/example/status/1861234567890123456"
+          },
+          "without a gate id": {
+            "expectedDigest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+            "liveUrl": "https://x.com/example/status/1861234567890123456"
+          }
+        },
+        "invalid": [
+          {
+            "why": "no liveUrl",
+            "body": {
+              "expectedDigest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "gateId": "gate_8d02f6a1c94e7b35"
+            }
+          },
+          {
+            "why": "no expectedDigest",
+            "body": {
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "liveUrl": "https://x.com/example/status/1"
+            }
+          },
+          {
+            "why": "a liveUrl that is not a string",
+            "body": {
+              "expectedDigest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "liveUrl": null
+            }
+          }
+        ]
+      },
+      "responses": {
+        "200": {
+          "valid": {
+            "recorded": {
+              "deliveryMode": "automatic",
+              "gateId": "gate_8d02f6a1c94e7b35",
+              "subjectId": "aps_1e5c9a7f03b24d86",
+              "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+              "liveUrl": "https://x.com/example/status/1861234567890123456"
+            }
+          },
+          "invalid": [
+            {
+              "why": "a manual delivery mode",
+              "body": {
+                "deliveryMode": "manual",
+                "gateId": "gate_8d02f6a1c94e7b35",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3",
+                "liveUrl": "https://x.com/example/status/1"
+              }
+            },
+            {
+              "why": "no liveUrl",
+              "body": {
+                "deliveryMode": "automatic",
+                "gateId": "gate_8d02f6a1c94e7b35",
+                "subjectId": "aps_1e5c9a7f03b24d86",
+                "digest": "sha256:9c1185a5c5e9fc54612808977ee8f548b2258d31b7b1d4c0a5f8e6c0e4b1f2a3"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

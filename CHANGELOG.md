@@ -7,6 +7,11 @@ v0.0.9 predate this file: their notes are on the GitHub releases.
 
 ## Unreleased
 
+- A hosted approval whose requester, station, target or an argument was empty is no longer
+  refused by SuperPipeline. stk left the empty value out of its preview block, which the board
+  rejects, so the request was never created and the effect expired unanswered. An empty
+  requester or station now shows `(unnamed)` and any other empty value `—`.
+
 - SuperToolkit is now MIT-licensed, like most of the suite. It was Apache-2.0. Third-party notices
   stay in `NOTICE`.
 

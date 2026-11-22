@@ -42,6 +42,8 @@ next release follows the latest `v` tag. `scripts/release.sh vX.Y.Z` stamps the 
   `setup` (`stk init`, `add`, `connect`, `handover`), `credcmd` (`stk verify`, `revoke`), `doctor`,
   `proxyenv` (`stk env`), `uicmd` (`stk ui`)
 - `internal/clitest`: fixtures the command packages' tests share; only tests import it
+- `internal/treatytest`: reads the treaty contracts `treaty.json` vendors under `testdata/treaty/`
+  (`treaty sync` writes them, CI's `treaty verify` checks them); only tests import it
 
 ## Rules learned by spiking, which tests must hold
 

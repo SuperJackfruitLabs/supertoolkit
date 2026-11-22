@@ -88,7 +88,9 @@ at `approval`, on a catalogue capability or a fronted MCP server's tool:
      one text block each. Blocks are cut to SuperPipeline's bounds (text 4000, field 200, 20
      blocks, counted in UTF-16 units as SuperPipeline counts them); anything cut, or arguments
      that do not fit, set `preview_complete: false`, so a client withholds approval until the
-     person opens the full request.
+     person opens the full request. Every block carries its value or text, as the board
+     requires: an empty requester or station shows `(unnamed)`, as in the question, and any other
+     empty value (a target, an argument) shows `—`.
    - The agent is answered `pending` with `decided_on: superpipeline` and the approval request id.
 3. A watcher (in `stk serve`, and in `stk mcp` for its own session) reads each pending hosted
    effect back with the read credential (`approval-requests:read`) every 3 seconds; an effect whose create

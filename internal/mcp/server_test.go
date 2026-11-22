@@ -171,7 +171,7 @@ func TestNativeOnlyServicesAreHiddenAndRefused(t *testing.T) {
 	}
 	got := r.callTool(t, "execute_action", map[string]string{
 		"category": "superpipeline-approvals-read", "action": "verify_approval",
-		"args": `{"board":"brd_fixture","subject":"aps_fixture"}`,
+		"args": `{"board":"brd_5c0e8a3f1b7d9246","subject":"aps_1e5c9a7f03b24d86"}`,
 	})
 	if !strings.HasPrefix(got, "ERROR:") {
 		t.Fatalf("native-only direct call was not refused: %s", got)

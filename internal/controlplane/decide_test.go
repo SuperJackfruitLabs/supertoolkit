@@ -153,7 +153,7 @@ func tamper(t *testing.T, state, id string, edit func(map[string]any)) {
 }
 
 const hostedPolicy = githubWriter + "  superpipeline-approvals-read:\n    scopes: []\n  superpipeline-approvals-write:\n    scopes: []\n" +
-	"superpipeline:\n  approvals_board: brd_fixture\n"
+	"superpipeline:\n  approvals_board: brd_5c0e8a3f1b7d9246\n"
 
 // With an approvals board, execute_action hosts the approval and even an
 // operator uid cannot decide it locally.
@@ -166,7 +166,7 @@ func TestHostedPolicyHostsAndRefusesLocalDecide(t *testing.T) {
 	}
 	id := submitThroughDaemon(t, svc)
 	e, _ := svc.Queue.Get(id)
-	if e.HostedBoard != "brd_fixture" || e.Target != "POST https://api.github.com/repos/o/r/issues" {
+	if e.HostedBoard != "brd_5c0e8a3f1b7d9246" || e.Target != "POST https://api.github.com/repos/o/r/issues" {
 		t.Fatalf("effect board=%q target=%q", e.HostedBoard, e.Target)
 	}
 	params, _ := json.Marshal(map[string]any{"id": id, "allow": true})
@@ -184,17 +184,17 @@ func TestHostingUsesNativeOnlyServiceCredentials(t *testing.T) {
 	var seen []string
 	svc.Perform = func(ctx context.Context, service string, req *http.Request) (*http.Response, error) {
 		seen = append(seen, service+" "+req.Method+" "+req.URL.Host+req.URL.Path)
-		return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader(`{"approvalRequestId":"apr_x","state":"pending"}`))}, nil
+		return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader(`{"approvalRequestId":"apr_4b7e0c19d2a35f68","state":"pending"}`))}, nil
 	}
 	h := svc.Hosting()
-	if h == nil || h.Board != "brd_fixture" {
+	if h == nil || h.Board != "brd_5c0e8a3f1b7d9246" {
 		t.Fatalf("Hosting() = %+v", h)
 	}
 	e := svc.Queue.SubmitRequest(approvalSubmission())
 	if _, err := h.Publish(context.Background(), e); err != nil {
 		t.Fatal(err)
 	}
-	if len(seen) != 1 || seen[0] != "superpipeline-approvals-write POST app.superpipeline.dev/v1/boards/brd_fixture/approval-requests" {
+	if len(seen) != 1 || seen[0] != "superpipeline-approvals-write POST app.superpipeline.dev/v1/boards/brd_5c0e8a3f1b7d9246/approval-requests" {
 		t.Fatalf("calls = %v", seen)
 	}
 	if newTestService(t, githubWriter).Hosting() != nil {
@@ -204,5 +204,5 @@ func TestHostingUsesNativeOnlyServiceCredentials(t *testing.T) {
 
 func approvalSubmission() approval.Submission {
 	return approval.Submission{Service: "github", Capability: "create_issue", Summary: "Open an issue",
-		Args: map[string]string{"owner": "o"}, Digest: "sha256:x", HostedBoard: "brd_fixture"}
+		Args: map[string]string{"owner": "o"}, Digest: "sha256:x", HostedBoard: "brd_5c0e8a3f1b7d9246"}
 }

@@ -72,7 +72,7 @@ func TestCommandDrivesDurableIngressExecutionAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := &commandGate{confirmation: approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_fixture"}}
+	gate := &commandGate{confirmation: approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_8d02f6a1c94e7b35"}}
 	x := &commandX{}
 	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
 		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
@@ -167,7 +167,7 @@ func TestRecoverSkipsUndecidedGateAndLaterApprovalPostsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "pending", GateID: "gate_fixture", Digest: req.Digest()}}
+	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "pending", GateID: "gate_8d02f6a1c94e7b35", Digest: req.Digest()}}
 	x := &commandX{successful: true}
 	factories := 0
 	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
@@ -187,7 +187,7 @@ func TestRecoverSkipsUndecidedGateAndLaterApprovalPostsOnce(t *testing.T) {
 	if got, _ := q.Get(e.ID); got.State != approval.Pending || got.Outcome != "" {
 		t.Fatalf("undecided perform changed state: %+v", got)
 	}
-	gate.confirmation = approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_fixture", Digest: req.Digest(), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
+	gate.confirmation = approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_8d02f6a1c94e7b35", Digest: req.Digest(), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
 	if _, err := perform(context.Background(), e.ID, runtime); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestRecoverSurfacesRetryAllowedWithoutSendingAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := &commandGate{confirmation: approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_fixture", Digest: req.Digest()}}
+	gate := &commandGate{confirmation: approval.GateConfirmation{Approved: true, DeliveryMode: "automatic", GateID: "gate_8d02f6a1c94e7b35", Digest: req.Digest()}}
 	x := &commandX{}
 	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
 		return &approval.Publisher{Queue: q, Gate: gate, X: x}, nil
@@ -215,7 +215,7 @@ func TestRecoverSurfacesRetryAllowedWithoutSendingAgain(t *testing.T) {
 	if _, err := perform(context.Background(), e.ID, runtime); err == nil {
 		t.Fatal("fixture did not create the unknown-outcome fence")
 	}
-	retry := []byte(`{"outcome":"retry_allowed","approved_digest":"` + req.Digest() + `","request_digest":"` + req.Digest() + `","gate_id":"gate_fixture","attempts":1}`)
+	retry := []byte(`{"outcome":"retry_allowed","approved_digest":"` + req.Digest() + `","request_digest":"` + req.Digest() + `","gate_id":"gate_8d02f6a1c94e7b35","attempts":1}`)
 	if err := os.WriteFile(filepath.Join(dir, "approvals", e.ID+".pub"), retry, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestPerformReportsAwaitingDecisionState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "open", Digest: req.Digest()}}
+	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "pending", Digest: req.Digest()}}
 	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
 		return &approval.Publisher{Queue: q, Gate: gate, X: &commandX{successful: true}}, nil
 	}}

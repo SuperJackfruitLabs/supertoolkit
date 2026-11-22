@@ -40,6 +40,7 @@ per seam:
 | `proxyenv` | `stk env` |
 | `uicmd` | `stk ui` |
 | `clitest` | fixtures the command packages' tests share; only tests import it |
+| `treatytest` | the contract tests' reader for treaty's documents and cases vendored under `testdata/treaty/` (`treaty.json`); only tests import it |
 
 The packages below them are unchanged: `broker` (the egress proxy),
 `credential` (the five operations), `policy`, `catalog`, and the rest.
