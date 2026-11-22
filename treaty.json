@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/SuperJackfruitLabs/treaty/main/schemas/treaty/product-manifest.v1.json",
+  "product": "supertoolkit",
+  "treaty": "0.0.16",
+  "produces": ["supertoolkit.managed"],
+  "consumes": ["superpipeline.approvals", "accounts.plane-api"],
+  "vendored": [
+    {
+      "path": "testdata/treaty/schemas/http/superpipeline/approvals.v1.openapi.json",
+      "source": "schemas/http/superpipeline/approvals.v1.openapi.json"
+    },
+    {
+      "path": "testdata/treaty/fixtures/http/superpipeline/approvals.v1.cases.json",
+      "source": "fixtures/http/superpipeline/approvals.v1.cases.json"
+    },
+    {
+      "path": "testdata/treaty/schemas/http/accounts/plane.v1.openapi.json",
+      "source": "schemas/http/accounts/plane.v1.openapi.json"
+    },
+    {
+      "path": "testdata/treaty/fixtures/http/accounts/plane.v1.cases.json",
+      "source": "fixtures/http/accounts/plane.v1.cases.json"
+    }
+  ]
+}
