@@ -241,3 +241,58 @@ func assertBoardAccepts(t *testing.T, schema *treatytest.Schema, h *Host, e *Eff
 }
 
 const testSubject = "aps_1e5c9a7f03b24d86"
+
+// An empty requester, station, target or argument used to drop its block's value or text
+// (omitempty), and the board refuses a block without one: such a request was refused 400
+// INVALID_APPROVAL_REQUEST and the effect could never be approved. Each is now sent, as a
+// placeholder the person can see.
+func TestContractEmptyValuesAreShownNotDropped(t *testing.T) {
+	schema := approvalsContract(t).Request(t, "createApprovalRequest")
+	h, _, e := hostedRig(t)
+	for name, tc := range map[string]struct {
+		mutate func(*Host, *Effect)
+		label  string
+		want   string
+	}{
+		"no requester": {func(_ *Host, x *Effect) { x.Requester = "" }, "Requested by", "(unnamed)"},
+		"no station":   {func(h *Host, _ *Effect) { h.Station = "" }, "Station", "(unnamed)"},
+		"no target":    {func(_ *Host, x *Effect) { x.Target = "" }, "Target", emptyValue},
+		"an empty argument": {func(_ *Host, x *Effect) { x.Args = map[string]string{"title": ""} },
+			"Argument title", emptyValue},
+	} {
+		host, x := *h, *e
+		tc.mutate(&host, &x)
+		assertBoardAccepts(t, schema, &host, &x, name)
+		r := host.Request(&x)
+		found := false
+		for _, b := range r.Subject.Preview {
+			if b.Label == tc.label {
+				found = true
+				if b.Value+b.Text != tc.want {
+					t.Errorf("%s: %s shows %q; want %q", name, tc.label, b.Value+b.Text, tc.want)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no %s block", name, tc.label)
+		}
+	}
+}
+
+// A block marshals with every property the board requires, even an empty one.
+func TestPreviewBlockNeverOmitsItsValueOrText(t *testing.T) {
+	for _, tc := range []struct {
+		block PreviewBlock
+		want  string
+	}{
+		{PreviewBlock{Type: "field", Label: "Station"}, `{"type":"field","label":"Station","value":""}`},
+		{PreviewBlock{Type: "field"}, `{"type":"field","label":"","value":""}`},
+		{PreviewBlock{Type: "text", Label: "Target"}, `{"type":"text","label":"Target","text":""}`},
+		{PreviewBlock{Type: "text"}, `{"type":"text","text":""}`},
+	} {
+		got, err := json.Marshal(tc.block)
+		if err != nil || string(got) != tc.want {
+			t.Errorf("marshal %+v = %s, %v; want %s", tc.block, got, err, tc.want)
+		}
+	}
+}

@@ -81,12 +81,45 @@ const (
 )
 
 // PreviewBlock is a gate.v2 preview block: {type:"field", label, value} or
-// {type:"text", label?, text}.
+// {type:"text", label?, text}. The board parses blocks strictly: a field needs
+// its label and value and a text block its text, even when empty, so neither is
+// ever omitted (MarshalJSON). Request never sends an empty one anyway: it shows
+// emptyValue, so the person sees that the request left it empty.
 type PreviewBlock struct {
 	Type  string `json:"type"`
-	Label string `json:"label,omitempty"`
-	Value string `json:"value,omitempty"`
-	Text  string `json:"text,omitempty"`
+	Label string `json:"label"`
+	Value string `json:"value"`
+	Text  string `json:"text"`
+}
+
+// MarshalJSON writes the properties the block's type carries, and only those:
+// the board refuses a block with a property it does not know.
+func (b PreviewBlock) MarshalJSON() ([]byte, error) {
+	switch b.Type {
+	case "field":
+		return json.Marshal(struct {
+			Type  string `json:"type"`
+			Label string `json:"label"`
+			Value string `json:"value"`
+		}{b.Type, b.Label, b.Value})
+	case "text":
+		return json.Marshal(struct {
+			Type  string `json:"type"`
+			Label string `json:"label,omitempty"`
+			Text  string `json:"text"`
+		}{b.Type, b.Label, b.Text})
+	}
+	return nil, fmt.Errorf("preview block of unknown type %q", b.Type)
+}
+
+// emptyValue is what a preview shows for a value the request left empty.
+const emptyValue = "—"
+
+func orEmpty(s string) string {
+	if s == "" {
+		return emptyValue
+	}
+	return s
 }
 
 // ApprovalSubject is the `stk-capability/v1` subject an approval request binds.
@@ -177,21 +210,22 @@ func (h *Host) Request(e *Effect) ApprovalRequest {
 	complete := true
 	var blocks []PreviewBlock
 	field := func(label, value string) {
-		v, c := cut(value, PreviewFieldMax)
+		v, c := cut(orEmpty(value), PreviewFieldMax)
 		complete = complete && !c
 		blocks = append(blocks, PreviewBlock{Type: "field", Label: label, Value: v})
 	}
 	text := func(label, value string) {
 		l, c1 := cut(label, PreviewFieldMax)
-		v, c2 := cut(value, PreviewTextMax)
+		v, c2 := cut(orEmpty(value), PreviewTextMax)
 		complete = complete && !c1 && !c2
 		blocks = append(blocks, PreviewBlock{Type: "text", Label: l, Text: v})
 	}
 	field("Service", e.Service)
 	field("Capability", e.Capability)
 	text("Target", e.Target)
-	field("Station", h.Station)
-	field("Requested by", e.Requester)
+	// Named as the question names them.
+	field("Station", orNone(h.Station))
+	field("Requested by", orNone(e.Requester))
 	field("Profile", orNone(e.Profile))
 	field("Expires", e.Expires.UTC().Format(time.RFC3339))
 	field("Request digest", e.RequestDigest)
