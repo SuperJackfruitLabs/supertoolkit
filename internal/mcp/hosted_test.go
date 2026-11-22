@@ -17,7 +17,7 @@ type recordingBoard struct{ created []approval.ApprovalRequest }
 
 func (b *recordingBoard) CreateApprovalRequest(_ context.Context, _ string, body approval.ApprovalRequest) (approval.ApprovalCreated, error) {
 	b.created = append(b.created, body)
-	return approval.ApprovalCreated{ApprovalRequestID: "apr_" + body.RequestID, State: "pending"}, nil
+	return approval.ApprovalCreated{ApprovalRequestID: "apr_4b7e0c19d2a35f68", State: "pending"}, nil
 }
 
 func (b *recordingBoard) ReadApprovalRequest(context.Context, string, string) (approval.ApprovalReadBack, error) {
@@ -30,7 +30,7 @@ func (b *recordingBoard) ReadApprovalRequest(context.Context, string, string) (a
 func TestFrontedToolApprovalIsHosted(t *testing.T) {
 	srv, child, q := frontedRig(t, "", 0)
 	board := &recordingBoard{}
-	srv.hosting = &approval.Host{Queue: q, Client: board, Board: "brd_fixture", Station: "station-1"}
+	srv.hosting = &approval.Host{Queue: q, Client: board, Board: "brd_5c0e8a3f1b7d9246", Station: "station-1"}
 	got := callT(t, srv, "execute_action", map[string]string{
 		"category": "faker", "action": "write_thing", "args": `{"path":"/a","mode":"x"}`,
 	})
@@ -38,7 +38,7 @@ func TestFrontedToolApprovalIsHosted(t *testing.T) {
 		t.Fatalf("hosted fronted call answered %s (child calls %v)", got, child.called)
 	}
 	pending := q.Pending()
-	if len(pending) != 1 || pending[0].HostedBoard != "brd_fixture" || pending[0].Target != "mcp://faker/write_thing" {
+	if len(pending) != 1 || pending[0].HostedBoard != "brd_5c0e8a3f1b7d9246" || pending[0].Target != "mcp://faker/write_thing" {
 		t.Fatalf("pending = %+v", pending)
 	}
 	if _, err := q.DecideAndPerform(pending[0].ID, true, "root (uid 0)", func(*approval.Effect) (string, error) { return "", nil }); err == nil {

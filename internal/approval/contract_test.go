@@ -243,6 +243,9 @@ func assertBoardAccepts(t *testing.T, schema *treatytest.Schema, h *Host, e *Eff
 const (
 	testSubject = "aps_1e5c9a7f03b24d86"
 	testGate    = "gate_8d02f6a1c94e7b35"
+	// testApprovalRequest and otherApprovalRequest are ids a board could have issued.
+	testApprovalRequest  = "apr_4b7e0c19d2a35f68"
+	otherApprovalRequest = "apr_9f8e7d6c5b4a3210"
 )
 
 // An empty requester, station, target or argument used to drop its block's value or text
@@ -371,6 +374,33 @@ func TestContractDeliveryLeavesOutAnEmptyGateID(t *testing.T) {
 		}
 		if got, has := body["gateId"]; has != sent || (sent && got != gateID) {
 			t.Errorf("gate %q: sent %v", gateID, body)
+		}
+	}
+}
+
+// Fixture ids must be ones real routing would match. SuperPipeline's routes take a prefix and 16
+// lowercase hex digits and nothing else, so a fixture such as brd_fixture, or an approval request
+// id made from the request id, tests requests no board would ever serve or send.
+func TestContractFixtureIDsAreRoutable(t *testing.T) {
+	api := approvalsContract(t)
+	h, board, e := hostedRig(t)
+	created, err := board.CreateApprovalRequest(context.Background(), testBoard, h.Request(e))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, gated := gatedFixture(t)
+	for pointer, ids := range map[string][]string{
+		"/components/parameters/boardId/schema":                          {testBoard, gated.BoardID},
+		"/components/parameters/approvalSubjectId/schema":                {testSubject, gated.SubjectID},
+		"/components/parameters/approvalRequestId/schema":                {created.ApprovalRequestID, testApprovalRequest, otherApprovalRequest},
+		"/components/schemas/ApprovalDeliveryRecorded/properties/gateId": {testGate},
+	} {
+		schema := api.Schema(t, pointer)
+		for _, id := range ids {
+			quoted, _ := json.Marshal(id)
+			if err := schema.Validate(quoted); err != nil {
+				t.Errorf("fixture id %q: %v", id, err)
+			}
 		}
 	}
 }

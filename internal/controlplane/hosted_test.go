@@ -28,16 +28,16 @@ type approvingBoard struct{ req approval.ApprovalRequest }
 
 func (b *approvingBoard) CreateApprovalRequest(_ context.Context, _ string, body approval.ApprovalRequest) (approval.ApprovalCreated, error) {
 	b.req = body
-	return approval.ApprovalCreated{ApprovalRequestID: "apr_1", State: "pending"}, nil
+	return approval.ApprovalCreated{ApprovalRequestID: "apr_4b7e0c19d2a35f68", State: "pending"}, nil
 }
 
 func (b *approvingBoard) ReadApprovalRequest(context.Context, string, string) (approval.ApprovalReadBack, error) {
 	opt := "allow_once"
-	rb := approval.ApprovalReadBack{ApprovalRequestID: "apr_1", State: "approved", Option: &opt}
+	rb := approval.ApprovalReadBack{ApprovalRequestID: "apr_4b7e0c19d2a35f68", State: "approved", Option: &opt}
 	rb.DecidedBy = &struct {
 		PrincipalID string `json:"principalId"`
 		Label       string `json:"label"`
-	}{"prn_admin", "Rakesh"}
+	}{"prn_0f3a9c2b7d814e65a1c7", "Rakesh"}
 	rb.Subject.ID, rb.Subject.Digest = b.req.Subject.ID, b.req.Subject.Digest
 	return rb, nil
 }
@@ -48,7 +48,7 @@ func hostedToolEffect(svc *Service, digest string) *approval.Effect {
 		digest = approval.ToolCapabilityRequest("faker", "write_thing", "", args).Digest()
 	}
 	return svc.Queue.SubmitRequest(approval.Submission{Service: "faker", Capability: "write_thing", Summary: "Write a thing",
-		Args: args, Target: "mcp://faker/write_thing", Digest: digest, HostedBoard: "brd_fixture"})
+		Args: args, Target: "mcp://faker/write_thing", Digest: digest, HostedBoard: "brd_5c0e8a3f1b7d9246"})
 }
 
 // A hosted tool approval has no agent session waiting on it: once

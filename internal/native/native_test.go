@@ -82,7 +82,7 @@ func TestPrepareRefusesNativeOnlyServiceForNonPublisherCaller(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://app.superpipeline.dev/v1/boards/brd_fixture/approval-subjects/aps_fixture/verify", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://app.superpipeline.dev/v1/boards/brd_5c0e8a3f1b7d9246/approval-subjects/aps_1e5c9a7f03b24d86/verify", nil)
 	spoofedAudit := context.WithValue(context.Background(), audit.CallerKey{}, "publish")
 	prepared, err := Prepare(spoofedAudit, live, store, client, obs, testVersion, "superpipeline-approvals-read", req)
 	if err == nil || prepared != nil || !strings.Contains(err.Error(), "reserved for the publisher") {

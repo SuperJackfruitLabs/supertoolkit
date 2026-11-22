@@ -2,6 +2,8 @@ package approval
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,7 +15,7 @@ import (
 	"time"
 )
 
-const testBoard = "brd_fixture"
+const testBoard = "brd_5c0e8a3f1b7d9246"
 
 // fakeBoard stands in for SuperPipeline: it stores what was created and
 // answers read-backs with whatever the test sets.
@@ -26,6 +28,13 @@ type fakeBoard struct {
 	answer    func(req ApprovalRequest) ApprovalReadBack
 }
 
+// aprFor is the id the fake board gives a request: like a real one, apr_ and 16 lowercase hex
+// digits, and the same for the same requestId.
+func aprFor(requestID string) string {
+	sum := sha256.Sum256([]byte(requestID))
+	return "apr_" + hex.EncodeToString(sum[:8])
+}
+
 func newFakeBoard() *fakeBoard { return &fakeBoard{created: map[string]ApprovalRequest{}} }
 
 func (f *fakeBoard) CreateApprovalRequest(_ context.Context, board string, body ApprovalRequest) (ApprovalCreated, error) {
@@ -36,7 +45,7 @@ func (f *fakeBoard) CreateApprovalRequest(_ context.Context, board string, body 
 		return ApprovalCreated{}, f.createErr
 	}
 	f.created[body.RequestID] = body
-	return ApprovalCreated{ApprovalRequestID: "apr_" + body.RequestID, State: "pending"}, nil
+	return ApprovalCreated{ApprovalRequestID: aprFor(body.RequestID), State: "pending"}, nil
 }
 
 func (f *fakeBoard) ReadApprovalRequest(_ context.Context, board, id string) (ApprovalReadBack, error) {
@@ -45,7 +54,12 @@ func (f *fakeBoard) ReadApprovalRequest(_ context.Context, board, id string) (Ap
 	if f.readErr != nil {
 		return ApprovalReadBack{}, f.readErr
 	}
-	req := f.created[strings.TrimPrefix(id, "apr_")]
+	var req ApprovalRequest
+	for requestID, r := range f.created {
+		if aprFor(requestID) == id {
+			req = r
+		}
+	}
 	rb := ApprovalReadBack{ApprovalRequestID: id, RequestID: req.RequestID, State: "pending"}
 	rb.Subject.ID, rb.Subject.Digest = req.Subject.ID, req.Subject.Digest
 	if f.answer != nil {
@@ -70,7 +84,7 @@ func approvedBy(label string, mutate ...func(*ApprovalReadBack)) func(ApprovalRe
 		rb.DecidedBy = &struct {
 			PrincipalID string `json:"principalId"`
 			Label       string `json:"label"`
-		}{PrincipalID: "prn_admin", Label: label}
+		}{PrincipalID: "prn_0f3a9c2b7d814e65a1c7", Label: label}
 		rb.Subject.ID, rb.Subject.Digest = req.Subject.ID, req.Subject.Digest
 		for _, m := range mutate {
 			m(&rb)
@@ -136,7 +150,7 @@ func TestHostedApprovalIsCheckedRecordedAndPerformedOnce(t *testing.T) {
 	if got.State != Approved || got.Outcome != "201 Created" || *sends != 1 {
 		t.Fatalf("approved: state=%q outcome=%q sends=%d", got.State, got.Outcome, *sends)
 	}
-	if got.DecidedBy != "superpipeline: Rakesh (prn_admin)" {
+	if got.DecidedBy != "superpipeline: Rakesh (prn_0f3a9c2b7d814e65a1c7)" {
 		t.Fatalf("decided by %q; want SuperPipeline's decider", got.DecidedBy)
 	}
 	// Reading again, or a second watcher, performs nothing more.
@@ -176,7 +190,7 @@ func TestHostedApprovalThatDoesNotCheckOutIsRefused(t *testing.T) {
 		"option":     func(rb *ApprovalReadBack) { d := "deny"; rb.Option = &d },
 		"no option":  func(rb *ApprovalReadBack) { rb.Option = nil },
 		"no decider": func(rb *ApprovalReadBack) { rb.DecidedBy = nil },
-		"request id": func(rb *ApprovalReadBack) { rb.ApprovalRequestID = "apr_other" },
+		"request id": func(rb *ApprovalReadBack) { rb.ApprovalRequestID = otherApprovalRequest },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -225,7 +239,7 @@ func TestHostedDenialAndExpiryRefuse(t *testing.T) {
 					rb.DecidedBy = &struct {
 						PrincipalID string `json:"principalId"`
 						Label       string `json:"label"`
-					}{"prn_member", "Asha"}
+					}{"prn_6a1d4e9c0b3f7a2e5d81", "Asha"}
 				}
 				return rb
 			})
@@ -234,7 +248,7 @@ func TestHostedDenialAndExpiryRefuse(t *testing.T) {
 			if err != nil || got.State != Refused || *sends != 0 {
 				t.Fatalf("state=%q sends=%d err=%v", got.State, *sends, err)
 			}
-			if state == "denied" && got.DecidedBy != "superpipeline: Asha (prn_member)" {
+			if state == "denied" && got.DecidedBy != "superpipeline: Asha (prn_6a1d4e9c0b3f7a2e5d81)" {
 				t.Fatalf("decided by %q", got.DecidedBy)
 			}
 		})
@@ -349,13 +363,13 @@ func TestWatchResolvesHostedEffects(t *testing.T) {
 func TestSuperPipelineClientRoutesAndCredentials(t *testing.T) {
 	var calls []string
 	var body map[string]any
-	write := canned{cred: "write", status: 201, out: `{"approvalRequestId":"apr_1","state":"pending"}`, calls: &calls, body: &body}
+	write := canned{cred: "write", status: 201, out: `{"approvalRequestId":"apr_4b7e0c19d2a35f68","state":"pending"}`, calls: &calls, body: &body}
 	read := canned{cred: "read", status: 200, calls: &calls, body: &body,
-		out: `{"approvalRequestId":"apr_1","state":"approved","option":"allow_once","decidedBy":{"principalId":"prn_a","label":"A"},"subject":{"id":"e1","digest":"d"}}`}
+		out: `{"approvalRequestId":"apr_4b7e0c19d2a35f68","state":"approved","option":"allow_once","decidedBy":{"principalId":"prn_0f3a9c2b7d814e65a1c7","label":"A"},"subject":{"id":"e1","digest":"d"}}`}
 	c := &SuperPipelineHTTPClient{BaseURL: "https://app.superpipeline.dev", DeliveryDo: write.Do, ApprovalDo: read.Do}
 	h, _, e := hostedRig(t)
 	created, err := c.CreateApprovalRequest(context.Background(), testBoard, h.Request(e))
-	if err != nil || created.ApprovalRequestID != "apr_1" {
+	if err != nil || created.ApprovalRequestID != testApprovalRequest {
 		t.Fatalf("create: %+v %v", created, err)
 	}
 	subject, _ := body["subject"].(map[string]any)
@@ -372,11 +386,11 @@ func TestSuperPipelineClientRoutesAndCredentials(t *testing.T) {
 	if len(subject) != 7 || len(body) != 3 {
 		t.Errorf("unknown fields sent (SuperPipeline refuses them): body=%d subject=%d", len(body), len(subject))
 	}
-	rb, err := c.ReadApprovalRequest(context.Background(), testBoard, "apr_1")
+	rb, err := c.ReadApprovalRequest(context.Background(), testBoard, testApprovalRequest)
 	if err != nil || rb.State != "approved" || *rb.Option != "allow_once" || rb.DecidedBy.Label != "A" {
 		t.Fatalf("read: %+v %v", rb, err)
 	}
-	want := []string{"write POST /v1/boards/brd_fixture/approval-requests", "read GET /v1/boards/brd_fixture/approval-requests/apr_1"}
+	want := []string{"write POST /v1/boards/" + testBoard + "/approval-requests", "read GET /v1/boards/" + testBoard + "/approval-requests/" + testApprovalRequest}
 	if strings.Join(calls, "|") != strings.Join(want, "|") {
 		t.Fatalf("calls = %v; want %v", calls, want)
 	}

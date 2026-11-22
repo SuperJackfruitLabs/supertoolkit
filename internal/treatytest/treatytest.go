@@ -149,6 +149,13 @@ func (a *API) jsonSchemaAt(t testing.TB, ptr string, holder map[string]any) *jso
 	return a.compile(t, ptr+"/content/application~1json/schema")
 }
 
+// Schema compiles the schema at a JSON pointer in the document, e.g.
+// "/components/parameters/boardId/schema".
+func (a *API) Schema(t testing.TB, pointer string) *Schema {
+	t.Helper()
+	return &Schema{name: a.path + "#" + pointer, s: a.compile(t, pointer)}
+}
+
 // Request is the schema of an operation's JSON request body.
 func (a *API) Request(t testing.TB, operationID string) *Schema {
 	t.Helper()

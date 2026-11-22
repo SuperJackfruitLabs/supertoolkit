@@ -15,7 +15,7 @@ func TestSuperPipelineGatedEffectRefusesLocalApproval(t *testing.T) {
 	for _, allow := range []bool{true, false} {
 		t.Run(map[bool]string{true: "allow", false: "deny"}[allow], func(t *testing.T) {
 			q := mustOpen(t, time.Minute)
-			req := GatedRequest{BoardID: "brd_fixture", SubjectID: "aps_fixture", Method: "POST", URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"frozen copy"}`)}
+			req := GatedRequest{BoardID: testBoard, SubjectID: testSubject, Method: "POST", URL: "https://api.x.com/2/tweets", Body: []byte(`{"text":"frozen copy"}`)}
 			e, err := q.SubmitGated(req, "Publish the frozen X post.")
 			if err != nil {
 				t.Fatal(err)
