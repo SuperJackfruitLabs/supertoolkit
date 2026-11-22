@@ -274,7 +274,7 @@ func TestPerformReportsAwaitingDecisionState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "open", Digest: req.Digest()}}
+	gate := &commandGate{confirmation: approval.GateConfirmation{DeliveryMode: "none", GateStatus: "pending", Digest: req.Digest()}}
 	runtime := Runtime{Queue: q, Publisher: func(context.Context, approval.GatedRequest) (*approval.Publisher, error) {
 		return &approval.Publisher{Queue: q, Gate: gate, X: &commandX{successful: true}}, nil
 	}}

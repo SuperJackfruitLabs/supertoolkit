@@ -296,3 +296,49 @@ func TestPreviewBlockNeverOmitsItsValueOrText(t *testing.T) {
 		}
 	}
 }
+
+// The board sends a gate as pending, resolved or cancelled. stk also waited on "open", which
+// the board never sends; a confirmation it cannot read as awaiting is now refused, like every
+// other one that is not an approval. Every unapproved confirmation in the corpus, and the
+// corpus's "open" one, goes through the publisher: only pending with no delivery is awaited,
+// and none sends.
+func TestContractOnlyAPendingGateIsAwaited(t *testing.T) {
+	api := approvalsContract(t)
+	cases := responseCases(t, api, "verifyApprovalSubject", "200")
+	var unapproved []treatytest.Case
+	for _, c := range cases.Valid {
+		var conf GateConfirmation
+		decodeCase(t, c, &conf)
+		if !conf.Approved {
+			unapproved = append(unapproved, c)
+		}
+	}
+	open := 0
+	for _, c := range cases.Invalid {
+		var conf GateConfirmation
+		if json.Unmarshal(c.Body, &conf) == nil && conf.GateStatus == "open" {
+			unapproved = append(unapproved, c)
+			open++
+		}
+	}
+	if len(unapproved) == 0 || open == 0 {
+		t.Fatalf("%d unapproved confirmations, %d open; the corpus no longer covers this", len(unapproved), open)
+	}
+	for _, c := range unapproved {
+		var conf GateConfirmation
+		decodeCase(t, c, &conf)
+		q, e, req := gatedFixture(t)
+		conf.Digest = req.Digest()
+		x := &xStub{}
+		got, err := (&Publisher{Queue: q, Gate: &gateStub{confirmation: conf}, X: x}).Perform(context.Background(), e.ID, req)
+		awaited := conf.DeliveryMode == "none" && conf.GateStatus == "pending"
+		switch {
+		case x.sendCalls != 0:
+			t.Errorf("%q: sent %d times", c.Name, x.sendCalls)
+		case awaited && (!IsAwaitingDecision(err) || got.State != Pending):
+			t.Errorf("%q: %+v, %v; want awaiting a decision", c.Name, got, err)
+		case !awaited && (err == nil || IsAwaitingDecision(err) || got.State != Refused):
+			t.Errorf("%q: %+v, %v; want refused", c.Name, got, err)
+		}
+	}
+}

@@ -355,7 +355,9 @@ func (p *Publisher) Perform(ctx context.Context, id string, req GatedRequest) (e
 		return e, err
 	}
 	rec = publicationRecord{ApprovedDigest: confirmation.Digest, RequestDigest: requestDigest, GateID: confirmation.GateID}
-	if !confirmation.Approved && confirmation.DeliveryMode == "none" && (confirmation.GateStatus == "pending" || confirmation.GateStatus == "open") {
+	// The board's gate statuses are pending, resolved and cancelled; only an undecided
+	// (pending) gate is waited on. Anything else that is not an approval is refused.
+	if !confirmation.Approved && confirmation.DeliveryMode == "none" && confirmation.GateStatus == "pending" {
 		return e, AwaitingDecisionError{}
 	}
 	if !confirmation.Approved || confirmation.DeliveryMode != "automatic" {
