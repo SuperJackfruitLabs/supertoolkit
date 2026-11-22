@@ -117,7 +117,7 @@ jobs:
         with:
           node-version: 24
       - name: Contracts match the pinned treaty release
-        run: npx -y @superjackfruitlabs/treaty-contracts@0.0.16 verify
+        run: npx -y @superjackfruitlabs/treaty-contracts@0.0.15 verify
 
   check:
     needs: [changes, docs, sites, broker]

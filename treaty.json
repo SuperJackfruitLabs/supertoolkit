@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/SuperJackfruitLabs/treaty/main/schemas/treaty/product-manifest.v1.json",
   "product": "supertoolkit",
-  "treaty": "0.0.16",
+  "treaty": "0.0.15",
   "produces": ["supertoolkit.managed"],
   "consumes": ["superpipeline.approvals", "accounts.plane-api"],
   "vendored": [
